@@ -1,0 +1,217 @@
+# Pacific Together: plan
+
+Status: draft 1, 2026-10-19. Source research: `docs/research/` (game context, networking, PDCoopNet facts).
+Anything marked **(spike)** is a design assumption that a milestone M1 experiment must confirm before we build on it.
+
+## 1. Product decisions (made by the owner)
+
+| # | Decision |
+|---|---|
+| D1 | **2 players**: host + one guest. 3-4 players is a later phase, not designed against but not built for. |
+| D2 | **Host's save only.** The guest plays in the host's world. Nothing the mod does may write to the guest's own saves. |
+| D3 | **Steam invite / join** is the target way to connect. Direct IP stays for tests and VPN users. |
+| D4 | **v1.0 = full run loop**: garage -> junctions -> gateway -> garage together, with shared car state and loot. Story plays as far as the host's save allows. |
+| D5 | Name: **Pacific Together**. Mod folder `PacificTogether`. |
+| D6 | **Guest death**: respawn at the car, backpack contents dropped as a recoverable bag. Host death or a wrecked car = run failure for both, with the host's failure penalty applied to both backpacks. |
+| D7 | **Guest loot persists**: the guest's backpack is stored with the host's save (per guest SteamID) and restored on their next join. Full immersion, no fresh starts. |
+| D8 | **DLC**: only the host needs to own Whispers in the Woods. |
+| D9 | Team: ikeepcalm (owner) and Djecka. Two Steam accounts, both with the game and the DLC. |
+| D10 | Public repo https://github.com/ikeepcalm/pacific-together, MIT license. |
+
+## 2. Fixed constraints
+
+- One game build: Steam buildid 21896301 (v1.15.0, last patch 23 Feb 2026), exe SHA-256 in `CLAUDE.md`. Steam only;
+  Epic / Xbox / Game Pass builds are out of scope.
+- Both players run the same game build and the same mod version. The mod checks both on join and refuses with a
+  clear message otherwise. DLC ownership may differ (D8): the handshake reports it, see W10.
+- No game files or extracted assets ship or get committed. The release is our code plus a pinned UE4SS.
+- Ironwood says "no plans for multiplayer" and has no official mod support; stay a pure client mod, no online services.
+
+## 3. Architecture (provisional)
+
+The prototype proved UE 4.27's own listen server works in this game: join, character replication with prediction,
+actor and attachment replication. The game's own code has zero replication. So:
+
+| Layer | Choice | Why |
+|---|---|---|
+| Bodies (characters, car transform, host-spawned actors) | Stock UE replication over the game's `IpNetDriver`; host is the listen server | Already works; gives prediction, possession, attachment for free |
+| Game state (inventory, loot taken, car parts and health, fuel, battery, run and storm state, quest flags) | **Intent messages**: the guest sends an intent ("open container X"), the host runs the game's own function and broadcasts the result as state. Stable ids for every object (spike) | No runtime replication flag surgery (unproven); host stays the only real game; pattern from Multivoid |
+| Hook layer | UE4SS (pinned build) + **Lua** for gameplay logic, plus **one C++ DLL** for what Lua cannot do: transport, Steam, native travel if needed | Lua iterates fast; C++ only where required |
+| Transport | **Tunnel UE's UDP packets over Steam P2P** (`ISteamNetworkingMessages`) by hooking the game socket's `sendto/recvfrom` in-process, using the game's own `steam_api64.dll` under appid 1458140. A second reliable channel carries intent messages | Keeps the working listen server; no ports to forward; precedent: HSMMod uses the game's own Steam DLL |
+| Connect | Friends-only Steam lobby, rich presence `connect`, overlay invite, "Join game" from the friends list | D3 |
+| Authority | Host owns the world, the car, anomalies and saves. The guest owns only their input | D2; simplest consistent model |
+
+Open alternatives kept on the table until spikes finish: own state sync for everything (if UE replication fights us),
+VPN-only internet play (if Steam relay does not work for this appid).
+
+## 4. Requirements and priorities
+
+P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
+
+### Session
+
+| Id | Requirement | P |
+|---|---|---|
+| S1 | Host opens a session from a loaded save (in the garage or mid-run) | P0 |
+| S2 | Guest joins via Steam invite or friends list "Join game" | P0 |
+| S3 | Guest joins via direct IP (tests, VPN) | P0 |
+| S4 | Handshake checks game build and mod version (mismatch -> clear message, no join) and reports both players' DLC | P0 |
+| S5 | Guest can leave and rejoin at any time, also mid-run and while the car is moving; host never crashes from it | P0 |
+| S6 | The session survives every map change the game makes (garage <-> junctions <-> garage, run failure, quit to menu) without a second map load | P0 |
+| S7 | Guest's own saves and settings are never written while in a session (the game's client-side autosave must be blocked) | P0 |
+| S8 | Host and join through an in-game menu instead of hotkeys | P1 |
+| S9 | 3-4 players | P2 |
+
+### Players
+
+| Id | Requirement | P |
+|---|---|---|
+| P1 | Each player has their own character, sees the other move and animate (walk, crouch, carry, tool use) | P0 |
+| P2 | Guest uses the game's own interaction (doors, containers, pickups, anchors, tools) with host authority | P0 |
+| P3 | Guest has a working backpack and quick slots | P0 |
+| P4 | Damage, radiation and death for the guest (D6) | P0 |
+| P5 | Guest backpack persists between sessions, stored next to the host's save slot per guest SteamID, saved whenever the host saves and when the guest leaves; a new guest starts empty (D7). Must not change the game's own save format | P0 |
+| P6 | Voice/text chat | Won't (Steam has it) |
+
+### Car
+
+| Id | Requirement | P |
+|---|---|---|
+| C1 | Host drives; guest rides as passenger; both enter and exit through the game's own door interaction | P0 |
+| C2 | Car moves smoothly on the guest's screen (interpolation), also at 100 ms ping | P0 |
+| C3 | Visible car state matches: doors, trunk, lights, wipers, ignition, gear, handbrake, horn | P0 |
+| C4 | Car health, part damage and status effects, fuel, battery, tyres: one truth on the host, shown on the guest's dashboard | P0 |
+| C5 | Guest can repair, refuel and swap parts on the car during a run (intents) | P0 |
+| C6 | Trunk and car storage shared | P0 |
+| C7 | Passenger seat vs the ARC device that sits on it: the guest must not hide or break it (spike) | P0 |
+| C8 | Either player can drive (swap driver) | P1 |
+| C9 | Car sounds and radio on the guest's side | P1 |
+| C10 | Rear seats for players 3-4 | P2 |
+
+### World and run
+
+| Id | Requirement | P |
+|---|---|---|
+| W1 | Loot is taken once: containers, pickups, scrap from wrecks, siphoned fuel, anchors | P0 |
+| W2 | No client-side duplicates of anything the host spawns (cars, loot, props, anomalies) | P0 |
+| W3 | Same junction for both: route choice, conditions, weather, radiation | P0 |
+| W4 | Instability, storm walls, gateway summon and the exit warp happen for both at the same time | P0 |
+| W5 | Run failure (emergency protocol) returns both players to the garage with the host's failure penalty | P0 |
+| W6 | Anomalies run on the host and look and act the same for the guest; the run-shaping ones first: Abductor, Bunnies, Pickpocket, Tourists, Spark Tower, Can Opener | P0 |
+| W7 | Tourists count as observed if any player looks at them | P1 |
+| W8 | Remaining anomalies and Whispers in the Woods content | P1 |
+| W9 | Expeditions mode | P1 |
+| W10 | A guest without the DLC can play the base-game zones with a DLC-owning host. Whether DLC content is installed for non-owners is unknown; until checked, the host is warned before travelling into DLC content | P1 |
+
+### Garage, story, progression
+
+| Id | Requirement | P |
+|---|---|---|
+| G1 | Guest can walk the garage and hand items to the host or the locker | P0 |
+| G2 | Fabrication, Tinker, Detailing stations: host-only | P0 (guest use P1) |
+| G3 | Story missions, radio transmissions, cutscenes play on the host; guest is a bystander and nothing breaks | P0 |
+| G4 | Story audio and cutscenes for the guest | P1 |
+| G5 | Co-op forces "Pause Game While in Menus" off and disables the Chrono Dilator | P0 |
+| G6 | Saving, Suspend and manual saves: host only | P0 |
+
+### Quality, install, ops
+
+| Id | Requirement | P |
+|---|---|---|
+| Q1 | Every P0 feature has an automated two-instance test scenario that passes, plus a mutation check showing the test can fail | P0 |
+| Q2 | Lag and loss runs (`PktLag=150`, `PktLoss=2`) pass the core scenarios | P0 |
+| Q3 | 2-hour soak (host + guest bots doing runs) without crash or desync | P0 |
+| Q4 | One human playtest of a full run before each minor release (the owner and a friend) | P0 |
+| Q5 | Install: one zip into the game folder, pinned UE4SS included or linked by hash; uninstall = delete the folder | P0 |
+| Q6 | The mod logs to its own file; a "copy logs" step for bug reports | P0 |
+| Q7 | The mod is inert unless a session is active (single-player stays vanilla with the mod installed) | P0 |
+| Q8 | Nexus Mods release | P2 |
+
+### Won't do
+
+Dedicated servers, cross-platform, other game builds, anti-cheat or online services, shipping game assets,
+split screen, achievements sync.
+
+## 5. Milestones
+
+Each milestone ends when its tests pass and `NOTES.md` records the results. Sizes are guesses for part-time work with
+agents doing most of the coding: S = days, M = 1-2 weeks, L = 3-4 weeks.
+
+### M0 Foundations (S)
+
+- Script that makes the test copies (`client1` full copy, `client2` hardlinks + own Binaries), `-NotInstalled`, `steam_appid.txt`.
+- Pin UE4SS: choose the build (likely the experimental build the prototype used), record SHA-256, install into test copies.
+- Mod skeleton: `PacificTogether` Lua mod + C++ DLL that builds in CLion (MSVC, CMake) and loads.
+- Test harness v2: our own runner, ideas from the prototype's (status lines, crash folders, log archive), plus: exit code,
+  kills only test-copy processes, scenario per file, test bots kept out of the shipping mod.
+- UE4SS dumps (UHT headers, Lua types, USMAP) into `local/` for reading.
+
+### M1 Spikes: retire the big risks (M)
+
+Timeboxed experiments. Each writes Observations / Derived / Unknowns to `NOTES.md` and ends in keep / change the design.
+
+| Spike | Question | Pass criterion |
+|---|---|---|
+| X1 | Does a `RegisterLoadMapPreHook` that adds `listen` keep the session through the game's own travel? | Host still listening after a native map change, no second load |
+| X2 | Can the host make a loot actor replicate (`SetReplicates`), and do level-placed actors have the same full name on both sides (free stable ids)? | Actor appears on guest, disappears on pickup; name diff empty |
+| X3 | Do the game's client-side spawners and managers create duplicates or overwrite state on the guest? Survey all client-local actors | List of actors and Blueprints that need authority gating |
+| X4 | Can the guest use the game's own interaction and inventory with single-reference managers (`CharacterActor`, `NewCarActor`)? | Guest opens a container through the game's code path |
+| X5 | Tunnel UE packets through a `sendto/recvfrom` hook over localhost UDP | Session suite passes through the tunnel |
+| X6 | Steam lobby + P2P messages under appid 1458140 between two real accounts (**needs the owner and a friend**) | Echo works, lobby invite opens the game and joins |
+| X7 | Car on the guest at 100-150 ms lag: error and feel | Position error logged; interpolation plan |
+| X8 | Passenger seat: where does the guest sit given the ARC device? | Guest seated, ARC still usable by host |
+| X9 | UE4SS C++ ABI: link UE4SS vs zero-import DLL; 10 launches each | Choice made, no crash |
+| X10 | Block the guest's autosave and settings writes | Guest SaveGames folder unchanged after a session |
+| X11 | Connect timeout on long loads (20 s threshold) | Threshold raised or join made robust |
+| X12 | Can the guest's backpack be read from and written into the host's inventory system for a second character (D7)? | Items round-trip: guest leaves, host saves and reloads, guest rejoins with the same items |
+
+### M2 Session core (M)
+
+S1, S3-S7, P1: event-driven join (game mode login hooks, no polling), spawn and possess, travel keeps the session,
+rejoin, handshake, guest saves blocked, mod inert outside sessions. **Release 0.1.0** (direct IP, internal).
+
+### M3 Car (M-L)
+
+C1-C7: door interaction for both, passenger seat, interpolated car on the guest, visible state, shared health and
+resources, repairs and refuel by intents, shared trunk. **Release 0.2.0.**
+
+### M4 World and loot (L)
+
+W1-W2, P2-P5, G1: stable ids, intent channel, container/pickup/scrap/anchor intents, duplicate suppression, guest
+backpack and its persistence in the host's save, guest damage and death. **Release 0.3.0.**
+
+### M5 Run lifecycle and anomalies (L)
+
+W3-W6, G3, G5, G6: routes, conditions, storm and gateway, exit warp, run failure, the listed anomalies, story bystander
+safety, co-op settings. **Release 0.4.0.**
+
+### M6 Steam (M)
+
+S2: tunnel over Steam messages, lobby, invite, join from friends list, rich presence, keep-alive and disconnect
+detection. **Release 0.5.0.**
+
+### M7 Hardening and 1.0 (M)
+
+Q2-Q6: lag/loss runs, soak test, crash triage, install docs, playtests with the owner and friends. **Release 1.0.0.**
+
+Rough total to 1.0: 3-4 months part-time. Guess, revisit after M1.
+
+### After 1.0
+
+P1 items: guest driving (C8), guest garage stations, story audio for the guest, all anomalies, Whispers in the Woods,
+DLC-less guests (W10), Expeditions, in-game host/join menu.
+
+## 6. How we work
+
+- Two developers, each with Claude. One milestone at a time; inside a milestone, parallel lanes per subsystem
+  (see `coop-anything/playbook/multi-agent-workflows.md`), each lane owning its own files.
+- Branches: `main` always passes the test suite. Work on `feat/<area>-<topic>` or `spike/<id>`, merge via PR reviewed
+  by the other developer.
+- Commits: imperative summary, optional scope prefix (`car: interpolate client transform`).
+- Every PR touching gameplay names the test scenario that covers it and pastes its summary.
+- `NOTES.md`: observations / derived / guesses / unknowns, with sources, written as you go.
+- Releases: see `docs/RELEASING.md`.
+
+## 7. Open questions
+
+None open. Owner answers from 2026-10-19 are recorded as D6-D10.

@@ -44,3 +44,17 @@ Source scene: `assets/player_model/SK_CoopSurvivor.blend` (also holds a `Preview
   SkeletalMeshComponent for remote players only (the local player must not see their own body in FP).
 - The game's real walk / sprint / crouch speeds (to match play rates).
 - Cooking: needs a UE 4.27 project named `PenDriverPro` to cook a .pak the game will mount.
+
+## 2026-10-19: planning research
+
+### Observations
+- Our exe SHA-256 matches the build in `CLAUDE.md` (Steam buildid 21896301).
+- `<game dir>/PenDriverPro/Binaries/Win64/steam_api64.dll` (298,856 bytes, read with `grep -a`) exports the flat
+  Steam API including `SteamNetworkingMessages_SteamAPI_v002`, `SteamMatchmaking_v009`, `SteamFriends_v017`,
+  `ISteamNetworkingMessages_SendMessageToUser/ReceiveMessagesOnChannel/AcceptSessionWithUser`,
+  `ISteamMatchmaking_CreateLobby`, `ISteamFriends_SetRichPresence/ActivateGameOverlayInviteDialog`. No `SteamAPI_InitFlat`.
+- The shipping exe imports `SteamAPI_Init`, `RestartAppIfNecessary`, `RunCallbacks`, `RegisterCallback`.
+
+### Derived
+- The game initialises Steam under appid 1458140 itself; a mod DLL in the process can use its Steam session for P2P
+  and lobbies. Whether Steam relay and lobbies work for this appid without developer setup: unknown (spike X6).
