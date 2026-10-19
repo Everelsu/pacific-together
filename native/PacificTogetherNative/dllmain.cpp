@@ -11,10 +11,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#include "transport.hpp"
+
 using namespace RC;
 using namespace RC::Unreal;
 
-static constexpr const char* NATIVE_VERSION = "0.0.2";
+static constexpr const char* NATIVE_VERSION = "0.0.3";
 
 // X1b: native travel (Browse -> LoadMap) drops ?listen, so the host would come back standalone.
 // MSVC x64 passes the by-value FURL as a pointer to the caller's temporary (the callee destroys it), so we take it
@@ -70,7 +72,7 @@ class PacificTogetherNative : public CppUserModBase
     PacificTogetherNative() : CppUserModBase()
     {
         ModName = STR("PacificTogether");
-        ModVersion = STR("0.0.2");
+        ModVersion = STR("0.0.3");
         ModDescription = STR("Pacific Together native layer");
         ModAuthors = STR("Pacific Together contributors");
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loaded\n"));
@@ -103,6 +105,8 @@ class PacificTogetherNative : public CppUserModBase
                 l.set_bool(g_load_map != nullptr);
                 return 1;
             });
+            transport_register(*l);
+            steam_register(*l);
         }
     }
 };

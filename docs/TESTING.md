@@ -23,6 +23,11 @@ tools\run-test.ps1 -Scenario guestsave                # X10: guest's SaveGames/C
 
 Spike notes and results: `NOTES.md` sections "spike X1/X1b/X3/X10/X11/X13".
 
+X5/X6 (`docs/spikes/X5.md`, `X6.md`): `-Tunnel "udp [lag=ms] [loss=pct] [hold=s]"` runs any two-player scenario through
+the native tunnel (client opens `10.77.0.1:<port>`; mutations `notunnelpeer`, `tunnelbypass`, `nolag`). Shipping UE has no
+`NetEmulation.*`, so lag/loss runs use the tunnel's own emulation. `-Scenario steamsolo -Clients 1 -Seconds 300` checks
+the game's Steam session alone (mutations `nosteam`, `steamearly`); `steamhost` / `steamguest` are the two-PC human test.
+
 Options: `-Root` (default `C:\PacificTogetherTest`), `-Clients 1|2` (default 2, dump 1), `-Seconds` (timeout,
 default per scenario), `-KeepOpen` (leave the games running), `-Mutate <name>`.
 
