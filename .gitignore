@@ -6,3 +6,4 @@ __pycache__/
 native/build/
 cmake-build-*/
 mod/PacificTogether/dlls/
+mod/PacificTogether/join.txt
