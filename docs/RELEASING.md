@@ -57,5 +57,6 @@ them under the version heading.
 
 ## Where releases go
 
-GitHub Releases on https://github.com/ikeepcalm/pacific-together (public, MIT). `-beta` builds are marked
-pre-release there. Nexus only after 1.0, when the owner decides.
+GitHub Releases on https://github.com/ikeepcalm/pacific-together (public, MIT). Before 1.0 there are no outside
+testers (D18): every 0.x and `-beta` build is a **draft** release, visible only to repo collaborators; the tag is
+pushed but the release is not published. 1.0 is the first published release. Nexus only after 1.0, when the owner decides.

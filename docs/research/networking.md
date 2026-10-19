@@ -80,14 +80,16 @@ Steam facts:
 
 The game travels via `UBaseRouteState::TravelTo` -> native `Browse` without `?listen`; no UFunction hook fires.
 Options, cheapest first:
-1. `RegisterLoadMapPreHook` on the host: add `listen` to `FURL` before LoadMap (LoadMap then calls `UWorld::Listen`,
-   engine knowledge, unverified). Removes the double load. Clients still reconnect. Not tried yet.
+1. `RegisterLoadMapPreHook` on the host: add `listen` to `FURL` before LoadMap. **Tried in spike X1: the hook fires,
+   but UE4SS passes the FURL to Lua as an opaque userdata with no fields, so Lua cannot change it.** The same idea
+   from C++ (detour `UEngine::LoadMap`, append `listen` to the FURL's Op) is the M2 plan.
 2. Turn native travel into `ServerTravel` (cancel in a pre-hook, issue `servertravel <map>?listen`); clients follow
    (exp13 showed it). Needs a recursion guard and a check that `UBaseLevelManager` run state survives.
 3. Seamless travel (`bUseSeamlessTravel` + TransitionMap): keeps connections, most invasive. Defer.
 
-20 s pending-connect threshold: try `[/Script/OnlineSubsystemUtils.IpNetDriver] InitialConnectTimeout/ConnectionTimeout`
-in the instance's `Saved/Config/Windows/Engine.ini` (unverified).
+20 s pending-connect threshold: **solved in spike X11**: it is `IpNetDriver.ResolutionConnectionTimeout` (default 20),
+not `InitialConnectTimeout`/`ConnectionTimeout`. Set it on `Default__IpNetDriver` from Lua before `open`, or in
+`Saved\Config\WindowsNoEditor\Engine.ini`.
 
 ## 5. Tooling
 

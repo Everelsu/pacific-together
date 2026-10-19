@@ -17,6 +17,17 @@ Anything marked **(spike)** is a design assumption that a milestone M1 experimen
 | D8 | **DLC**: only the host needs to own Whispers in the Woods. |
 | D9 | Team: ikeepcalm (owner) and Djecka. Two Steam accounts, both with the game and the DLC. |
 | D10 | Public repo https://github.com/ikeepcalm/pacific-together, MIT license. |
+| D11 | **Only the host drives in v1.0.** Guest driving is v1.1 (C8). |
+| D12 | **Guest sits in the passenger seat; the ARC device moves** (dashboard or between the seats) so both can reach it (C7, spike X8). |
+| D13 | **Both players control the run**: either can plan the route, summon a gateway, use ARC energy. The host performs every action (W11). |
+| D14 | **Sessions are always open to Steam friends** while the mod is installed and a save is loaded (friends-only lobby, "Join Game" or invite). No hotkey (S1, S2). |
+| D15 | **Host crash or disconnect**: the guest's backpack rolls back to the host's last save, same as the host's own progress. |
+| D16 | **Crash reports**: the mod turns off the game's crash upload (Sentry, CrashReportClient) while installed and writes its own crash log for our GitHub issues (Q9). |
+| D17 | **Finding each other**: a Steam name tag over the other player and a marker for them on the ARC map (P7, P8). |
+| D18 | **No outside testers before 1.0**: only ikeepcalm and Djecka. Pre-1.0 builds are GitHub draft releases (collaborators only). |
+| D19 | **Tourists freeze if any player looks at them** (W7 moves to P0). |
+| D20 | **No co-op difficulty scaling**: the host's difficulty preset rules; the mod changes no balance values. |
+| D21 | **Guest can use the garage stations** (Fabrication, Tinker, Detailing) in v1.0, spending the host's shared resources (G2). |
 
 ## 2. Fixed constraints
 
@@ -52,14 +63,14 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 
 | Id | Requirement | P |
 |---|---|---|
-| S1 | Host opens a session from a loaded save (in the garage or mid-run) | P0 |
+| S1 | Loading any save opens a friends-only session automatically (D14), in the garage or mid-run | P0 |
 | S2 | Guest joins via Steam invite or friends list "Join game" | P0 |
 | S3 | Guest joins via direct IP (tests, VPN) | P0 |
 | S4 | Handshake checks game build and mod version (mismatch -> clear message, no join) and reports both players' DLC | P0 |
 | S5 | Guest can leave and rejoin at any time, also mid-run and while the car is moving; host never crashes from it | P0 |
 | S6 | The session survives every map change the game makes (garage <-> junctions <-> garage, run failure, quit to menu) without a second map load | P0 |
 | S7 | Guest's own saves and settings are never written while in a session (the game's client-side autosave must be blocked) | P0 |
-| S8 | Host and join through an in-game menu instead of hotkeys | P1 |
+| S8 | In-game menu entries (session status, kick, close the session) | P1 |
 | S9 | 3-4 players | P2 |
 
 ### Players
@@ -72,6 +83,8 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | P4 | Damage, radiation and death for the guest (D6) | P0 |
 | P5 | Guest backpack persists between sessions, stored next to the host's save slot per guest SteamID, saved whenever the host saves and when the guest leaves; a new guest starts empty (D7). Must not change the game's own save format | P0 |
 | P6 | Voice/text chat | Won't (Steam has it) |
+| P7 | Steam name tag over the other player, fading with distance (D17) | P0 |
+| P8 | The other player shown on the ARC map (D17) | P0 |
 
 ### Car
 
@@ -83,7 +96,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | C4 | Car health, part damage and status effects, fuel, battery, tyres: one truth on the host, shown on the guest's dashboard | P0 |
 | C5 | Guest can repair, refuel and swap parts on the car during a run (intents) | P0 |
 | C6 | Trunk and car storage shared | P0 |
-| C7 | Passenger seat vs the ARC device that sits on it: the guest must not hide or break it (spike) | P0 |
+| C7 | Guest sits in the passenger seat; the ARC device is moved so both can reach it (D12, spike X8) | P0 |
 | C8 | Either player can drive (swap driver) | P1 |
 | C9 | Car sounds and radio on the guest's side | P1 |
 | C10 | Rear seats for players 3-4 | P2 |
@@ -98,9 +111,10 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | W4 | Instability, storm walls, gateway summon and the exit warp happen for both at the same time | P0 |
 | W5 | Run failure (emergency protocol) returns both players to the garage with the host's failure penalty | P0 |
 | W6 | Anomalies run on the host and look and act the same for the guest; the run-shaping ones first: Abductor, Bunnies, Pickpocket, Tourists, Spark Tower, Can Opener | P0 |
-| W7 | Tourists count as observed if any player looks at them | P1 |
+| W7 | Tourists count as observed if any player looks at them (D19) | P0 |
 | W8 | Remaining anomalies and Whispers in the Woods content | P1 |
 | W9 | Expeditions mode | P1 |
+| W11 | Either player can use the ARC: route planning, gateway summon, energy (D13) | P0 |
 | W10 | A guest without the DLC can play the base-game zones with a DLC-owning host. Whether DLC content is installed for non-owners is unknown; until checked, the host is warned before travelling into DLC content | P1 |
 
 ### Garage, story, progression
@@ -108,7 +122,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | Id | Requirement | P |
 |---|---|---|
 | G1 | Guest can walk the garage and hand items to the host or the locker | P0 |
-| G2 | Fabrication, Tinker, Detailing stations: host-only | P0 (guest use P1) |
+| G2 | Guest can use the Fabrication, Tinker and Detailing stations; the host performs each action with the shared resources (D21) | P0 |
 | G3 | Story missions, radio transmissions, cutscenes play on the host; guest is a bystander and nothing breaks | P0 |
 | G4 | Story audio and cutscenes for the guest | P1 |
 | G5 | Co-op forces "Pause Game While in Menus" off and disables the Chrono Dilator | P0 |
@@ -126,6 +140,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | Q6 | The mod logs to its own file; a "copy logs" step for bug reports | P0 |
 | Q7 | The mod is inert unless a session is active (single-player stays vanilla with the mod installed) | P0 |
 | Q8 | Nexus Mods release | P2 |
+| Q9 | Game crash upload (Sentry, CrashReportClient) off while the mod is installed; the mod writes its own crash log (D16) | P0 |
 
 ### Won't do
 
@@ -165,10 +180,24 @@ Timeboxed experiments. Each writes Observations / Derived / Unknowns to `NOTES.m
 | X11 | Connect timeout on long loads (20 s threshold) | Threshold raised or join made robust |
 | X12 | Can the guest's backpack be read from and written into the host's inventory system for a second character (D7)? | Items round-trip: guest leaves, host saves and reloads, guest rejoins with the same items |
 
+| X13 | Does `PDP_MainCharacter_C` have a third-person body other players can see, or do remote players need our own mesh (Djecka's placeholder in `assets/player_model`)? | Host sees the guest's body animate while walking, crouching, sprinting |
+
+#### M1 results so far (details in `NOTES.md`)
+
+| Spike | Verdict |
+|---|---|
+| X1 | Lua LoadMap hooks fire for every map change, but the FURL is opaque to Lua, so `listen` cannot be added there. Native travel drops the listen server and the guest. **Change:** the C++ layer detours `UEngine::LoadMap` and appends `listen` (M2). Until then, re-host via `servertravel <map>?listen` (~10 s) plus guest auto-rejoin. The guest drops on every non-seamless map change either way, so auto-rejoin is required |
+| X1b | **Solved in C++:** the native layer swaps the engine's `LoadMap` vtable entry and appends `listen` when the host was listening (`PTNative_SetKeepListen`). `travel` 23/23, no second load. The guest still drops on native travel (ClientTravel cannot make it follow) and rejoins in ~8 s |
+| X13 | **The body exists:** remote players have a full replicated, animated ALS Mannequin body, drawn with the invisible material `M_PlayerCharacter_Invist`. A visible material on the other player's `CharacterMesh0` (each side, never your own) shows it walking, crouching, sprinting. Djecka's model is optional polish; find a good-looking cooked material |
+| X9 | Our C++ mod built against RE-UE4SS 8333063 loads in the official release of that commit. Ship the official UE4SS zip |
+| X10 | Real risk: the game's autosave wrote the host's world into the guest's own save. A Lua pre-hook on `BaseSaveGameManager:SaveGame` setting the slot to -1 blocks it. M2 adds that plus guards for the other writers; a native write guard under `Saved/SaveGames` for a hard guarantee. Never change guest settings in place (`GameUserSettings.ini` is rewritten on every map load) |
+| X11 | Solved: the 20 s limit is `IpNetDriver.ResolutionConnectionTimeout`. Set it on the CDO from Lua before `open` |
+| X3 | Duplicates are wider than the car: every car part, garage stations and storage, quest actors and zone lootables exist separately on the guest. Gate them in M3/M4; stable ids (X2) must cover lootables and storage. Redo the zone survey once the guest has a character (relevancy hid the host's actors) |
+
 ### M2 Session core (M)
 
-S1, S3-S7, P1: event-driven join (game mode login hooks, no polling), spawn and possess, travel keeps the session,
-rejoin, handshake, guest saves blocked, mod inert outside sessions. **Release 0.1.0** (direct IP, internal).
+S1, S3-S7, P1, P7, Q9: event-driven join (game mode login hooks, no polling), spawn and possess, travel keeps the session,
+rejoin, handshake, guest saves blocked, name tags, game crash upload off, mod inert outside sessions. **Release 0.1.0** (direct IP, internal).
 
 ### M3 Car (M-L)
 
@@ -182,7 +211,7 @@ backpack and its persistence in the host's save, guest damage and death. **Relea
 
 ### M5 Run lifecycle and anomalies (L)
 
-W3-W6, G3, G5, G6: routes, conditions, storm and gateway, exit warp, run failure, the listed anomalies, story bystander
+W3-W7, W11, G2, G3, G5, G6, P8: routes, ARC use by both players, guest garage stations, ARC map marker, conditions, storm and gateway, exit warp, run failure, the listed anomalies, story bystander
 safety, co-op settings. **Release 0.4.0.**
 
 ### M6 Steam (M)
@@ -198,7 +227,7 @@ Rough total to 1.0: 3-4 months part-time. Guess, revisit after M1.
 
 ### After 1.0
 
-P1 items: guest driving (C8), guest garage stations, story audio for the guest, all anomalies, Whispers in the Woods,
+P1 items: guest driving (C8), story audio for the guest, all anomalies, Whispers in the Woods,
 DLC-less guests (W10), Expeditions, in-game host/join menu.
 
 ## 6. How we work

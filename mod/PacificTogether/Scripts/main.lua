@@ -1,20 +1,12 @@
 local UEHelpers = require("UEHelpers")
+local common = require("common")
+local log = common.log
 
-local MOD_VERSION = "0.0.1"
-local PROTOCOL_VERSION = 1
-local TAG = "[PacificTogether] "
-
-local function log(fmt, ...) print(TAG .. string.format(fmt, ...) .. "\n") end
+-- One file per feature, so parallel work does not collide; each module sets itself up when required.
+local FEATURES = { "session", "safety", "nametag" }
 
 -- Status lines are for the test runner only; players never set PT_STATUS, so the mod stays silent in single player.
 local STATUS_MS = tonumber(os.getenv("PT_STATUS") or "")
-
-local function netMode()
-    local ksl, wco = UEHelpers.GetKismetSystemLibrary(), UEHelpers.GetWorldContextObject()
-    if not wco:IsValid() then return "none" end
-    if ksl:IsStandalone(wco) then return "standalone" end
-    return ksl:IsServer(wco) and "listen" or "client"
-end
 
 local function status()
     local world = UEHelpers.GetWorld()
@@ -23,10 +15,18 @@ local function status()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
         if pc:IsValid() then pcs = pcs + 1 end
     end
-    log("PT|status net=%s map=%s pcs=%d", netMode(), map, pcs)
+    log("PT|status net=%s map=%s pcs=%d", common.netMode(), map, pcs)
 end
 
-log("PT|boot version=%s protocol=%d", MOD_VERSION, PROTOCOL_VERSION)
+log("PT|boot version=%s protocol=%d", common.MOD_VERSION, common.PROTOCOL_VERSION)
+
+for _, name in ipairs(FEATURES) do
+    local ok, err = pcall(require, name)
+    -- a feature that is not written yet is fine; one that fails to load is an error the tests catch
+    if not ok and not tostring(err):find("module '" .. name .. "' not found", 1, true) then
+        log("PT|error feature %s %s", name, tostring(err))
+    end
+end
 
 -- the native layer registers its functions only after this script has started
 ExecuteInGameThreadWithDelay(1000, function()

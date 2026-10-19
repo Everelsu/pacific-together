@@ -6,14 +6,19 @@ param(
     [ValidateSet(0, 1, 2)][int]$Clients = 0,
     [int]$Seconds = 0,
     [string]$Mutate = "",
-    [switch]$KeepOpen
+    [switch]$KeepOpen,
+    [switch]$Headless,
+    # parallel lanes must not share a port: a guest would join another lane's host
+    [int]$Port = 7777,
+    # lanes run from worktrees that get deleted, so they point this at the main repo's local\test-results
+    [string]$ResultsDir = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420) }
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
-$IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nInitialConnectTimeout=120`r`n"; skip = @("noconfig", "live") } }
+$IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 $d = if ($Defaults.ContainsKey($Scenario)) { $Defaults[$Scenario] } else { @(2, 300) }
 if (-not $Clients) { $Clients = $d[0] }
 if (-not $Seconds) { $Seconds = $d[1] }
@@ -68,6 +73,18 @@ if ($running) {
     exit 2
 }
 
+# at most $env:PT_SLOTS (default 5) runs at once across all lanes on this machine; a dead runner's mutex is abandoned and reusable
+$maxSlots = if ($env:PT_SLOTS) { [int]$env:PT_SLOTS } else { 5 }
+$slot = $null
+while (-not $slot) {
+    foreach ($i in 1..$maxSlots) {
+        $m = New-Object Threading.Mutex($false, "Local\PacificTogetherGameSlot$i")
+        try { if ($m.WaitOne(0)) { $slot = $m; break } } catch [Threading.AbandonedMutexException] { $slot = $m; break }
+        $m.Dispose()
+    }
+    if (-not $slot) { Write-Host "all $maxSlots game slots busy, waiting"; Start-Sleep 10 }
+}
+
 $oldCrashes = @{}
 foreach ($s in $sides) {
     Remove-Item $s.Log -ErrorAction SilentlyContinue
@@ -85,14 +102,17 @@ foreach ($s in $sides) {
     }
 }
 
+$started = Get-Date
 $procs = @()
-$env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:7777"; $env:PT_MUTATE = $Mutate
+$env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate
 try {
     foreach ($s in $sides) {
         if ($procs) { Start-Sleep 8 }
         $env:PT_ROLE = $s.Role
         $exe = Join-Path $s.Bin "PenDriverPro-Win64-Shipping.exe"
-        $procs += Start-Process $exe -ArgumentList "-NotInstalled", "-windowed", "-ResX=960", "-ResY=540", "-log" -WorkingDirectory $s.Bin -PassThru
+        # -nullrhi: no rendering, ~1 GB RAM and no GPU per instance, so many lanes can test at once; screenshots need a normal run
+        $gameArgs = if ($Headless) { "-NotInstalled", "-nullrhi", "-nosound", "-log", "-port=$Port" } else { "-NotInstalled", "-windowed", "-ResX=960", "-ResY=540", "-log", "-port=$Port" }
+        $procs += Start-Process $exe -ArgumentList $gameArgs -WorkingDirectory $s.Bin -PassThru
         Write-Host "started $($s.Role) PID $($procs[-1].Id)"
     }
 } finally {
@@ -120,7 +140,9 @@ while ((Get-Date) -lt $deadline) {
 $elapsed = [int]((Get-Date) - $deadline.AddSeconds(-$Seconds)).TotalSeconds
 Write-Host "stopped waiting: $stop ($elapsed s)"
 
-$results = Join-Path $Repo ("local\test-results\{0}-{1}{2}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $Scenario, $(if ($Mutate) { "-$Mutate" }))
+if (-not $ResultsDir) { $ResultsDir = Join-Path $Repo "local\test-results" }
+$lane = if ($Root.TrimEnd('\') -ne "C:\PacificTogetherTest") { "-" + (Split-Path $Root -Leaf) } else { "" }
+$results = Join-Path $ResultsDir ("{0}{1}-{2}{3}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $lane, $Scenario, $(if ($Mutate) { "-$Mutate" }))
 New-Item -ItemType Directory -Force $results | Out-Null
 if (-not $KeepOpen) {
     $procs | Where-Object { -not $_.HasExited } | Stop-Process -Force
@@ -149,6 +171,9 @@ foreach ($s in $sides) {
     $text = Read-Shared $s.Log
     [IO.File]::WriteAllText((Join-Path $results "$r-UE4SS.log"), $text)
     Copy-Item (Join-Path $s.Dir "PenDriverPro\Saved\Logs\PenDriverPro.log") (Join-Path $results "$r-PenDriverPro.log") -ErrorAction SilentlyContinue
+    # X13: HighResShot writes under Saved\Screenshots; copy this run's shots in the order they were taken
+    Get-ChildItem (Join-Path $s.Dir "PenDriverPro\Saved\Screenshots") -Recurse -File -ErrorAction SilentlyContinue | Where-Object LastWriteTime -ge $started |
+        Sort-Object LastWriteTime | ForEach-Object { Copy-Item $_.FullName (Join-Path $results "$r-$($_.Name)") }
 
     $boot = [regex]::Match($text, "\[PacificTogether\] PT\|boot (.*)")
     Add-Check "$r main mod booted" $boot.Success $boot.Groups[1].Value.Trim()
@@ -165,8 +190,11 @@ foreach ($s in $sides) {
         $tags = @($s.Snaps.Keys)
         $s.Snaps.GetEnumerator() | ForEach-Object { "## $($_.Key)"; $_.Value } | Set-Content -Encoding utf8 (Join-Path $results "snapshots-$r.txt")
         foreach ($tag in $tags[1..($tags.Count - 1)]) {
-            $diff = @(Compare-Object @($s.Snaps[$tags[0]]) @($s.Snaps[$tag]) | ForEach-Object { "$($_.SideIndicator)$(($_.InputObject -split "`t")[0])" })
-            Add-Check "$r saves unchanged $($tags[0])->$tag" ($diff.Count -eq 0) ($diff -join " ")
+            # content = name, size, hash; a rewrite with the same bytes (the game rewrites GameUserSettings.ini on every map load) is listed, not failed
+            $content = { param($lines) @($lines | ForEach-Object { $f = $_ -split "`t"; "$($f[0])`t$($f[1])`t$($f[3])" }) }
+            $diff = @(Compare-Object (& $content $s.Snaps[$tags[0]]) (& $content $s.Snaps[$tag]) | ForEach-Object { "$($_.SideIndicator)$(($_.InputObject -split "`t")[0])" })
+            $touched = @(Compare-Object @($s.Snaps[$tags[0]]) @($s.Snaps[$tag]) | Where-Object SideIndicator -eq "=>" | ForEach-Object { ($_.InputObject -split "`t")[0] })
+            Add-Check "$r saves unchanged $($tags[0])->$tag" ($diff.Count -eq 0) (($diff -join " ") + $(if ($touched) { " rewritten: $($touched -join ' ')" }))
         }
     }
 }

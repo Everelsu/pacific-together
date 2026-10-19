@@ -1,7 +1,10 @@
 # Makes two isolated test copies of the game with UE4SS and our mods, never touching the real install.
 # client1 = full copy, client2 = hardlinks to client1 except its own PenDriverPro/Binaries/Win64 (own UE4SS, logs, mods).
+# -LinkFrom <existing client1> builds client1 from hardlinks too (an extra pair, e.g. one per workflow lane, costs ~700 MB).
+# Mod junctions point at the repo this script lives in, so run it from the worktree whose mods the pair should load.
 param(
     [string]$Root = "C:\PacificTogetherTest",
+    [string]$LinkFrom = "",
     [string]$Game = "C:\Program Files (x86)\Steam\steamapps\common\Pacific Drive",
     [string]$UE4SSZip = "$PSScriptRoot\..\local\cache\ue4ss\zDEV-UE4SS_v3.0.1-1181-g83330635.zip"
 )
@@ -22,21 +25,33 @@ if ((Resolve-Path $Game).Path.TrimEnd('\') -eq $Root.TrimEnd('\')) { throw "Root
 
 $c1 = Join-Path $Root "client1"; $c2 = Join-Path $Root "client2"
 
-Write-Host "client1: copying the game (first run takes a while, later runs only copy changes)"
-robocopy $Game $c1 /E /NFL /NDL /NJH /NP /R:1 /W:1 | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
-if ((Get-FileHash "$c1\$ExeRel").Hash -ne $PinnedExe) { throw "client1 exe hash mismatch after copy" }
+# hardlinks every game file except Binaries (each copy needs its own UE4SS, logs, mods) and Saved (per-copy state)
+function Link-Game($src, $dst) {
+    Get-ChildItem $src -Recurse -File | Where-Object {
+        $_.FullName -notlike "$src\$BinRel\*" -and $_.FullName -notlike "$src\PenDriverPro\Saved\*"
+    } | ForEach-Object {
+        $target = $dst + $_.FullName.Substring($src.Length)
+        if (-not (Test-Path $target)) {
+            New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+            New-Item -ItemType HardLink -Path $target -Target $_.FullName | Out-Null
+        }
+    }
+    robocopy "$Game\$BinRel" "$dst\$BinRel" /E /NFL /NDL /NJH /NP /R:1 /W:1 | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy Binaries failed with $LASTEXITCODE" }
+}
+
+if ($LinkFrom) {
+    Write-Host "client1: hardlinking game data from $LinkFrom"
+    Link-Game (Resolve-Path $LinkFrom).Path $c1
+} else {
+    Write-Host "client1: copying the game (first run takes a while, later runs only copy changes)"
+    robocopy $Game $c1 /E /NFL /NDL /NJH /NP /R:1 /W:1 /XD "$Game\PenDriverPro\Saved" | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
+}
+if ((Get-FileHash "$c1\$ExeRel").Hash -ne $PinnedExe) { throw "client1 exe hash mismatch" }
 
 Write-Host "client2: hardlinking game data, copying Binaries"
-Get-ChildItem $c1 -Recurse -File | Where-Object { $_.FullName -notlike "$c1\$BinRel\*" } | ForEach-Object {
-    $target = $c2 + $_.FullName.Substring($c1.Length)
-    if (-not (Test-Path $target)) {
-        New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
-        New-Item -ItemType HardLink -Path $target -Target $_.FullName | Out-Null
-    }
-}
-robocopy "$Game\$BinRel" "$c2\$BinRel" /E /NFL /NDL /NJH /NP /R:1 /W:1 | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy Binaries failed with $LASTEXITCODE" }
+Link-Game $c1 $c2
 
 foreach ($c in $c1, $c2) {
     $bin = Join-Path $c $BinRel

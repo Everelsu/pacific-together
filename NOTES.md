@@ -101,3 +101,244 @@ Runs of `tools/run-test.ps1` (results in `local/test-results/20261019-*`), UE4SS
 - Whether the test copies start without the Steam client running (all runs had Steam up).
 - Whether the 30 s client retry works when the host takes longer than the 20 s pending timeout (not exercised).
 - Whether the `ConsoleManagerSingleton` scan warning matters for console commands we have not used yet.
+
+## 2026-10-19: spike X1 listen server through the game's own travel
+
+Scenario `travel` (`-Mutate norehost`). Runs: `local/test-results/20261019-164906-travel` (22/23, the one FAIL is the
+question below; no native `main.dll` yet), `20261019-170156-travel-norehost` (19/23, `main.dll` present).
+
+### Observations
+- `RegisterLoadMapPreHook`/`PostHook` fire for every `UEngine::LoadMap`: boot (`/Temp/Untitled` -> menu), console
+  `open`, the client's join (pre-hook `pending=PendingNetGame_...` with its `IpNetDriver`), the game's native
+  `UserNewGame(5, STORY)` and `QuitToMenu` (pending=none), `servertravel`, and the client's drop back to the menu.
+  Pre-hook world param = the old world, post-hook = the new one. Error string always empty.
+- The FURL reaches Lua as an opaque `FURLUserdata`: `url.Map/Host/Port/Op/Portal/Protocol` all nil, no `get()`
+  (`PT|info furl ...`). The UE4SS source (`LuaFURL.cpp`: "todo: setup member functions"; `LuaMod.cpp` callbacks take
+  `Unreal::FURL URL` by value) shows it has no members and is a copy. **Lua cannot read the FURL or add `listen`.**
+- Host: `UserNewGame(5, STORY)` -> `Browse: /Game/Maps/Narrative/Narrative_Forest_OlympicOpening_Sentry_01/...` (no
+  `?listen`) -> `World NetDriver shutdown`. Post-hook: `standalone=true driver=none`. Check
+  `host_listen_after_native_travel` FAIL. It also wrote `Saved/SaveGames/odsave5.sav` in the host copy.
+- Client: `Host closed the connection.` -> `Browse: RB_MainMenu?closed`, back in the menu ~1 s after the host left.
+- Re-host `servertravel <map>?listen` (second load): `Took 10.3 s` (intro map; the native load was 13.0 s). Client
+  rejoin with `open` every 30 s: the first try timed out (`Threshold: 20.00`, host still loading), the second joined;
+  41 s from leaving to back in. Host `QuitToMenu` with the client connected (spectator only, no second character):
+  no crash, client dropped again, host in the menu after 4 s.
+- norehost mutation: `host_listen_after_rehost`, `host_two_pcs_after_rehost`, `client_rejoined_new_map` FAIL.
+- Loads (engine log, warm test copy): garage 15.8 s first run, ~8 s later; intro map 13.0 s; menu 1-2 s.
+
+### Derived
+- The hook is the right place (it fires for native travel and tells native travel from a client join by
+  `pending`), but adding `listen` needs C++: detour `UEngine::LoadMap` in the native DLL and append `listen` to the
+  FURL's `Op` in place (MSVC x64 passes the by-value FURL as a pointer to the caller's copy) when the old world was
+  listening and `PendingGame` is null. The UE4SS C++ callback also gets a copy, so it has to be our own detour.
+- Until then the Lua fallback is the reference's double load (`servertravel <map>?listen` after the native load)
+  plus a client rejoin loop: works, costs ~10 s per map change plus a 20-40 s rejoin.
+
+### Unknowns
+- Whether an in-place FURL edit in a LoadMap detour makes `LoadMap` listen without side effects (untested, no build).
+- Whether a pre-hook returning a bool skips the original LoadMap (not tried).
+- `client_menu_after_host_quit` passes trivially when the client is already in the menu (weak check).
+
+Verdict: change the plan. S6 "without a second load" is not reachable from Lua; M2 needs a native `LoadMap` detour
+that adds `listen` (keep the `servertravel` re-host + rejoin as fallback until the detour passes `travel`). A
+non-seamless map change always drops the client, so S5/S6 also need an automatic client rejoin.
+
+## 2026-10-19: spike X11 connect timeout on long loads
+
+Scenario `zonejoin`: the client sends one `open` as soon as its menu is up; the host waits 45 s, then opens
+`Wilderness_Forest_01?listen`; no retry. Runs: `20261019-170601-zonejoin-noconfig` (host waited 25 s),
+`20261019-170906-zonejoin` (ini, 14/14), `20261019-171355-zonejoin-noconfig` (12/14, `client_connected_zone`
+FAIL), `20261019-171617-zonejoin-cdo` (14/14). `main.dll` present in all.
+
+### Observations
+- IpNetDriver CDO and the live pending driver: `InitialConnectTimeout=60 ConnectionTimeout=60`, `bNoTimeouts=false`,
+  yet the pending connect dies at `Elapsed: 20.01 ... Threshold: 20.00`. `ResolutionConnectionTimeout` is 20 on the
+  CDO (`PT|info timeouts cdo{init=60 conn=60 res=20}`).
+- `[/Script/OnlineSubsystemUtils.IpNetDriver] ResolutionConnectionTimeout=120`, appended by the runner to
+  `client2\PenDriverPro\Saved\Config\WindowsNoEditor\Engine.ini` (the `-NotInstalled` user config) and restored
+  afterwards: the game reads it (client CDO `res=120`, host still 20); client pending 42 s, then
+  `Welcomed by server`, no timeout.
+- Same result with no ini and the CDO set from Lua before `open`
+  (`Default__IpNetDriver.ResolutionConnectionTimeout = 120`): joined 41 s after open.
+- Zone load with a warm cache: 3.5-3.8 s; the reference's 14-19 s were cold loads.
+
+### Derived
+- The 20 s threshold is the IpNetDriver's address-resolution timeout (applies while the client has had no reply),
+  not `InitialConnectTimeout`; this is why the reference's edits did nothing. One Lua line on the CDO fixes it, no
+  config file needed (`-ini:` override not tried).
+
+### Unknowns
+- The right value for slow disks; what the resolution timeout does once Steam P2P replaces plain UDP (M6).
+
+Verdict: keep the plan, X11 passes. M2: set `ResolutionConnectionTimeout` (~120) on the IpNetDriver CDO at mod start
+on the guest, then one `open` per join attempt plus rejoin-on-drop instead of blind 30 s retries.
+
+## 2026-10-19: spike X10 block the guest's saves
+
+Scenario `guestsave` (`-Mutate noblock`): the client first plays its own slot (`UserNewGame(6, STORY)`, intro map,
+`QuitToMenu`), joins the host's garage, follows a host `servertravel RB_Garage?listen`, then runs the game's
+autosave path (`BP_AutoSaveDirector_C:FlagAutosave` + `CheckFlagAndTrigger`) and a direct
+`SaveGame(GetCurrentSlot(), "", AUTOSAVE)`. The runner snapshots `Saved\SaveGames` + `Saved\Config` (name, size,
+time, SHA-256) on each `PT|snap` and at the end. Runs: `20261019-172056-guestsave-noblock` (host crash, below),
+`20261019-172646-guestsave-noblock`, `20261019-173138-guestsave`, `20261019-173646-guestsave` (23/23),
+`20261019-174119-guestsave-noblock` (20/23). `main.dll` present in all.
+
+### Observations
+- Save functions (dumps, `BaseSaveGameManager`): `SaveGame(int32 Slot, FString LevelOverride, ESaveType)`
+  (`RINSE/MANUAL/AUTOSAVE`), `SaveCheckpoint`, `MakeBookmark`, `WriteUserSettings`, `WriteGameplaySettingsToSlot`,
+  `Rinse`, `DeleteGame`; Blueprint gates `BP_AutoSaveDirector_C:CanAutoSave(out bool)`, `TriggerAutosave`,
+  `K2_PostLevelChange`, `BP_SaveGameManager_C:CanUserSaveGame(out bool)`. Engine `GameplayStatics:SaveGameToSlot` /
+  `AsyncSaveGameToSlot` were hooked and never fired: the game writes through its own code.
+- Without blocking: joining, ~60 s in the garage and a map change wrote **no save** by themselves (the client's
+  `CanAutoSave` turned false 5 s after reaching the menu). After `QuitToMenu` the manager reports `slot=0`. The forced
+  autosave path called `SaveGame(slot=0, '', 2)` and wrote `SaveGames\odsave_scratch.sav` (141 KB, log
+  `SAVE V4: Garage!!`), i.e. the host's world into the guest's own scratch save; the direct call wrote it again.
+- `RegisterHook` on the native `SaveGame` fires for the game's own Blueprint->native call as well as for Lua calls.
+  The pre-hook sets `Slot` to -1: nothing written in either case, `SaveGame -> false`, no error. Blocking run 23/23;
+  the noblock mutation fails the three checks after the autosave step.
+- `Config\WindowsNoEditor\GameUserSettings.ini` is rewritten on every map load on the client (new time, same SHA-256,
+  981 bytes), with or without blocking. The runner check compares name + size + hash and lists such rewrites.
+- `UserNewGame` itself writes `odsave6.sav` (730 bytes): `odsaveN` = slot N, slot 0 = `odsave_scratch`.
+  The `odsave_scratch.sav` from the noblock runs stays in `client2` (later noblock runs overwrite it).
+- Host crash in `20261019-172056-guestsave-noblock`: `EXCEPTION_ACCESS_VIOLATION reading address 0x178` in the game
+  exe (`+3160a56`, `+318205a`, `+2fc4f80`, no symbols), ~2 min after `servertravel RB_Garage?listen` with the client
+  connected and the host idle; last host line `Viewport MouseLockMode Changed, LockOnCapture -> LockInFullscreen`.
+  The client's hooks were only logging (that run still logged `CanAutoSave` every frame). Not reproduced in the next
+  four guestsave runs with the same timing.
+
+### Derived
+- A Lua pre-hook on `BaseSaveGameManager:SaveGame` redirecting `Slot` to -1 blocks the game's autosave and manual
+  save on the guest; no C++ needed for that path. Overriding `CanAutoSave`/`CanUserSaveGame` alone is not enough
+  (`CheckFlagAndTrigger` saved while `CanAutoSave` was false).
+- Write paths not covered by that hook: `WriteUserSettings`, `WriteGameplaySettingsToSlot`, `Rinse`, `DeleteGame`,
+  `SaveCheckpoint`, `MakeBookmark` (hooked, never fired here; pre-hooks cannot cancel them) and the engine's
+  `GameUserSettings.ini` rewrite (same bytes today; would persist any setting the mod changes, e.g. G5).
+
+### Unknowns
+- Whether other code paths save through direct C++ calls that bypass the UFunction (none seen).
+- Cause of the 0x178 host crash.
+
+Verdict: change the plan slightly. M2 S7: a guest-side Lua pre-hook on `SaveGame` (slot -> -1) while in a session,
+plus guards for the other writers; for a hard guarantee a native `IPlatformFile` wrapper that refuses writes under
+`Saved/SaveGames` during a session. Never change guest settings in place (G5). Keep `guestsave` as the S7 test.
+
+## 2026-10-19: spike X3 client-local actor survey
+
+Scenarios `travel` (garage) and `zonejoin` (zone) log every actor grouped by class/Role/bReplicates/loaded/owner;
+the runner writes `actors-<tag>.csv`. Runs: `20261019-164906-travel` (garage), `20261019-170906-zonejoin` (zone).
+Table and classification: `docs/research/client-actor-survey.md`.
+
+### Observations
+- Garage: host 554 actors, client 472. The client has 2 `BP_PlayerCarNew_C` (role 1 + a local role 3) and every car
+  part actor twice (e.g. `BP_CarPart_Interactive_C` 53 / 106), all role 3 (not replicated). Garage stations
+  (`BP_Garage_*`), storage and quest actors `BP_Fig_Mission_Chapter*` (via `AEntitlementSpawner`, on both sides)
+  exist as separate local actors on each side. Roadside spawners and template cars are on the host only.
+- Zone: host 1480, client 508. Lootables (`BP_Lootable_Backpack_Civilian_C`, `BP_Lootable_CoolingBox_01_C`),
+  `BP_SpawnPoint_C` and destructible props are local on both sides; `BP_ItemSpawner_C` on the client only; the run
+  spawn pass (`LogSpawnExecutor`: 63 lines on the host, 0 on the client) and its products (cars, gas barrels,
+  lockboxes, radiation hazards, exit portals) on the host only. The host's character and car were not on the client.
+
+### Derived
+- Duplicates to gate: the client's local car and its part actors (W2), garage stations and storage (G1/G2), quest
+  actors (G3), lootables and item spawners in zones (W1/W2). The run spawn pass is already host-only.
+
+### Unknowns
+- The client spectator is elsewhere than the host, so streaming and relevancy differ; redo with the guest's
+  character next to the host after M2 spawn.
+
+Verdict: keep the plan (W2 is real and wider than the car). M2 has nothing to gate; M3/M4 must gate the local car
+with its part actors, and stable ids (X2) must cover lootables and garage storage that exist on both sides.
+
+## 2026-10-19: spike X1b keep the listen server through native travel (C++)
+
+Scenario `travel` (`-Mutate nokeep|norehost|follow`). Runs: `20261019-175958-travel` (22/23, `PTNative_*` not yet
+visible to the test mod), `20261019-180355-travel` (23/23), `20261019-180625-travel-nokeep` (22/23),
+`20261019-181441-travel-follow` (21/23), `20261019-185029-travel` (23/23, `-Port 7791`). Native layer 0.0.2.
+
+### Observations
+- UE4SS has no mutable-FURL LoadMap hook: the C++ `RegisterLoadMapPreCallback` (`deps/first/Unreal/include/Unreal/Hooks/Hooks.hpp`)
+  takes `FURL URL` by value, and the detour (`Hooks/Internal/DetourInstance.hpp`, `Invoke(InArgs... Args)`) copies the
+  arguments again for the trampoline and for each callback.
+- Our DLL swaps the live `DrivingGameEngine`'s vtable slot for `LoadMap` (offset from `UEngine::VTableLayoutMap`) on the
+  first UE4SS LoadMap pre-callback: `PT|native loadmap patched slot=0x470 original=0x7ff6729c66c0 ue4ss=0x7ff6729c66c0`,
+  i.e. the slot held the function UE4SS detours; the UE4SS Lua LoadMap hooks kept firing behind ours in every run.
+  Our function takes the FURL as a pointer (MSVC x64 passes a by-value class as a pointer to the caller's copy, the
+  callee destroys it) and appends `listen` to `Op` when keep-listen is on, `PendingGame` is null, the old world's
+  NetDriver has no ServerConnection, `listen` is not already there and the map name has no `MainMenu`.
+- `UserNewGame(5, STORY)` with the guest connected: `PT|native keeplisten map=/Game/Maps/Narrative/... listening=true
+  had=false added=true`; engine log `Browse: /Game/Maps/Narrative/...` (no `?listen`), old `World NetDriver shutdown`,
+  then `IpNetDriver listening on port 7777` 1.9 s into the 4.5 s load. `host_listen_after_native_travel` PASS with no
+  `servertravel`. `QuitToMenu`: `map=/Game/Maps/RunProto/RB_MainMenu listening=true added=false`, host standalone in
+  the menu (`host_menu_after_quit` now also checks standalone). With `-port=7791` the new driver listens on 7791 again.
+- The guest still drops: `Host closed the connection.` -> `Browse: RB_MainMenu?closed`, menu ~1 s later. With
+  `ResolutionConnectionTimeout=120` on its IpNetDriver CDO and one `open` from the menu it joined on the first try:
+  host `Browse` 18:03:06.2 -> guest on the new map 18:03:14.3 (8 s; final run 8 s too).
+- `nokeep`: only `host_listen_after_native_travel` FAILs; the `servertravel <map>?listen` fallback re-hosts and the
+  guest is back 21 s after leaving.
+- `follow`: the host called `ClientTravel("127.0.0.1:7777", TRAVEL_Absolute)` on the remote PC in the Lua LoadMap
+  pre-hook (inside LoadMap, before the old driver shuts down) and the guest never ran `open`. The guest's log has only
+  `Host closed the connection` -> `Browse: RB_MainMenu?closed`; it stayed in the menu (`client_rejoined_new_map` FAIL
+  after 400 s). Native travel itself sends no travel RPC to clients.
+- Another lane ran its own test games (`C:\PTLanes\probe`) at the same time on port 7777; in `20261019-182606-body`
+  its client joined my host (two different `Login request` names). Runs after that use the runner's `-Port 7791`.
+
+### Derived
+- Keep-listen from C++ works and needs no second load: ~10 s saved per map change, and the guest is back in ~8 s
+  instead of 21-41 s. Lua turns it on per session with `PTNative_SetKeepListen(true)`.
+- The guest cannot be made to follow a native (non-seamless) map change: the connection closes inside the same
+  LoadMap call as anything the host could send. Guest-side auto-rejoin is the way.
+
+### Unknowns
+- The run travel (gateway -> zone -> garage) and run failure were not exercised; only `UserNewGame` and `QuitToMenu`.
+  The "no `MainMenu` in the map name" rule assumes no other non-gameplay map.
+- Seamless travel (would keep the connection) not tried.
+
+Verdict: keep the plan, X1b passes: M2 ships the C++ keep-listen (`PTNative_SetKeepListen`) instead of the
+`servertravel` re-host, plus guest auto-rejoin on "Host closed the connection" (one `open`, ~8 s). Following via
+`ClientTravel` does not work.
+
+## 2026-10-19: spike X13 remote player body
+
+Scenario `body` (`-Mutate nospawn`): the host spawns a `PDP_MainCharacter_C` for the guest's PC and possesses it
+(reference method), teleports it 300 uu in front of its camera; both sides log every mesh component of both
+characters and take `HighResShot 1` screenshots while the guest walks, crouches and sprints across the host's view,
+then the host walks and crouches; then the other character's materials are swapped and the phases repeat. Runs, all
+20/20: `20261019-181704-body`, `-182012-body`, `-182922-body`, `-183310-body`, `20261019-183958-body` (final
+choreography); `20261019-182606-body` 17/20 (another lane's client took the guest slot, see X1b);
+`20261019-184606-body-nospawn` 13/20 as intended. Screenshots: `<role>-HighresScreenshotNNNNN.png` in the run folder.
+
+### Observations
+- Spawn + Possess as in the reference: `possessed=true`, the guest's pawn is a `PDP_MainCharacter_C` with Role 2 on
+  the guest within ~12 s; the host's character is Role 1 there. The manager's `CharacterActor` was put back on the host's.
+- Each character has exactly one mesh component, `CharacterMesh0` (the ACharacter mesh): `SkeletalMesh
+  /Game/AdvancedLocomotionV3/Characters/Mannequin/Mannequin`, AnimBP `Mannequin_AnimBP_C`, visible=true,
+  bHiddenInGame/bOwnerNoSee/bOnlyOwnerSee=false, head bone not hidden, bRenderInMainPass=true, CastShadow=false,
+  scale 1, both material slots `/Game/Characters/Player/Art/Materials/M_PlayerCharacter_Invist`. Same for own and
+  remote characters, on both sides. No other mesh on or attached to the character (garage, empty hands).
+- With the other character straight ahead at 298-306 uu (camera yaw vs direction to it within 1°, view target = own
+  character): nothing visible and no shadow on either side (e.g. `20261019-183958-body/host-HighresScreenshot00041`,
+  `client-...00035`; same in the four earlier runs).
+- Visibility flags were already on, so flipping them changed nothing. Setting every material of the other character
+  (locally, that side only) to `/Engine/EngineMaterials/WorldGridMaterial`: a grey ALS mannequin appears and animates.
+  Host sees the guest idle, strafe-walk, crouch-walk and sprint (`host-...00046`-`00049`); guest sees the host idle,
+  walk and crouch-walk (`client-...00041`-`00046`).
+- Movement numbers match on both sides: walk 375, crouch 150 with `bIsCrouched=true`, guest sprint 625 (host sees
+  `MaxWalkSpeed=625` for the guest although the guest's `ShouldSprint` stays false there). Crouch used
+  `ACharacter:Crouch/UnCrouch`, sprint the game's `Command Sprint`.
+
+### Derived
+- The game's own character already gives remote players a full body with replicated movement and ALS animation
+  (walk, crouch, sprint); it is only drawn with an invisible material, because the game is first person. Remote
+  bodies need a visible material on the other player's `CharacterMesh0`, applied locally on each side, never on
+  one's own character.
+- Djecka's placeholder model is not needed for v1.0 to function; it is cosmetic (the visible mannequin already reads
+  as a body). Its UE4 Mannequin bone names would let it follow `CharacterMesh0` as a slave mesh later (needs a cooked pak).
+
+### Unknowns
+- Which cooked game materials work on a skeletal mesh and look like a survivor; only WorldGridMaterial was tried.
+- Whether the game changes the body material or adds an arms mesh in the car, when carrying items or in cutscenes.
+- How the guest's sprint speed reaches the server; remote anim tick at distance (`VisibilityBasedAnimTickOption`).
+
+Verdict: change the plan slightly: P1's body needs no new mesh, only a visible material on the other player's
+character (M2: apply WorldGridMaterial or a better cooked material to remote `CharacterMesh0` on both sides). Djecka's
+model becomes optional polish.
