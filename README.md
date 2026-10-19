@@ -11,6 +11,31 @@ one drives, one rides along, both scavenge, the run is shared. Join through Stea
 - `reference/pdcoopnet` is a copy of [PDCoopNet](https://github.com/BroZYTnikkkk/pacific-drive-coop) (MIT, by
   BroZYTnikkkk), kept as research material.
 
-Clone with the playbook submodule: `git clone --recursive https://github.com/ikeepcalm/pacific-together.git`
+## Building from source
+
+Windows only. The C++ part builds against UE4SS's source, which includes Unreal Engine headers that only
+Epic-linked GitHub accounts can download.
+
+1. **Link GitHub to Epic Games**: epicgames.com -> Account -> Apps and Accounts -> GitHub -> Connect, then accept the
+   invite at https://github.com/orgs/EpicGames/invitation (arrives by email).
+2. **Install the tools**:
+   ```
+   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+   winget install --id Rustlang.Rustup
+   winget install --id GitHub.cli
+   ```
+   Then in a new terminal: `rustup default stable-msvc`, `gh auth login` (choose HTTPS), `gh auth setup-git`, and
+   `git config --global core.longpaths true` (some UE4SS file paths are longer than Windows' 260-character limit).
+3. **Clone and build** into a short path such as `C:\dev`. UE4SS's sub-repos point at SSH addresses; the `-c` flag
+   fetches them over HTTPS so no SSH key is needed:
+   ```
+   git clone https://github.com/ikeepcalm/pacific-together.git
+   cd pacific-together
+   git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
+   tools\build-native.cmd
+   ```
+   Do not use `git clone --recursive`: it uses the SSH addresses and fails without an SSH key.
+
+Test copies of the game, the test runner and CLion settings: [docs/DEVELOPING.md](docs/DEVELOPING.md).
 
 MIT license. This repository contains no game files.

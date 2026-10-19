@@ -1,3 +1,6 @@
 [submodule "coop-anything"]
 	path = coop-anything
 	url = https://github.com/cranebeaker/coop-anything.git
+[submodule "native/RE-UE4SS"]
+	path = native/RE-UE4SS
+	url = https://github.com/UE4SS-RE/RE-UE4SS.git

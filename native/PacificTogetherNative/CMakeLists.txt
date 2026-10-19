@@ -1,0 +1,11 @@
+set(TARGET PacificTogetherNative)
+
+add_library(${TARGET} SHARED dllmain.cpp)
+target_include_directories(${TARGET} PRIVATE .)
+target_link_libraries(${TARGET} PUBLIC UE4SS)
+
+# UE4SS loads Mods/<mod>/dlls/main.dll; the repo mod folder is junctioned into the test copies
+add_custom_command(TARGET ${TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/../mod/PacificTogether/dlls"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${TARGET}> "${CMAKE_SOURCE_DIR}/../mod/PacificTogether/dlls/main.dll"
+)

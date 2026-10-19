@@ -58,3 +58,46 @@ Source scene: `assets/player_model/SK_CoopSurvivor.blend` (also holds a `Preview
 ### Derived
 - The game initialises Steam under appid 1458140 itself; a mod DLL in the process can use its Steam session for P2P
   and lobbies. Whether Steam relay and lobbies work for this appid without developer setup: unknown (spike X6).
+
+## 2026-10-19: M0 harness
+
+Runs of `tools/run-test.ps1` (results in `local/test-results/20261019-*`), UE4SS 3.0.1-1181-g83330635.
+
+### Observations
+- boot (2 clients): 11/11 PASS. listen: 14/14 PASS. listen `-Mutate skipconnect`: 12/14, `host_two_pcs` and
+  `client_connected_garage` FAIL as intended. dump: 19/19 PASS (first dump run 18/19: the usmap file is not
+  `Mappings.usmap`, see below; fixed in the runner). No crash folder, no `PT|error` in any run.
+- Launching `PenDriverPro\Binaries\Win64\PenDriverPro-Win64-Shipping.exe -NotInstalled` directly works and gives the
+  PID we started; every run finished without user input. Logs: `ue4ss\UE4SS.log` (UE4SS working dir = `Win64\ue4ss`),
+  `<copy>\PenDriverPro\Saved\Logs\PenDriverPro.log`.
+- First launch after setup: main menu (`LoadMap RB_MainMenu`) ~59 s after start, `FShaderPipelineCache completed
+  8914 tasks ... 38.60s wall time`. Later launches ~30 s. Engine frame counter stays 0 until then, and UE4SS
+  delayed actions (`LoopInGameThreadWithDelay`) only start firing once the main menu is up.
+- `GetCurrentLevelName` returns `RB_MainMenu` / `RB_Garage`.
+- listen: host `open /Game/Maps/RunProto/RB_Garage?listen` from the menu took 9.6 s (`Took 9.601368 seconds to
+  LoadMap`); client `open 127.0.0.1:7777` sent before the host was listening, the pending connection waited
+  ~6 s and then succeeded on the first try (`Welcomed by server ... Game: /Game/Systems/GameModes/BP_DrivingGameMode.BP_DrivingGameMode_C`),
+  client garage load 3.9 s. The 30 s retry was not needed in this run.
+- While the client's connect is pending, the main mod's status prints `net=client map=RB_MainMenu` (world no longer
+  standalone before the map change).
+- Engine log errors after join: both sides `LogPlayerController: Error: EnableInput can only be specified on a
+  PlayerController for itself`; client `ActorTag1 tried to add tag 'WB.Modifiers.Spawning.Vehicles.Car.Stripped.MaxCount'
+  ... multiple times` (client-side spawner running); host `AEntitlementSpawner::SpawnActor failed to load class
+  /PDFeature_Fig/...BP_Fig_Mission_Chapter08`.
+- Every UE4SS.log has `[PS] Failed to find ConsoleManagerSingleton: found 2 unique values` and `Failed to expose size of
+  'class RC::Unreal::FObjectPtrProperty'`; nothing broke from it so far.
+- Dumpers (Lua globals exist in this build): `GenerateUHTCompatibleHeaders` ~42 s -> `ue4ss\UHTHeaderDump` (30 MB),
+  `GenerateLuaTypes` ~7 s -> `ue4ss\Mods\shared\types` (2444 files), `DumpUSMAP` <1 s ->
+  `ue4ss\PenDriverPro-4.27.2-0+++UE4+Release-4.27-83330635.usmap` (2 MB), `GenerateSDK` ~5 s -> `ue4ss\CXXHeaderDump`
+  (13 MB). Copies of the garage-time dumps are in `local/dumps/`.
+- No save file was written in the test copies (`Saved\SaveGames` has only `steam_autocloud.vdf`).
+
+### Derived
+- Test checks must look at the current world only: previous-map PlayerControllers linger until GC, so the test mod
+  counts controllers whose world is the current world.
+- "Connected" must mean `net=client` and the server's map, not `net=client` alone (see the pending state above).
+
+### Unknowns
+- Whether the test copies start without the Steam client running (all runs had Steam up).
+- Whether the 30 s client retry works when the host takes longer than the 20 s pending timeout (not exercised).
+- Whether the `ConsoleManagerSingleton` scan warning matters for console commands we have not used yet.
