@@ -5,7 +5,7 @@
 --                      call BP_ProgressionManager:TravelToGarage(2) (the portal's car-in-range trigger is not driven)
 --   zone -> garage     death: BP_MainCharacterManager:OnPlayerDeathReturnTimer (checkpoint load or TravelToGarage(3))
 --   zone -> garage     run failure: TravelToGarage(3), the call RunFinished_Failure makes
---   zone -> menu       TravelToGarage(2, SaveAndQuit) = SaveGame + QuitToMenu; the host reloads the garage save from the menu
+--   zone -> menu       TravelToGarage(3, SaveAndQuit) as the pause menu calls it = SaveGame + QuitToMenu; the host reloads the garage save from the menu
 -- Each time: the host's remote characters are gone before the teardown, the host listens on the new map and the guest is back
 -- by itself, possessing a character, with the host's player controller still the host's manager character.
 -- Mutation nokeep: after the first join the host turns auto-listen and keep-listen off, so the first map change drops the guest for good.
@@ -90,7 +90,7 @@ return function(T)
         add({ check = "quit_host_in_zone", timeout = 240, cond = function() return inZone() and sceneReady() end })
         add(guestBack("quit_guest_back_zone"))
         add({ wait = 8 })
-        add({ run = function() mark = atTeardown.maps; pm():TravelToGarage(2, true, false, false, 1, {}) end })
+        add({ run = function() mark = atTeardown.maps; pm():TravelToGarage(3, false, false, true, 1, {}) end })
         add({ check = "quit_host_in_menu", timeout = 120, cond = function() return T.map() == "RB_MainMenu" and T.netMode() == "standalone" end })
         add(teardownClean("quit_cleanup_before_menu"))
         add({ wait = 15 })
