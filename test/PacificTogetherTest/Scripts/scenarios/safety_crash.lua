@@ -1,8 +1,7 @@
 -- Q9: the guest crashes on purpose (PTNative_TestCrash) during a session; the host then checks what the crash left in the
 -- guest's copy: a new crash folder with our PacificTogether-crash.txt marker, and no CrashReportClient process started.
--- Sentry is never initialised by this build (see docs/spikes/M2-safety.md), so nothing could upload there either.
--- -Mutate crc: the native layer lets CrashReportClient start, suspended so it never runs (test-only switch), so
--- host_no_crashreportclient FAILs.
+-- Test copies have no CrashReportClient.exe (D23), so the CreateProcessW refusal itself is not exercised here.
+-- -Mutate nomarker: the native marker writer is off for this crash (test-only switch), so host_crash_marker FAILs.
 -- The runner treats the crash as expected for this scenario (tools/run-test.ps1 $CrashExpected).
 return function(T)
     local L = require("scenarios.safety_lib")
@@ -12,7 +11,7 @@ return function(T)
             T.join("client_connected_garage", "RB_Garage", 210, 30),
             { wait = 10 },
             -- the crash ends this side: report done first so the runner does not wait for it
-            { run = function() T.log("PT|done side=%s", T.ROLE); PTNative_TestCrash(T.MUTATE == "crc") end },
+            { run = function() T.log("PT|done side=%s", T.ROLE); PTNative_TestCrash(T.MUTATE == "nomarker") end },
         }
     end
     local crashes, old, found = nil, {}, nil
@@ -22,12 +21,10 @@ return function(T)
         p:close()
         return r
     end
-    -- CrashReportClient processes for this crash, found by the crash folder in their command line (a suspended one has no
-    -- ExecutablePath); kill stops them too, since the runner's cleanup only finds running ones
-    local function crc(kill)
-        local cmd = [[powershell -NoProfile -Command "$p = @(Get-CimInstance Win32_Process -Filter \"Name='CrashReportClient.exe'\" | Where-Object { $_.CommandLine -like '*GUID*' }); KILL$p.Count"]]
-        cmd = cmd:gsub("GUID", found:match("[^\\]+$")):gsub("KILL", kill and "$p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; " or "")
-        local p = io.popen(cmd)
+    -- CrashReportClient processes for this crash, found by the crash folder in their command line
+    local function crc()
+        local cmd = [[powershell -NoProfile -Command "@(Get-CimInstance Win32_Process -Filter \"Name='CrashReportClient.exe'\" | Where-Object { $_.CommandLine -like '*GUID*' }).Count"]]
+        local p = io.popen((cmd:gsub("GUID", found:match("[^\\]+$"))))
         local n = tonumber(p:read("a"):match("%d+"))
         p:close()
         return n
@@ -47,13 +44,12 @@ return function(T)
             for _, d in ipairs(dirs()) do if not old[d] then found = crashes .. "\\" .. d end end
             return found ~= nil
         end },
-        { wait = 15 }, -- CrashReportClient starts a moment after the crash folder is written
+        { wait = 15 }, -- the engine finishes the crash folder (and would start CrashReportClient) a moment after creating it
         { check = "host_crash_marker", timeout = 5, cond = function()
             local m = L.read(found .. "\\PacificTogether-crash.txt")
             T.log("PT|info marker %s: %s", found, tostring(m))
             return m ~= nil and m:find("Pacific Together crash marker", 1, true) ~= nil and m:find("guest=true", 1, true) ~= nil
         end },
         { check = "host_no_crashreportclient", timeout = 1, cond = function() local n = crc(); T.log("PT|info CrashReportClient processes: %s", tostring(n)); return n == 0 end },
-        { run = function() crc(true) end },
     }
 end

@@ -1,7 +1,7 @@
 // S7: while the guest guard is on, the game exe cannot create, change, delete or move files under Saved/SaveGames
 // (saves, USERSETTINGS.sav) or Content/Bookmarks (MakeBookmark writes the whole world there, next to the game files).
-// Q9 (D16): the game never starts CrashReportClient (its crash folder gets our marker file instead) and never
-// initialises Sentry (the game's own settings may turn it on before any Lua runs).
+// Q9 (D16): the game never starts CrashReportClient and never initialises Sentry (the game's own settings may turn it on
+// before any Lua runs). Every crash folder the engine writes gets our marker file, whether or not CrashReportClient exists.
 // All of it patches the exe's imports: UE's file, process and Sentry calls all go through them (monolithic shipping exe).
 #include <DynamicOutput/DynamicOutput.hpp>
 #include <LuaMadeSimple/LuaMadeSimple.hpp>
@@ -21,9 +21,10 @@ namespace pt_guard
     static std::atomic<bool> g_on{};
     static std::atomic<int> g_blocked{}, g_sentry_blocked{};
     static bool g_installed{};
-    // test runs only: show that the CrashReportClient and Sentry checks can fail
-    static bool g_test_allow_crc{}, g_test_allow_sentry{};
+    // test runs only: show that the marker and Sentry checks can fail
+    static bool g_test_no_marker{}, g_test_allow_sentry{};
     static std::string g_crash_info; // set from Lua on the game thread, read only while crashing
+    static std::wstring g_marked;    // crash folder that already has our marker
 
     static decltype(&CreateFileW) real_create_file{};
     static decltype(&DeleteFileW) real_delete_file{};
@@ -53,9 +54,29 @@ namespace pt_guard
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|safety guard refused {} {}\n"), what, path);
     }
 
+    // the engine writes the minidump and CrashContext.runtime-xml into Saved/Crashes/<crash>/ before it would start CrashReportClient
+    static auto write_marker(LPCWSTR name) -> void
+    {
+        auto p = lower(name);
+        auto at = p.find(L"\\saved\\crashes\\");
+        if (at == std::wstring::npos || g_test_no_marker) return;
+        auto end = p.find(L'\\', at + 15);
+        if (end == std::wstring::npos) return;
+        auto dir = std::wstring(name, end);
+        if (dir == g_marked) return;
+        g_marked = dir;
+        HANDLE f = real_create_file((dir + L"\\PacificTogether-crash.txt").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (f == INVALID_HANDLE_VALUE) return;
+        std::string text = "Pacific Together crash marker\r\nCrash upload: off (the mod never starts CrashReportClient or Sentry)\r\n" + g_crash_info + "\r\n";
+        DWORD n{};
+        WriteFile(f, text.data(), static_cast<DWORD>(text.size()), &n, nullptr);
+        CloseHandle(f);
+    }
+
     static auto WINAPI create_file(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD disposition, DWORD flags, HANDLE tmpl) -> HANDLE
     {
         bool writes = (access & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA | FILE_APPEND_DATA | DELETE)) || disposition != OPEN_EXISTING;
+        if (writes && name) write_marker(name);
         if (writes && guarded(name))
         {
             refuse(STR("CreateFileW"), name);
@@ -84,33 +105,14 @@ namespace pt_guard
         return real_move_file(from, to);
     }
 
-    // the engine starts CrashReportClient as "<exe>" "<crash folder>" -AppName=...; the marker goes into that folder
-    static auto write_marker(const std::wstring& cmd) -> void
-    {
-        auto a = cmd.find(L'"', cmd.find(L'"', cmd.find(L'"') + 1) + 1);
-        auto b = a == std::wstring::npos ? a : cmd.find(L'"', a + 1);
-        if (b == std::wstring::npos) return;
-        auto path = cmd.substr(a + 1, b - a - 1) + L"\\PacificTogether-crash.txt";
-        HANDLE f = real_create_file(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (f == INVALID_HANDLE_VALUE) return;
-        std::string text = "Pacific Together crash marker\r\nCrashReportClient: not started (the mod turns off the game's crash upload)\r\n" + g_crash_info + "\r\n";
-        DWORD n{};
-        WriteFile(f, text.data(), static_cast<DWORD>(text.size()), &n, nullptr);
-        CloseHandle(f);
-    }
-
     static auto WINAPI create_process(LPCWSTR app, LPWSTR cmd, LPSECURITY_ATTRIBUTES pa, LPSECURITY_ATTRIBUTES ta, BOOL inherit, DWORD flags, LPVOID env,
                                       LPCWSTR dir, LPSTARTUPINFOW si, LPPROCESS_INFORMATION pi) -> BOOL
     {
-        auto line = lower(app) + L" " + lower(cmd);
-        if (line.find(L"crashreportclient") != std::wstring::npos && !g_test_allow_crc)
+        if ((lower(app) + L" " + lower(cmd)).find(L"crashreportclient") != std::wstring::npos)
         {
-            write_marker(cmd ? cmd : L"");
             SetLastError(ERROR_FILE_NOT_FOUND);
             return FALSE;
         }
-        // the test switch starts it suspended: the process exists for the check but never runs, so nothing is sent
-        if (g_test_allow_crc && line.find(L"crashreportclient") != std::wstring::npos) flags |= CREATE_SUSPENDED;
         return real_create_process(app, cmd, pa, ta, inherit, flags, env, dir, si, pi);
     }
 
@@ -189,9 +191,9 @@ namespace pt_guard
             return 0;
         });
         if (!std::getenv("PT_SCENARIO")) return;
-        // test runs only: PTNative_TestCrash(allowCrashReporter) crashes the game on purpose to check what the crash leaves behind
+        // test runs only: PTNative_TestCrash(noMarker) crashes the game on purpose to check what the crash leaves behind
         l.register_function("PTNative_TestCrash", [](const LuaMadeSimple::Lua& l) -> int {
-            g_test_allow_crc = l.is_bool() && l.get_bool();
+            g_test_no_marker = l.is_bool() && l.get_bool();
             *static_cast<volatile int*>(nullptr) = 0;
             return 0;
         });

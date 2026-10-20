@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); safety = @(2, 600) }
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 # Q9: a side crashes on purpose, so the run needs that crash instead of "no crash" and keeps waiting after it

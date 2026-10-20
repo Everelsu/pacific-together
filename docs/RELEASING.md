@@ -32,6 +32,8 @@ README.txt                    install, play, uninstall, known issues, where logs
 
 - UE4SS itself: link the exact pinned release and its SHA-256 in the README, or bundle it if its license allows (check before 0.1).
 - No game files, no debug test bots, no test-only scenarios.
+- `main.dll` still registers test-only natives (`PTNative_TestCrash`, `PTNative_TestAllowSentry`) when the environment
+  variable `PT_SCENARIO` is set; compile them out of release builds before 1.0.
 - `SHA256SUMS.txt` next to the zip.
 
 ## Release notes template
