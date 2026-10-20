@@ -34,9 +34,10 @@ Results are capped at 20k characters and say when cut. Errors come back as tool 
 | `find` | live objects of a class in the current world, full names | `class_name=BP_PlayerCarNew_C limit=20` |
 | `describe` | properties with current values and functions with parameters, own class first then parents | `target=<full name from find>` or a class name |
 | `call` | call a UFunction with numbers, strings, bools, `{"obj": "<path>"}` | `object_path=<car> function=K2_GetActorLocation args_json=[]` |
-| `watch` | records ProcessEvent calls whose function name contains the filter (`a|b` or a list), with the calling object, for N seconds | `filter=Character:Jump seconds=5` while another `eval` acts. The filter matches the whole function path, so a bare `Character` also catches `/Game/Characters/...` animation functions: include the class or function. Only calls through ProcessEvent are seen (Blueprint-to-Blueprint calls inside the script VM are not) and no argument values are recorded |
+| `watch` | records ProcessEvent calls whose function name contains the filter (`a|b` or a list), with the calling object, for N seconds | `filter=Character:Jump seconds=5` while another `eval` acts. The filter matches the whole function path, so a bare `Character` also catches `/Game/Characters/...` animation functions: include the class or function. Only calls through ProcessEvent are seen (Blueprint-to-Blueprint calls inside the script VM are not) and argument values only with `args=true` (`results=true` adds return/out values), see `docs/gamemcp/observe.md` |
 | `screenshot` | `HighResShot` in a non-headless session, returns the PNG path | open it with an image reader |
 | `logs` | tail of the copy's `UE4SS.log` (`game_log=true`: `PenDriverPro.log`), regex filter | `pattern="PT\|" tail=50` |
+| `watch_property`, `net_stats`, `screenshot_burst`, `events` | observe and measure: property change log, network numbers, screenshot series, event timeline | `docs/gamemcp/observe.md` |
 | `xref` | `local/atlas/xref.py` callers / callees / class / find | `command=callers name=SaveGame` |
 
 `session_start` waits for a free game slot (`PT_SLOTS`) and takes 15-60 s headless, longer in a queue. Use your own root
@@ -51,7 +52,7 @@ is cached per function, and a bounded ring keeps the last `max_calls` (the heade
 - **Exploring is not proving.** Write the answer down and turn it into a scenario check (`docs/TESTING.md`) before relying
   on it; "works" still means an automated two-client run passed.
 - `watch` sees only calls that go through the engine's `ProcessEvent` (native code, Lua, delegates, replication entry
-  points). Blueprint-to-Blueprint calls inside the script VM are not seen, and no argument values are recorded: use
+  points). Blueprint-to-Blueprint calls inside the script VM are not seen, and argument values are recorded only with `args=true` (see `docs/gamemcp/observe.md`); use
   `describe` for signatures and hook the function in Lua if you need its arguments.
 - `call` and `eval` change the live game; out params of a UFunction come back as extra result lines in UE4SS Lua form.
   Object arguments must be given as `{"obj": "<path or full name>"}`; structs and arrays are not supported (use `eval`).

@@ -87,6 +87,8 @@ if ($stale) {
 }
 $objs = ($cpps | ForEach-Object { '"' + "$objDir\$($_.BaseName).obj" + '"' }) -join ' '
 $ldArgs = $ldArgs.Replace("$tgt\CMakeFiles\$tgt.dir\dllmain.cpp.obj", $objs)
+# the template may list more of our objects (trace.cpp.obj, ...): ours are all in $objs already
+$ldArgs = [regex]::Replace($ldArgs, '\s' + [regex]::Escape("$tgt\CMakeFiles\$tgt.dir\") + '\S+\.cpp\.obj', '')
 $ldArgs = $ldArgs.Replace("/out:$tgt\$tgt.dll", "/out:`"$fast\main.dll`"").Replace("/implib:$tgt\$tgt.lib", "/implib:`"$fast\main.lib`"").Replace("/pdb:$tgt\$tgt.pdb", "/pdb:`"$fast\main.pdb`"")
 Set-Content "$fast\link.rsp" -Encoding ASCII -Value $ldArgs
 $wrap = $wrap.Replace("--intdir=$tgt\CMakeFiles\$tgt.dir", "--intdir=`"$fast`"")
