@@ -184,11 +184,11 @@ return function(T)
         end)
     end
 
-    -- guest: the host is the only simulation of the car. Physics on the guest's copy fights replication (the car flew
-    -- off in carseat run 20261019-191154), so the guest's car is kinematic and we place it every frame ourselves.
-    function L.kinematic(car)
-        pcall(function() car.Chassis:SetSimulatePhysics(false) end)
-        pcall(function() car.VehicleController:SetComponentTickEnabled(false) end)
+    -- guest: the host is the only simulation of the car, so the guest's car is kinematic and we place it every frame
+    -- ourselves (physics = true gives it back to the engine's physics replication, the "phys" mode)
+    function L.kinematic(car, physics)
+        pcall(function() car.Chassis:SetSimulatePhysics(physics == true) end)
+        pcall(function() car.VehicleController:SetComponentTickEnabled(physics == true) end)
     end
 
     local function wrap(a) return (a + 180) % 360 - 180 end

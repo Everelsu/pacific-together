@@ -84,12 +84,20 @@ public static class CarError {
                 foreach (var c in s) sum += Dist(c.P, host.At(c.T - tau));
                 if (sum / s.Count < bestMean) { bestMean = sum / s.Count; bestTau = tau; }
             }
-            // a host frame over 250 ms froze the host's own picture too; the guest cannot be smoother than its source,
-            // so the 0.6 s after such a hitch (at the guest's delay) are left out and counted
-            var hitches = new List<double>();
-            for (int i = 1; i < host.T.Count; i++) if (host.T[i] - host.T[i - 1] > 0.25) hitches.Add(host.T[i - 1]);
+            // in a host frame over 100 ms the host's car moves only 22-88 % (median 38 %) of its speed (physics step cap,
+            // run 20261020-113456), so the host's own picture hesitates while the guest's motion clock stays even; such a
+            // hitch and the 1.5 s after its end (at the guest's delay; the motion clock needs ~1 s to catch up) are left
+            // out and counted
+            var hitches = new List<double[]>();
+            for (int i = 1; i < host.T.Count; i++) if (host.T[i] - host.T[i - 1] > 0.1) hitches.Add(new[] { host.T[i - 1], host.T[i] });
             int before = s.Count;
-            s = s.Where(c => !hitches.Any(h => c.T - bestTau > h - 0.1 && c.T - bestTau < h + 0.6)).ToList();
+            s = s.Where(c => !hitches.Any(h => c.T - bestTau > h[0] - 0.1 && c.T - bestTau < h[1] + 1.5)).ToList();
+            if (s.Count < before / 2) {
+                // a host that hitches all the time is no measurement; motion phases fail rather than pass on a few frames
+                bool chk = ph.Mode == "motion" || ph.Mode == "freeze";
+                outp.Add(string.Format("{0}{1} {2} {3}: only {4} of {5} frames left after host hitches", chk ? "FAIL  car " : "", ph.N, ph.Mode, ph.Lag, s.Count, before));
+                continue;
+            }
             e0 = s.Select(c => Dist(c.P, host.At(c.T))).ToList();
             int hitchSkipped = before - s.Count;
             var res = s.Select(c => Dist(c.P, host.At(c.T - bestTau))).ToList();
@@ -133,13 +141,28 @@ public static class CarError {
                 outp.Add(string.Format("{0}  car {1} rtt  ping={2:F0} ms, {3:F0} over lag 0, want {4}+-30", ok ? "PASS" : "FAIL", id, ping, added, 2 * ph.Lag));
             }
             if (ph.Mode == "motion" || ph.Mode == "freeze") {
+                // the adaptive render delay drifts slowly (100 -> 160 ms in a phase, run 20261020-110239); a few % of playback
+                // speed is invisible, so the path is compared per 2 s window, each against its own best delay
+                var local = new List<double>(); double dMin = double.MaxValue, dMax = 0;
+                for (double w0 = s[0].T; w0 < s[s.Count - 1].T; w0 += 2) {
+                    var ws = s.Where(c => c.T >= w0 && c.T < w0 + 2).ToList();
+                    if (ws.Count < 10) continue;
+                    double bt = 0, bm = double.MaxValue;
+                    for (int ms = 0; ms <= 600; ms += 4) {
+                        double tau = ms / 1000.0, m = ws.Average(c => Dist(c.P, host.At(c.T - tau)));
+                        if (m < bm) { bm = m; bt = tau; }
+                    }
+                    dMin = Math.Min(dMin, bt); dMax = Math.Max(dMax, bt);
+                    local.AddRange(ws.Select(c => Dist(c.P, host.At(c.T - bt))));
+                }
+                var lr = Pct(local);
                 // C2 smooth: no frozen frames, the path within 10 uu of the host's (after its delay), frame-to-frame speed no
                 // more uneven than twice the host's own picture (+5 points), delay <= lag + the 250 ms render-delay cap + 50
                 // and the car must have been driving (a parked car passes everything)
                 double hMean = hs.Count > 0 ? hs.Average() : 0;
-                bool ok = hMean > 150 && stallPct < 1 && r[1] <= 10 && cSelf <= 2 * hSelf + 5 && bestTau * 1000 <= ph.Lag + 300;
-                outp.Add(string.Format(CultureInfo.InvariantCulture, "{0}  car {1} smooth  hostSpeed={7:F0} stalls={2:F1}% residualP95={3:F1} selfJitter={4:F1}% (host {5:F1}%) delay={6:F0}ms",
-                    ok ? "PASS" : "FAIL", id, stallPct, r[1], cSelf, hSelf, bestTau * 1000, hMean));
+                bool ok = hMean > 150 && stallPct < 1 && lr[1] <= 10 && cSelf <= 2 * hSelf + 5 && bestTau * 1000 <= ph.Lag + 300;
+                outp.Add(string.Format(CultureInfo.InvariantCulture, "{0}  car {1} smooth  hostSpeed={7:F0} stalls={2:F1}% localResidualP95={8:F1} (one delay {3:F1}) selfJitter={4:F1}% (host {5:F1}%) delay={6:F0}ms ({9:F0}-{10:F0})",
+                    ok ? "PASS" : "FAIL", id, stallPct, r[1], cSelf, hSelf, bestTau * 1000, hMean, lr[1], dMin * 1000, dMax * 1000));
             }
         }
         return outp.ToArray();

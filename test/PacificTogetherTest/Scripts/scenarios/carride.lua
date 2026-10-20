@@ -7,9 +7,9 @@ return function(T)
     local L = require("scenarios.carlib")(T)
     local log, ROLE, MUTATE = T.log, T.ROLE, T.MUTATE
     local PHASE_S = 18
-    local PHASES = { { "phys", 0 } }
+    local PHASES = {}
     for _, lag in ipairs({ 0, 100, 150 }) do
-        for _, m in ipairs({ "snap", "interp", "motion" }) do PHASES[#PHASES + 1] = { m, lag } end
+        for _, m in ipairs({ "phys", "snap", "interp", "motion" }) do PHASES[#PHASES + 1] = { m, lag } end
     end
     local S = { frames = 0 }
 
@@ -106,12 +106,17 @@ return function(T)
                   T.console("open " .. proxy)
               end
           end)() },
+        -- at once: the guest's own car stands exactly where the replicated one arrives (run 20261020-112130)
+        { check = "client_deduped", timeout = 60, cond = function()
+            before = math.max(before, #L.localCopies())
+            if MUTATE ~= "nodedupe" then L.dedupe() end
+            return before >= 1
+        end },
         { check = "client_possessed", timeout = 90, cond = function() return T.cls(T.myPawn()) == T.CHAR end },
         { check = "client_seated", timeout = 90, cond = function()
             local p, car = T.myPawn():GetAttachParentActor(), L.car()
             return p:IsValid() and car ~= nil and p:GetFullName() == car:GetFullName()
         end },
-        { run = function() before = #L.localCopies(); if MUTATE ~= "nodedupe" then L.dedupe() end end },
         { check = "client_one_car", timeout = 5, cond = function()
             local names = {}
             for _, c in ipairs(FindAllOf("BaseNewCar") or {}) do
@@ -146,12 +151,13 @@ return function(T)
     for i, p in ipairs(PHASES) do
         steps[#steps + 1] = { run = function()
             local mode = (MUTATE == "freeze" and p[1] ~= "phys") and "freeze" or p[1]
-            if mode ~= "phys" and L.mode == "phys" then L.kinematic(L.car()) end
+            L.kinematic(L.car(), mode == "phys")
             log("PT|info phase %d ends: delay=%.0f ms target=%.0f ms", ph, L.delay * 1000, L.delayTarget * 1000)
             L.mode, ph = mode, i
             -- adaptive render delay belongs to the recommended mode only; interp keeps the fixed 100 ms
+            -- it starts at its target: ramping up from interp's 100 ms smeared the first seconds (run 20261019-205607)
             L.adaptive = mode == "motion"
-            if not L.adaptive then L.delay = 0.1 end
+            L.delay = L.adaptive and L.delayTarget or 0.1
             log("PT|lag ms=%d", p[2])
             log("PT|carphase n=%d mode=%s lag=%d t=%.4f", i, mode, p[2], L.now())
         end }
