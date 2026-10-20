@@ -15,6 +15,7 @@ using namespace RC;
 using namespace RC::Unreal;
 
 auto pt_register_trace(const LuaMadeSimple::Lua& lua) -> void; // trace.cpp
+auto pt_register_net(const LuaMadeSimple::Lua& lua) -> void;   // net.cpp
 
 static constexpr const char* NATIVE_VERSION = "0.0.2";
 
@@ -96,6 +97,7 @@ class PacificTogetherNative : public CppUserModBase
         {
             if (!l) continue;
             pt_register_trace(*l);
+            pt_register_net(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);
                 return 1;

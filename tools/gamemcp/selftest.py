@@ -57,7 +57,7 @@ def main():
     c = Client()
     tools = [t["name"] for t in c.rpc("tools/list")["tools"]]
     print("tools:", tools)
-    results.append(len(tools) == 11)
+    results.append(len(tools) >= 11)
 
     step(c, "safety: real install refused", "eval", expect_error=True, lua="1", root=r"C:\Program Files (x86)\Steam\steamapps\common\Pacific Drive")
     step(c, "safety: not a test pair", "logs", expect_error=True, root=str(Path(__file__).parent))

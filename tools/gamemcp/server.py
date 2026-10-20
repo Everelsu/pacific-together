@@ -247,9 +247,9 @@ def t_call(object_path, function, args_json="[]", side="host", root=DEFAULT_ROOT
     return lua_call("mcp_call", side, root, object_path, function, *args)
 
 
-def t_watch(filter, seconds=5, side="host", root=DEFAULT_ROOT, max_calls=500):
+def t_watch(filter, seconds=5, side="host", root=DEFAULT_ROOT, max_calls=500, args=False, results=False):
     f = "|".join(filter) if isinstance(filter, list) else filter
-    ok, text = run_lua(f"return PTNative_TraceStart({lua_str(f)}, {int(max_calls)})", side, root)
+    ok, text = run_lua(f"return PTNative_TraceStart({lua_str(f)}, {int(max_calls)}, {(1 if args else 0) | (2 if results else 0)})", side, root)
     if not ok:
         raise ToolError(text + "  (PTNative_TraceStart missing? build the DLL with tools/build-native.cmd, see docs/GAME-MCP.md)")
     try:
@@ -260,7 +260,7 @@ def t_watch(filter, seconds=5, side="host", root=DEFAULT_ROOT, max_calls=500):
     if len(lines) > 1:
         t0 = int(lines[1].split("\t")[0])
         lines = [lines[0]] + [f"+{(int(l.split(chr(9))[0]) - t0) / 1000:.2f}ms" + l[l.index("\t"):] for l in lines[1:]]
-    return "\n".join(lines) + f"\n-- {len(lines) - 1} call(s) of '{f}' in {seconds}s (ProcessEvent only: not Blueprint-to-Blueprint calls)"
+    return "\n".join(lines) + f"\n-- {len(lines) - 1} call(s) of '{f}' in {seconds}s (ProcessEvent only: not Blueprint-to-Blueprint calls)" + ("; 4th column = parameter values" if args else "") + ("; '<-' lines = return/out values after the call" if results else "")
 
 
 def t_screenshot(side="host", root=DEFAULT_ROOT):
@@ -327,7 +327,9 @@ TOOLS = {
     "call": (t_call, "Call a UFunction on an object with simple args: numbers, strings, bools, {\"obj\": \"<path>\"}. Returns the return value and out params as lines. It changes the live game.",
              dict(object_path=S, function=S, args_json={"type": "string", "description": "JSON list, default []"}, side=SIDE, root=ROOT), ["object_path", "function"]),
     "watch": (t_watch, "Record every ProcessEvent UFunction call whose full name contains the filter (substring, case-insensitive; 'a|b' or a list = any of them) for N seconds, with the calling object. Do the action meanwhile with a parallel eval. Needs the native mod built with trace.cpp.",
-              dict(filter={"type": ["string", "array"], "items": S}, seconds={"type": "number"}, side=SIDE, root=ROOT, max_calls={"type": "integer"}), ["filter"]),
+              dict(filter={"type": ["string", "array"], "items": S}, seconds={"type": "number"}, side=SIDE, root=ROOT, max_calls={"type": "integer"},
+                   args={"type": "boolean", "description": "add each call's parameter values (4th column, capped)"},
+                   results={"type": "boolean", "description": "also add '<-function' lines with return/out values after each call"}), ["filter"]),
     "screenshot": (t_screenshot, "Take an in-engine HighResShot in a NON-headless session and return the PNG's absolute path (open it with an image reader).", dict(side=SIDE, root=ROOT), []),
     "logs": (t_logs, "Recent lines of the copy's UE4SS.log (game_log=true: PenDriverPro.log), optionally filtered by a regex.",
              dict(side=SIDE, root=ROOT, pattern=S, tail={"type": "integer"}, game_log={"type": "boolean"}), []),
