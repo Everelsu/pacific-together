@@ -2,7 +2,8 @@
 # Exit code 0 = the scenario's checks and the car-error checks passed.
 param(
     [string]$Scenario = "carride",
-    [string]$Root = "C:\PacificTogetherTest",
+    # no default: the script deletes client2's UE4SS.log under it, so it must never fall back to a shared test copy
+    [Parameter(Mandatory = $true)][string]$Root,
     [int]$Port = 7777,
     [string]$Mutate = "",
     [switch]$Headless,

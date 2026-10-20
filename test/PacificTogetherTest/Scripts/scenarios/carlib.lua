@@ -9,7 +9,8 @@ return function(T)
     local GS = UEHelpers.GetGameplayStatics()
     local NONE = FName("None")
 
-    -- QueryPerformanceCounter seconds: the same clock in every process on this machine, so host and guest samples line up
+    -- seconds since this game started (per process: host and guest were 8 s apart in run 20261019-194435), for in-process
+    -- timing only; tools/car-error.ps1 lines host and guest up by the UE4SS log stamps
     function L.now()
         local s, p = {}, {}
         GS:GetAccurateRealTime(s, p)
@@ -122,14 +123,60 @@ return function(T)
         log("PT|info seated %s at local %s world %s parent=%s", T.name(char), L.fmt(lp), L.fmt(char:K2_GetActorLocation()), T.name(char:GetAttachParentActor()))
     end
 
-    -- guest: once the host attached us, stop our own movement and take the server's attach offset this frame
+    -- guest: once the host attached us, stop our own movement and hold the server's attach offset.
+    -- Our pawn can arrive falling through the garage floor; OnRep_AttachmentReplication then leaves it km away and its
+    -- movement moved it once more after we set the offset (runs 20261020-115055, -122225, -122535), so a guard puts it back
+    -- whenever it is more than 1 uu off. Mutation kick: one push off the seat with the guard off.
+    L.seatFixes = 0
     function L.ride(char)
-        pcall(function() char.CharacterMovement:DisableMovement() end)
-        pcall(function() char.CharacterMovement:SetComponentTickEnabled(false) end)
+        local cm = char.CharacterMovement
+        local okm = pcall(function() cm:StopMovementImmediately(); cm:DisableMovement(); cm:SetComponentTickEnabled(false) end)
         pcall(function() char:SetActorEnableCollision(false) end)
-        local ar = char.AttachmentReplication
-        char:K2_SetActorRelativeLocation({ X = ar.LocationOffset.X, Y = ar.LocationOffset.Y, Z = ar.LocationOffset.Z }, false, {}, true)
-        log("PT|info riding offset %s parent=%s", L.fmt(ar.LocationOffset), T.name(char:GetAttachParentActor()))
+        local car = char:GetAttachParentActor()
+        local function place()
+            local o = char.AttachmentReplication.LocationOffset
+            char:K2_SetActorRelativeLocation({ X = o.X, Y = o.Y, Z = o.Z }, false, {}, true)
+        end
+        local rel0 = L.fmt(char.RootComponent.RelativeLocation)
+        place()
+        log("PT|info riding offset %s parent=%s rel before=%s after=%s err=%.1f movementOff=%s mode=%s", L.fmt(char.AttachmentReplication.LocationOffset),
+            T.name(car), rel0, L.fmt(char.RootComponent.RelativeLocation), L.seatErr(char, car), tostring(okm), T.str(T.get(cm, "MovementMode")))
+        if MUTATE == "kick" then
+            local r = char.RootComponent.RelativeLocation
+            char:K2_SetActorRelativeLocation({ X = r.X, Y = r.Y, Z = r.Z + 500 }, false, {}, true)
+            return
+        end
+        local loop
+        loop = LoopInGameThreadWithDelay(1, function()
+            local ok = pcall(function()
+                local e = L.seatErr(char, car)
+                if e > 1 then
+                    L.seatFixes = L.seatFixes + 1
+                    if L.seatFixes <= 5 or L.seatFixes % 100 == 0 then
+                        log("PT|info seat guard n=%d err=%.1f rel=%s", L.seatFixes, e, L.fmt(char.RootComponent.RelativeLocation))
+                    end
+                    place()
+                end
+            end)
+            if not ok then CancelDelayedAction(loop) end
+        end)
+    end
+
+    -- where a seated character really is: its car-local spot against the replicated attach offset, and what it hangs on
+    -- (run 20261020-115055: attached to the right car, yet ~10 km from it)
+    function L.seatErr(char, car)
+        local o = char.AttachmentReplication.LocationOffset
+        return L.d(L.toLocal(car, char:K2_GetActorLocation()), L.v(o.X, o.Y, o.Z))
+    end
+    function L.seatInfo(char, car)
+        local pc = char.RootComponent:GetAttachParent()
+        local rr = char.AttachmentReplication.AttachComponent
+        return string.format("local=%s offset=%s err=%.1f world=%s rel=%s parentComp=%s parentLocal=%s carRoot=%s car=%s carRep=%s repComp=%s",
+            L.fmt(L.toLocal(car, char:K2_GetActorLocation())), L.fmt(char.AttachmentReplication.LocationOffset), L.seatErr(char, car),
+            L.fmt(char:K2_GetActorLocation()), L.fmt(char.RootComponent.RelativeLocation),
+            pc:IsValid() and pc:GetFName():ToString() or "none", pc:IsValid() and L.fmt(L.localOf(car, pc)) or "nil",
+            car.RootComponent:GetFName():ToString(), L.fmt(car:K2_GetActorLocation()), L.fmt(car.ReplicatedMovement.Location),
+            rr:IsValid() and rr:GetFName():ToString() or "none")
     end
 
     -- guest: drop our own copies of the host's car (the guest's level spawns one too, X3)

@@ -1,6 +1,6 @@
 # X7: guest-side car error versus the host, per phase of a carride run (PT|carh = host car per frame, PT|carc = guest
-# car per frame, both on the shared QPC clock; PT|carphase = guest's mode and lag). Writes car-error.txt, adds its checks
-# to summary.txt. Exit code 0 = all checks passed.
+# car per frame, lined up by the UE4SS log stamps; PT|carphase = guest's mode and lag). Writes car-error.txt, puts its checks
+# into summary.txt (replacing an earlier analysis). Exit code 0 = all checks passed.
 param([Parameter(Mandatory = $true)][string]$Results, [double]$Settle = 2.0)
 $ErrorActionPreference = "Stop"
 Add-Type -TypeDefinition @'
@@ -70,13 +70,29 @@ public static class CarError {
         if (host.T.Count < 100 || cl.Count < 100 || phases.Count < 2) { outp.Add("FAIL  car logs present  too few samples"); return outp.ToArray(); }
         outp.Add("PASS  car logs present  ");
         outp.Add("phase mode   lag | frames fps | hostSpeed | sameTime err mean/p95/max | best delay ms | residual mean/p95/max | speedVsHost% | selfJitter client/host % | stalls% | snapGap ms mean/p95/max | ping ms");
-        var basePings = new List<double>();
+        var basePings = new List<double>(); var baseFrames = new List<double>();
         for (int k = 0; k < phases.Count; k++) {
             var ph = phases[k];
             if (ph.Mode == "end") continue;
             double t0 = ph.T + settle, t1 = k + 1 < phases.Count ? phases[k + 1].T : cl[cl.Count - 1].T;
+            string id = string.Format("phase{0}_{1}_lag{2}", ph.N, ph.Mode, ph.Lag);
+            bool motion = ph.Mode == "motion" || ph.Mode == "freeze";
+            // rtt needs only the host's pings, so it is checked even when the car frames below are too few (run 20261020-114834)
+            var pp = pings.Where(p => p[0] >= t0 && p[0] < t1).Select(p => p[1]).OrderBy(x => x).ToList();
+            double ping = pp.Count > 0 ? pp[pp.Count / 2] : -1;
+            // the engine's ping includes about a frame on each side, so it is compared against lag 0 plus the change in
+            // host + guest frame time (a hitching host added 33 ms in run 20261020-114834 phase 9)
+            var hf = Enumerable.Range(1, host.T.Count - 1).Where(i => host.T[i] >= t0 && host.T[i] < t1).Select(i => host.T[i] - host.T[i - 1]).ToList();
+            var cf = Enumerable.Range(1, cl.Count - 1).Where(i => cl[i].T >= t0 && cl[i].T < t1).Select(i => cl[i].T - cl[i - 1].T).ToList();
+            double frames = ((hf.Count > 0 ? hf.Average() : 0) + (cf.Count > 0 ? cf.Average() : 0)) * 1000;
+            if (ph.Lag == 0 && ping >= 0) { basePings.Add(ping); baseFrames.Add(frames); }
+            if (ph.Lag > 0) {
+                double added = ping - (basePings.Count > 0 ? basePings.Average() : 0), want = 2 * ph.Lag + frames - (baseFrames.Count > 0 ? baseFrames.Average() : 0);
+                bool ok = ping >= 0 && basePings.Count > 0 && Math.Abs(added - want) <= 30;
+                outp.Add(string.Format("{0}  car {1} rtt  ping={2:F0} ms, {3:F0} over lag 0, want {4:F0}+-30 (2x lag + {5:F0} ms frame time)", ok ? "PASS" : "FAIL", id, ping, added, want, want - 2 * ph.Lag));
+            }
             var s = cl.Where(c => c.Ph == ph.N && c.T >= t0 && c.T < t1 && c.T < host.T[host.T.Count - 1] && !resets.Any(r0 => c.T > r0 - 0.2 && c.T < r0 + 2)).ToList();
-            if (s.Count < 30) { outp.Add(string.Format("{0} {1} {2}: only {3} samples", ph.N, ph.Mode, ph.Lag, s.Count)); continue; }
+            if (s.Count < 30) { outp.Add(string.Format("{0}{1} {2} {3}: only {4} samples", motion ? "FAIL  car " : "", ph.N, ph.Mode, ph.Lag, s.Count)); continue; }
             var e0 = s.Select(c => Dist(c.P, host.At(c.T))).ToList();
             double bestTau = 0, bestMean = double.MaxValue;
             for (int ms = 0; ms <= 600; ms += 2) {
@@ -94,8 +110,7 @@ public static class CarError {
             s = s.Where(c => !hitches.Any(h => c.T - bestTau > h[0] - 0.1 && c.T - bestTau < h[1] + 1.5)).ToList();
             if (s.Count < before / 2) {
                 // a host that hitches all the time is no measurement; motion phases fail rather than pass on a few frames
-                bool chk = ph.Mode == "motion" || ph.Mode == "freeze";
-                outp.Add(string.Format("{0}{1} {2} {3}: only {4} of {5} frames left after host hitches", chk ? "FAIL  car " : "", ph.N, ph.Mode, ph.Lag, s.Count, before));
+                outp.Add(string.Format("{0}{1} {2} {3}: only {4} of {5} frames left after host hitches", motion ? "FAIL  car " : "", ph.N, ph.Mode, ph.Lag, s.Count, before));
                 continue;
             }
             e0 = s.Select(c => Dist(c.P, host.At(c.T))).ToList();
@@ -117,8 +132,6 @@ public static class CarError {
             double stallPct = moving > 0 ? 100.0 * stalls / moving : 0;
             var gaps = new List<double>();
             for (int i = 1; i < reps.Count; i++) if (reps[i] >= t0 && reps[i] < t1) gaps.Add((reps[i] - reps[i - 1]) * 1000);
-            var pp = pings.Where(p => p[0] >= t0 && p[0] < t1).Select(p => p[1]).OrderBy(x => x).ToList();
-            double ping = pp.Count > 0 ? pp[pp.Count / 2] : -1;
             var hg = new List<double>();
             for (int i = 1; i < host.T.Count; i++) if (host.T[i] >= t0 && host.T[i] < t1) hg.Add((host.T[i] - host.T[i - 1]) * 1000);
             var hgp = Pct(hg);
@@ -132,15 +145,7 @@ public static class CarError {
             double fps = s.Count / (s[s.Count - 1].T - s[0].T);
             outp.Add(string.Format(CultureInfo.InvariantCulture, "{0,2} {1,-6} {2,3} | {3,5} {4,4:F0} | {5,6:F0} | {6,6:F1} {7,6:F1} {8,6:F1} | {9,4:F0} | {10,5:F1} {11,5:F1} {12,6:F1} | {13,5:F1} | {19,5:F1} {20,5:F1} | {14,5:F1} | {15,5:F1} {16,5:F1} {17,6:F1} | {18:F0}",
                 ph.N, ph.Mode, ph.Lag, s.Count, fps, hs.Count > 0 ? hs.Average() : 0, a[0], a[1], a[2], bestTau * 1000, r[0], r[1], r[2], jitRms, stallPct, g[0], g[1], g[2], ping, cSelf, hSelf));
-            string id = string.Format("phase{0}_{1}_lag{2}", ph.N, ph.Mode, ph.Lag);
-            if (ph.Lag == 0 && ping >= 0) basePings.Add(ping);
-            if (ph.Lag > 0 && ping >= 0 && basePings.Count > 0) {
-                // the engine's ping includes a frame or two on each side (~40 ms at 30-40 fps), so compare against lag 0
-                double added = ping - basePings.Average();
-                bool ok = Math.Abs(added - 2 * ph.Lag) <= 30;
-                outp.Add(string.Format("{0}  car {1} rtt  ping={2:F0} ms, {3:F0} over lag 0, want {4}+-30", ok ? "PASS" : "FAIL", id, ping, added, 2 * ph.Lag));
-            }
-            if (ph.Mode == "motion" || ph.Mode == "freeze") {
+            if (motion) {
                 // the adaptive render delay drifts slowly (100 -> 160 ms in a phase, run 20261020-110239); a few % of playback
                 // speed is invisible, so the path is compared per 2 s window, each against its own best delay
                 var local = new List<double>(); double dMin = double.MaxValue, dMax = 0;
@@ -165,6 +170,11 @@ public static class CarError {
                     ok ? "PASS" : "FAIL", id, stallPct, r[1], cSelf, hSelf, bestTau * 1000, hMean, lr[1], dMin * 1000, dMax * 1000));
             }
         }
+        // every phase must have produced its checks: one rtt per lagged phase, one smooth per motion (or freeze) phase
+        var real = phases.Where(p => p.Mode != "end").ToList();
+        int wantRtt = real.Count(p => p.Lag > 0), wantSmooth = real.Count(p => p.Mode == "motion" || p.Mode == "freeze");
+        int gotRtt = outp.Count(l => Regex.IsMatch(l, @"^(PASS|FAIL)  car \S+ rtt")), gotSmooth = outp.Count(l => Regex.IsMatch(l, @"^(PASS|FAIL)  car \S+ smooth"));
+        outp.Add(string.Format("{0}  car checks complete  rtt {1}/{2}, smooth {3}/{4}", gotRtt == wantRtt && gotSmooth == wantSmooth && wantSmooth > 0 ? "PASS" : "FAIL", gotRtt, wantRtt, gotSmooth, wantSmooth));
         return outp.ToArray();
     }
 }
@@ -174,5 +184,6 @@ $lines | Set-Content -Encoding utf8 (Join-Path $Results "car-error.txt")
 $lines | Write-Host
 $checks = @($lines | Where-Object { $_ -match "^(PASS|FAIL)  " })
 $summary = Join-Path $Results "summary.txt"
-if (Test-Path $summary) { $checks | Add-Content -Encoding utf8 $summary }
+# replace the car lines of an earlier analysis instead of adding a second block
+if (Test-Path $summary) { @(Get-Content $summary | Where-Object { $_ -notmatch "^(PASS|FAIL)  car " }) + $checks | Set-Content -Encoding utf8 $summary }
 if (@($checks | Where-Object { $_ -like "FAIL*" }).Count -or -not $checks.Count) { exit 1 } else { exit 0 }

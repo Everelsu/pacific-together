@@ -1,8 +1,9 @@
--- X7: the host drives (bot input), the guest rides as passenger; both log the car every frame on the shared QPC clock.
+-- X7: the host drives (bot input), the guest rides as passenger; both log the car every frame.
 -- The guest connects through tools/udp-lag.ps1 (HOST port + 1), which delays each direction by the last "PT|lag ms=<n>"
 -- the guest printed (NetEmulation.PktLag is compiled out of the Shipping exe). Run it with tools/run-car.ps1.
 -- The guest cycles placement modes and lags (PHASES); tools/car-error.ps1 turns the logs into error numbers.
--- Mutations: freeze (guest never places its kinematic car), nodedupe (guest keeps its own car copy).
+-- Mutations: freeze (guest never places its kinematic car), nodedupe (guest keeps its own car copy), nolag (the relay
+-- never adds lag: the rtt checks must fail), kick (see L.ride).
 return function(T)
     local L = require("scenarios.carlib")(T)
     local log, ROLE, MUTATE = T.log, T.ROLE, T.MUTATE
@@ -146,6 +147,11 @@ return function(T)
             L.follow(car)
             fpsCounter("client")
         end },
+        { check = "client_in_seat", timeout = 15, cond = function()
+            local car, me = L.car(), T.myPawn()
+            log("PT|info seat %s", L.seatInfo(me, car))
+            return L.seatErr(me, car) < 3
+        end },
         { check = "client_sees_car_moving", timeout = 60, cond = function() return #L.buf >= 10 end },
     }
     for i, p in ipairs(PHASES) do
@@ -158,12 +164,17 @@ return function(T)
             -- it starts at its target: ramping up from interp's 100 ms smeared the first seconds (run 20261019-205607)
             L.adaptive = mode == "motion"
             L.delay = L.adaptive and L.delayTarget or 0.1
-            log("PT|lag ms=%d", p[2])
+            log("PT|lag ms=%d", MUTATE == "nolag" and 0 or p[2])
             log("PT|carphase n=%d mode=%s lag=%d t=%.4f", i, mode, p[2], L.now())
         end }
         steps[#steps + 1] = { wait = PHASE_S }
     end
-    steps[#steps + 1] = { check = "client_passenger_stayed", timeout = 1, cond = function() log("PT|info passenger drift %.2f uu", seatDev); return seat0 ~= nil and seatDev < 5 end }
+    steps[#steps + 1] = { check = "client_passenger_stayed", timeout = 1, cond = function()
+        -- drift alone is near automatic for an attached child, so the spot itself must be the replicated seat offset
+        local o = T.myPawn().AttachmentReplication.LocationOffset
+        log("PT|info passenger drift %.2f uu, seat %s offset %s, guard fixes %d", seatDev, L.fmt(seat0), L.fmt(o), L.seatFixes)
+        return seat0 ~= nil and seatDev < 5 and L.d(seat0, L.v(o.X, o.Y, o.Z)) < 3
+    end }
     steps[#steps + 1] = { run = function() log("PT|carphase n=0 mode=end lag=0 t=%.4f", L.now()); L.onFrame = nil end }
     return steps
 end

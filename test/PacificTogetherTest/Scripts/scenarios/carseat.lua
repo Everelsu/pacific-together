@@ -1,5 +1,6 @@
 -- X8: guest in the passenger seat, ARC device (BP_Carpart_Internal_Gobbler_C + its screen) moved so both reach it.
--- Run without -Headless for screenshots. -Mutate noarc: the ARC stays on the passenger seat.
+-- Run without -Headless for screenshots. Mutations: noarc (the ARC stays on the passenger seat), far (the ARC goes onto the
+-- driver's seat), kick (see L.ride).
 local UEHelpers = require("UEHelpers")
 
 return function(T)
@@ -18,9 +19,12 @@ return function(T)
         a:GetActorBounds(colliding, o, e, false)
         return L.toLocal(car, o), L.v(e.X, e.Y, e.Z)
     end
+    -- where the passenger and the driver really are (car-local), measured on this side
     local function seatLocal(car)
-        if ROLE == "host" then return S.passenger end
-        return L.toLocal(car, T.myPawn():K2_GetActorLocation())
+        return L.toLocal(car, (ROLE == "host" and L.guest or T.myPawn()):K2_GetActorLocation())
+    end
+    local function driverLocal(car)
+        return L.toLocal(car, (ROLE == "host" and S.char or T.otherChar()):K2_GetActorLocation())
     end
     -- visible parts of the ARC: its mesh components, as car-local boxes (exact while the car stands at yaw 0)
     local function meshes(car)
@@ -39,9 +43,10 @@ return function(T)
         end
         return r
     end
-    -- the passenger's body core (seat point up to the eyes, 10 uu around) must not cut into an ARC mesh
-    local function clear(car)
-        local p = seatLocal(car)
+    -- a body core (seat point up to the eyes, 10 uu around) must be in its seat and not cut into an ARC mesh
+    local function clear(car, p, want)
+        p, want = p or seatLocal(car), want or S.want
+        if L.d(p, want) > 20 then return false, "off seat " .. L.fmt(want) end
         for _, m in ipairs(meshes(car)) do
             if math.abs(p.X - m.c.X) < m.e.X + 10 and math.abs(p.Y - m.c.Y) < m.e.Y + 10 and p.Z - 10 < m.c.Z + m.e.Z and p.Z + 75 > m.c.Z - m.e.Z then return false, m.name end
         end
@@ -81,6 +86,9 @@ return function(T)
         local cm = T.localPC().PlayerCameraManager
         local cl = cm:GetCameraLocation()
         local ok, why = clear(car)
+        local dok, dwhy = clear(car, driverLocal(car), S.driverWant)
+        log("PT|seat side=%s tag=%s driver=%s driverClear=%s(%s) %s", ROLE, tag, L.fmt(driverLocal(car)), tostring(dok), dwhy,
+            ROLE == "host" and L.seatInfo(L.guest, car) or L.seatInfo(T.myPawn(), car))
         log("PT|seat side=%s tag=%s seat=%s clear=%s(%s) cam=%s camRot=(p%.0f y%.0f) carYaw=%.0f camToScreen=%.0f highlight=%s", ROLE, tag,
             L.fmt(seatLocal(car)), tostring(ok), why, L.fmt(L.toLocal(car, cl)), cm:GetCameraRotation().Pitch, cm:GetCameraRotation().Yaw,
             car:K2_GetActorRotation().Yaw, L.d(cl, L.toWorld(car, (box(car, s, true)))),
@@ -126,8 +134,7 @@ return function(T)
         local car = L.car()
         local g = arc(car)
         local c = box(car, g, true)
-        local delta = L.v(0, -c.Y, 0)
-        S.before = c
+        local delta = L.v(0, (MUTATE == "far" and -2 or -1) * c.Y, 0)
         local done = {}
         for _, a in ipairs({ arc(car) }) do
             local slot = a.RootComponent:GetAttachParent()
@@ -137,30 +144,34 @@ return function(T)
                 slot:K2_SetRelativeLocation(L.v(r.X + delta.X, r.Y + delta.Y, r.Z + delta.Z), false, {}, true)
             end
         end
-        S.delta = delta
         log("PT|info moved ARC slots by %s", L.fmt(delta))
     end
+    -- the gobbler's interaction box centred between the seats, the screen still on the car (fixed target, not before + delta)
     local function moved()
         local car = L.car()
         local g, s = arc(car)
-        local c = box(car, g, true)
-        local want = L.v(S.before.X + S.delta.X, S.before.Y + S.delta.Y, S.before.Z + S.delta.Z)
-        return g and s and L.d(c, want) < 2, string.format("gobbler=%s want=%s", L.fmt(c), L.fmt(want))
+        return g ~= nil and s ~= nil and math.abs(box(car, g, true).Y) < 2
     end
 
     local function arcSteps()
         local x = ROLE == "host" and "host" or "client"
         return {
             { check = x .. "_arc_found", timeout = 10, cond = function() local g, s = arc(); return g ~= nil and s ~= nil end },
+            -- the game's driver seat and its mirror, from this side's own car
+            { run = function() S.want, S.driverWant = L.passengerLocal(L.car(), T.myPawn()); log("PT|info seats passenger=%s driver=%s", L.fmt(S.want), L.fmt(S.driverWant)) end },
             { run = function() report("seated"); ppReport("seated"); aimAt(forward, 120) end }, { wait = 3 },
             { run = function() T.shot("before-forward") end }, { wait = 1 },
             { run = function() aimAt(screenCentre, 120) end }, { wait = 3 },
             { run = function() report("before-arc"); S.hlBefore = highlighted(); T.shot("before-arc") end }, { wait = 1 },
-            { check = x .. "_arc_blocks_passenger_seat", timeout = 1, cond = function() return not clear(L.car()) end },
-            { run = function() if MUTATE ~= "noarc" then moveArc() else S.before, S.delta = box(L.car(), (arc()), true), L.v(0, 0, 0) end end },
+            { check = x .. "_arc_blocks_passenger_seat", timeout = 1, cond = function()
+                local car = L.car()
+                return L.d(seatLocal(car), S.want) <= 20 and not clear(car)
+            end },
+            { run = function() if MUTATE ~= "noarc" then moveArc() end end },
             { wait = 1 },
-            { check = x .. "_arc_moved", timeout = 3, cond = function() return MUTATE ~= "noarc" and moved() end },
+            { check = x .. "_arc_moved", timeout = 3, cond = function() return moved() end },
             { check = x .. "_passenger_seat_clear", timeout = 3, cond = function() return clear(L.car()) end },
+            { check = x .. "_driver_seat_clear", timeout = 3, cond = function() local car = L.car(); return clear(car, driverLocal(car), S.driverWant) end },
             { run = function() aimAt(forward, 120) end }, { wait = 3 },
             { run = function() report("after-forward"); T.shot("after-forward") end }, { wait = 1 },
             { run = function() aimAt(screenCentre, 120) end }, { wait = 3 },
@@ -234,6 +245,11 @@ return function(T)
                 local o = T.otherChar(); if o then T.flip(o) end
             end },
             { wait = 3 },
+            { check = "client_in_seat", timeout = 15, cond = function()
+                local car, me = L.car(), T.myPawn()
+                log("PT|info seat %s", L.seatInfo(me, car))
+                return L.seatErr(me, car) < 3
+            end },
         }
     end
     for _, s in ipairs(arcSteps()) do steps[#steps + 1] = s end
