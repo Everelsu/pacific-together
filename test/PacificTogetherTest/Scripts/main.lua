@@ -32,7 +32,7 @@ local function pcs()
     if not w:IsValid() then return 0 end
     local wn = w:GetFullName()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-        if pc:IsValid() and pc:GetWorld():IsValid() and pc:GetWorld():GetFullName() == wn then n = n + 1 end
+        if pc:IsValid() and not pc:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) and pc:GetWorld():IsValid() and pc:GetWorld():GetFullName() == wn then n = n + 1 end
     end
     return n
 end
@@ -208,11 +208,28 @@ end
 
 -- X13: remote player body
 local CHAR = "PDP_MainCharacter_C"
-local function inWorld(o) return o:IsValid() and o:GetWorld():IsValid() and o:GetWorld():GetFullName() == world():GetFullName() end
+-- destroyed actors stay findable (and IsValid) until garbage collection
+local function gone(o) return not o:IsValid() or o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+local function inWorld(o) return not gone(o) and o:GetWorld():IsValid() and o:GetWorld():GetFullName() == world():GetFullName() end
 local function localPC()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do if inWorld(pc) and pc:IsLocalController() then return pc end end
 end
 local function myPawn() local pc = localPC(); return pc and pc.Pawn:IsValid() and pc.Pawn or nil end
+-- M2 S4: the hello the shipping guest sends (session.lua); mod/protocol override it for refusal tests
+local function hello(mod, protocol)
+    local common = dofile("ue4ss/Mods/PacificTogether/Scripts/common.lua")
+    local game = StaticFindObject("/Script/EngineSettings.Default__GeneralProjectSettings").ProjectVersion:ToString()
+    return string.format("PT|hello mod=%s protocol=%d game=%s build=%d", mod or common.MOD_VERSION, protocol or common.PROTOCOL_VERSION,
+        game, PTNative_GameBuild and PTNative_GameBuild() or 0)
+end
+-- the shipping host refuses a guest that sends no hello. Its own mod sends one only after a PT_JOIN join; the scenarios
+-- that join with the test's own `open` send the same hello here (body -Mutate nospawn: none, so no character)
+if ROLE == "client" and (os.getenv("PT_JOIN") or "") == "" and SCENARIO ~= "sessionmismatch" and MUTATE ~= "nospawn" then
+    RegisterHook("/Script/Engine.PlayerController:ClientSetHUD", function(self)
+        local pc = self:get()
+        if netMode() == "client" and pc:IsLocalController() then pc:ServerChangeName(hello()); log("PT|info hello sent") end
+    end)
+end
 -- the other player's character: a PDP_MainCharacter_C of this world that is not ours
 local function otherChar()
     local me = myPawn()
@@ -391,7 +408,11 @@ local scenarios = {
         if ROLE == "host" then
             return {
                 onMap("RB_MainMenu", 90),
-                { run = function() log("PT|info keeplisten=%s patched=%s", tostring(keep), tostring(PTNative_SetKeepListen and PTNative_SetKeepListen(keep))) end },
+                { run = function()
+                    -- M2: the shipping mod's auto-listen (session.lua) does the same, so the mutations turn it off too
+                    if not keep then log("PT|info autolisten off %s", tostring(PTNative_SetAutoListen and PTNative_SetAutoListen(false))) end
+                    log("PT|info keeplisten=%s patched=%s", tostring(keep), tostring(PTNative_SetKeepListen and PTNative_SetKeepListen(keep)))
+                end },
                 { wait = 5 },
                 { run = function() console("open " .. GARAGE .. "?listen") end },
                 { check = "host_listen_garage", timeout = 120, cond = function() return netMode() == "listen" and map() == "RB_Garage" end },
@@ -500,6 +521,8 @@ local scenarios = {
         local loads
         return {
             onMap("RB_MainMenu", 90),
+            -- one machine: the shipping mod's auto-listen (D14) would put the guest's own game on the host's port
+            { run = function() log("PT|info autolisten off %s", tostring(PTNative_SetAutoListen and PTNative_SetAutoListen(false))) end },
             { wait = 5 },
             { run = function() log("PT|info own game: UserNewGame(6, STORY) -> %s", tostring(saveMgr():UserNewGame(6, 1))) end },
             { check = "client_own_game", timeout = 240, cond = function() return not ({ RB_MainMenu = 1, none = 1 })[map()] end },
@@ -544,26 +567,15 @@ local scenarios = {
                 { check = "host_listen_garage", timeout = 120, cond = function() return netMode() == "listen" and map() == "RB_Garage" end },
                 { check = "host_two_pcs", timeout = 180, cond = function() return pcs() == 2 end },
                 { wait = 10 },
+                -- M2: the shipping mod (session.lua, P1) gives the guest its character after the hello
                 { check = "host_spawned_guest", timeout = 30, cond = function()
-                    if MUTATE == "nospawn" then return false end
                     local hostChar = myPawn()
                     assert(hostChar and cls(hostChar) == CHAR, "host pawn " .. cls(hostChar))
                     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-                        if inWorld(pc) and not pc:IsLocalController() then
-                            local cm = first("BP_MainCharacterManager_C")
-                            local before = cm and cm.CharacterActor
-                            local l = hostChar:K2_GetActorLocation()
-                            local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = l.X, Y = l.Y + 600, Z = l.Z + 60 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
-                            local gs = UEHelpers.GetGameplayStatics()
-                            local a = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(world(), hostChar:GetClass(), xf, 2, nil), xf)
-                            pc:Possess(a)
-                            -- the single-player manager flips to the newest character; keep the host's
-                            if cm and before and before:IsValid() and cm.CharacterActor:GetFullName() ~= before:GetFullName() then cm.CharacterActor = before end
-                            guest = a
-                            log("PT|info spawned %s for %s possessed=%s manager=%s", name(a), name(pc), tostring(pc.Pawn:GetFullName() == a:GetFullName()), name(cm and cm.CharacterActor))
-                        end
+                        if inWorld(pc) and not pc:IsLocalController() and cls(pc.Pawn) == CHAR then guest = pc.Pawn end
                     end
-                    return guest ~= nil and guest:IsValid()
+                    if guest then log("PT|info guest character %s manager=%s", name(guest), name(first("BP_MainCharacterManager_C").CharacterActor)) end
+                    return guest ~= nil
                 end },
                 { wait = 10 },
                 { run = function() bodyReport("remote-before", guest); bodyReport("own-before", myPawn()) end },
@@ -629,7 +641,7 @@ local T = {
     onMap = onMap, name = name, cls = cls, first = first, saveMgr = saveMgr, mapPath = mapPath, driver = driver,
     listening = listening, quitToMenu = quitToMenu, join = join, survey = survey, timeouts = timeouts, snap = snap,
     hookSaves = hookSaves, mgrState = mgrState, inWorld = inWorld, localPC = localPC, myPawn = myPawn,
-    otherChar = otherChar, get = get, str = str, dist = dist, yawTo = yawTo, bodyMeshes = bodyMeshes,
+    otherChar = otherChar, hello = hello, get = get, str = str, dist = dist, yawTo = yawTo, bodyMeshes = bodyMeshes,
     bodyReport = bodyReport, moveState = moveState, shot = shot, flip = flip,
 }
 

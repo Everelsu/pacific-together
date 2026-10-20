@@ -19,7 +19,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900) }
+# M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
+$AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 $d = if ($Defaults.ContainsKey($Scenario)) { $Defaults[$Scenario] } else { @(2, 300) }
@@ -128,6 +130,7 @@ try {
     foreach ($s in $sides) {
         if ($procs) { Start-Sleep 8 }
         $env:PT_ROLE = $s.Role
+        $env:PT_JOIN = if ($s.Role -eq "client" -and $AutoJoin -contains $Scenario) { "127.0.0.1:$Port" } else { "" }
         $exe = Join-Path $s.Bin "PenDriverPro-Win64-Shipping.exe"
         # -nullrhi: no rendering, ~1 GB RAM and no GPU per instance, so many lanes can test at once; screenshots need a normal run
         $gameArgs = if ($Headless) { "-NotInstalled", "-nullrhi", "-nosound", "-log", "-port=$Port" } else { "-NotInstalled", "-windowed", "-ResX=960", "-ResY=540", "-log", "-port=$Port" }
@@ -135,7 +138,7 @@ try {
         Write-Host "started $($s.Role) PID $($procs[-1].Id)"
     }
 } finally {
-    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE -ErrorAction SilentlyContinue
+    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN -ErrorAction SilentlyContinue
 }
 
 function Get-NewCrashes {

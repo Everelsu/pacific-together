@@ -8,3 +8,4 @@ cmake-build-*/
 mod/PacificTogether/dlls/
 .claude/worktrees/
 native/build-fast/
+mod/PacificTogether/join.txt
