@@ -4,7 +4,7 @@
 -- same path (garage), A = a runtime-spawned loot actor both sides have, C = a lootable (zone), B = a host-only
 -- world item. Its bot opens C and takes the loot, picks B up (Q3) while hooks log the game's calls on both sides.
 -- Mutations: x2rename (client renames a loaded actor in its list), x2move (client shifts its loot spots), norep (no
--- SetReplicates), nointeract (the bot never presses interact or takes).
+-- SetReplicates), nointeract (the bot never presses interact or takes), nodestroy (the host never destroys a target).
 local UEHelpers = require("UEHelpers")
 
 return function(T, MAP, TAG)
@@ -20,7 +20,9 @@ return function(T, MAP, TAG)
     local function loc(a) local l = a:K2_GetActorLocation(); return { X = l.X, Y = l.Y, Z = l.Z } end
     local function d3(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2) end
     local function path(a) return a:GetFullName():match("^%S+ (.+)$") end
-    local function alive(a) local ok, r = pcall(function() return a and a:IsValid() and not a:IsActorBeingDestroyed() end); return ok and r end
+    -- IsValid stays true until GC (17-33 s after a destroy here) and IsActorBeingDestroyed always read false: use PendingKill
+    local PENDING_KILL = 0x20000000
+    local function alive(a) local ok, r = pcall(function() return a and a:IsValid() and not a:HasAnyInternalFlags(PENDING_KILL) end); return ok and r end
 
     -- a container's items as "n:Archetype,Archetype"
     local function contents(c)
@@ -53,19 +55,21 @@ return function(T, MAP, TAG)
                 if not a:IsValid() or a:GetWorld():GetFullName() ~= wn then return end
                 local l = loc(a)
                 r[#r + 1] = { class = cls(a), path = path(a), x = l.X, y = l.Y, z = l.Z, loaded = a:HasAnyFlags(RF_WasLoaded) and 1 or 0,
-                              role = tostring(a.Role), actor = a }
+                              role = tostring(a.Role), pk = a:HasAnyInternalFlags(PENDING_KILL) and 1 or 0, actor = a }
             end)
         end
         return r
     end
     local function logList(list)
+        local pk = 0
         for _, e in ipairs(list) do
+            pk = pk + e.pk
             if isLoot(e.class) then
-                log("PT|id side=%s tag=%s class=%s path=%s loaded=%d role=%s loc=%.0f,%.0f,%.0f%s", ROLE, TAG, e.class, e.path,
-                    e.loaded, e.role, e.x, e.y, e.z, lootState(e.actor))
+                log("PT|id side=%s tag=%s class=%s path=%s loaded=%d role=%s pendingKill=%d loc=%.0f,%.0f,%.0f%s", ROLE, TAG, e.class, e.path,
+                    e.loaded, e.role, e.pk, e.x, e.y, e.z, lootState(e.actor))
             end
         end
-        log("PT|info idlist %s: %d actors", TAG, #list)
+        log("PT|info idlist %s: %d actors, %d of them pending kill", TAG, #list, pk)
     end
     local function writeList(list, file)
         local f, renamed = assert(io.open(file .. ".tmp", "w")), false
@@ -179,7 +183,7 @@ return function(T, MAP, TAG)
         ["/Script/PenDriverInventory.ItemActorManifestation"] = { "MarkAsWorldOwned" },
         ["/Script/PenDriverPro.BaseInventoryManager"] = { "MarkCriticalitemPickedUp", "BindItemInstanceToSpawningActor", "GiveItemToPlayer" },
         ["/Script/PenDriverUtils.PooledActor"] = { "OnReturnToPool", "OnCreatedFromPool" },
-        -- not Actor:K2_DestroyActor: with that hooked, K2_DestroyActor called from Lua did nothing (spike X2 notes)
+        -- Actor:K2_DestroyActor left out: hooking it caught every engine destroy for no answer (spike X2 notes)
     }
     local BP = {
         PDP_MainCharacter_C = { "Command Interact", "Interact_WorldInteraction", "Pickup Actor", "Interaction_InventoryAction", "LongInventoryInteract", "Interaction_Deposit" },
@@ -339,11 +343,10 @@ return function(T, MAP, TAG)
         if alive(a) and MUTATE ~= "norep" then a:SetReplicates(true); a:SetReplicateMovement(true); a:ForceNetUpdate() end
         log("PT|info replicate %s %s: bReplicates=%s remoteRole=%s", tag, alive(a) and path(a) or "none", tostring(alive(a) and a.bReplicates), tostring(alive(a) and a.RemoteRole))
     end
-    -- the guest's side is the test: on the host, IsValid and IsActorBeingDestroyed read the same before and after
     local function destroy(a, tag)
-        if not alive(a) then return end
+        if not alive(a) or MUTATE == "nodestroy" then return end
         a:K2_DestroyActor()
-        log("PT|info destroy %s %s beingDestroyed=%s", tag, path(a), tostring(a:IsActorBeingDestroyed()))
+        log("PT|info destroy %s %s pendingKill=%s", tag, path(a), tostring(not alive(a)))
     end
 
     -- the host announces each target (tag, class, host path, the guest's own copy) in a second file
@@ -542,8 +545,7 @@ return function(T, MAP, TAG)
                 callSummary("afterB")
             end },
             { check = "host_pickup_game_path", timeout = 0, cond = function() return calledAny(since, { "BP_WorldItem_C:", "ItemContainer:AddItem", "BP_InventoryManager_C:AddTo" }) end },
-            -- a save-less backpack has no free slot, so the pickup rarely completes; a completed one ends in K2_DestroyActor
-            -- on the world item (run 194408), so make that call when the game did not
+            -- a completed pickup destroys the world item (Pickup Actor did); destroy it ourselves when nothing did
             { run = function() log("PT|info pickup completed=%s carried %d -> %d", tostring(not alive(B)), before.bag, bagCount()); destroy(B, "B") end },
             { wait = 30 },
             { run = function() callSummary("end") end },
@@ -573,12 +575,12 @@ return function(T, MAP, TAG)
         local mine, n = mineAlive(t), 0
         for _, o in ipairs(FindAllOf(t.class) or {}) do if T.inWorld(o) and alive(o) then n = n + 1 end end
         local l = loc(a)
-        log("PT|info replicated %s %s role=%s samePathAsHost=%s boundToOwnCopy=%s ownCopy=%s(role=%s) sameClassNow=%d hidden=%s loc=%.0f,%.0f,%.0f%s", tag, path(a),
+        log("PT|info replicated %s %s role=%s samePathAsHost=%s boundToOwnCopy=%s ownCopy=%s(role=%s) sameClassNow=%d hidden=%s loc=%.0f,%.0f,%.0f ownObject=%s%s", tag, path(a),
             tostring(a.Role), tostring(path(a) == t.path), tostring(mine ~= nil and mine:GetFullName() == a:GetFullName()), mine and path(mine) or "none",
-            tostring(mine and mine.Role), n, tostring(a.bHidden), l.X, l.Y, l.Z, lootState(a))
+            tostring(mine and mine.Role), n, tostring(a.bHidden), l.X, l.Y, l.Z, tostring(t.mine ~= "none" and select(2, pcall(function() return StaticFindObject(t.mine):IsValid() end))), lootState(a))
     end
     -- told = the host announced the target; seen = it arrived replicated within 20 s; gone = destroyed / picked up
-    local function phase(tag, goneCheck)
+    local function phase(tag)
         local s = {
             { check = "client_told_" .. tag, timeout = 400, cond = function() tgt[tag] = announced(tag); return tgt[tag] ~= nil end },
             { check = "client_sees_replicated_" .. tag, timeout = 20, cond = function()
@@ -587,14 +589,12 @@ return function(T, MAP, TAG)
                 return rep[tag] ~= nil
             end },
         }
-        if goneCheck then
-            s[#s + 1] = { check = "client_" .. tag .. "_gone", timeout = 90, cond = function() return not alive(rep[tag]) or rep[tag].bHidden == true end }
-            s[#s + 1] = { run = function()
-                local m = mineAlive(tgt[tag])
-                log("PT|info after %s: replicated alive=%s hidden=%s; own copy %s alive=%s", tag, tostring(alive(rep[tag])), tostring(alive(rep[tag]) and rep[tag].bHidden),
-                    tgt[tag].mine, tostring(m ~= nil))
-            end }
-        end
+        s[#s + 1] = { check = "client_" .. tag .. "_gone", timeout = 90, cond = function() return not alive(rep[tag]) or rep[tag].bHidden == true end }
+        s[#s + 1] = { run = function()
+            local m = mineAlive(tgt[tag])
+            log("PT|info after %s: replicated alive=%s hidden=%s; own copy %s alive=%s", tag, tostring(alive(rep[tag])), tostring(alive(rep[tag]) and rep[tag].bHidden),
+                tgt[tag].mine, tostring(m ~= nil))
+        end }
         return s
     end
     local steps = {
@@ -608,18 +608,12 @@ return function(T, MAP, TAG)
         listStep(),
         { run = function() for _, e in ipairs(actorList()) do own[e.path] = e.class; if e.role == "1" then preRep[e.path] = true end end end },
     }
-    if TAG == "garage" then add(steps, phase("L", false)) end
-    add(steps, phase("A", TAG == "garage"))
-    if TAG ~= "garage" then
-        add(steps, { { wait = 30 }, { run = function()
-            local m = mineAlive(tgt.A)
-            log("PT|info after A: replicated alive=%s hidden=%s; own copy %s alive=%s", tostring(alive(rep.A)), tostring(alive(rep.A) and rep.A.bHidden), tgt.A.mine, tostring(m ~= nil))
-        end } })
-    end
+    if TAG == "garage" then add(steps, phase("L")) end
+    add(steps, phase("A"))
     if TAG == "zone" then
-        add(steps, phase("C", true))
+        add(steps, phase("C"))
     end
-    add(steps, phase("B", true))
+    add(steps, phase("B"))
     add(steps, { { run = function() callSummary("end") end }, { wait = 5 } })
     return steps
 end
