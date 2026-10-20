@@ -73,12 +73,12 @@ return function(T, MAP, TAG)
     end
     local function writeList(list, file)
         local f, renamed = assert(io.open(file .. ".tmp", "w")), false
-        for _, e in ipairs(list) do
+        for _, e in ipairs(list) do if e.pk == 0 then
             local p, x = e.path, e.x
             if MUTATE == "x2rename" and e.loaded == 1 and not renamed then p = p .. "_renamed"; renamed = true end
             if MUTATE == "x2move" and e.loaded == 0 and isLoot(e.class) then x = x + 500 end
             f:write(string.format("%s\t%s\t%.0f\t%.0f\t%.0f\t%d\n", e.class, p, x, e.y, e.z, e.loaded))
-        end
+        end end
         f:close()
         os.remove(file)
         assert(os.rename(file .. ".tmp", file))
@@ -99,7 +99,13 @@ return function(T, MAP, TAG)
     -- partner on the other side within 50 uu (= the same object under another name)
     local diff = { partner = {}, same = {} }
     local function pt(e) return { X = e.x, Y = e.y, Z = e.z } end
-    local function compare(hostL, clientL)
+    -- only live actors: a destroyed one stays listed until GC, at a spot it may no longer have (both sides, 125124)
+    local function compare(hostAll, clientL)
+        local hostL = {}
+        for _, e in ipairs(hostAll) do
+            if e.pk == 0 then hostL[#hostL + 1] = e
+            elseif e.loaded == 1 then log("PT|iddiff dead loaded class=%s path=%s loc=%.0f,%.0f,%.0f", e.class, e.path, e.x, e.y, e.z) end
+        end
         local st, byPath, seen, hOnly, cOnly = {}, {}, {}, {}, {}
         local Z = function() return { same = 0, moved = 0, renamed = 0, host = 0, client = 0 } end
         local tot, loot, loaded, spawned = Z(), Z(), Z(), Z()
@@ -443,8 +449,9 @@ return function(T, MAP, TAG)
         add(steps, {
             -- A, a runtime-spawned loot actor the guest also spawned (under another name)
             { run = function()
-                -- spawned (not loaded) and on both sides: same name first (zone), else same spot (garage)
-                local kinds = { "Lootable", "InventoryParts", "InventoryExpansion", "LuckyJunkHeap", "Spawn_Resource", "WorldItem" }
+                -- spawned (not loaded) and on both sides: same name first (zone), else same spot (garage). Zone lootables
+                -- match only when both sides kept the same variant, so the car's trunk storage (same spot, every run) is last
+                local kinds = { "Lootable", "InventoryParts", "InventoryExpansion", "LuckyJunkHeap", "Spawn_Resource", "WorldItem", "Storage_Trunk" }
                 for _, p in ipairs(kinds) do A = A or pick(function(e) return e.class:find(p, 1, true) and e.loaded == 0 and diff.same[e.path] end) end
                 for _, p in ipairs(kinds) do A = A or pick(function(e) return e.class:find(p, 1, true) and diff.partner[e.path] end) end
                 log("PT|info x2 target A (spawned, both sides) = %s %s partner=%s %s%s", cls(A), A and path(A) or "none", A and diff.partner[path(A)] or "-", A and hlInfo(A) or "", A and lootState(A) or "")
@@ -461,7 +468,9 @@ return function(T, MAP, TAG)
         -- C, a lootable (host-only if there is one; the garage has none without a save); Q3: open and take everything
         if TAG == "zone" then add(steps, {
             { run = function()
-                C = pick(function(e) return e.class:find("^BP_Lootable") and hostOnly(e.actor) end) or pick(function(e) return e.class:find("^BP_Lootable") end)
+                -- not A: with nodestroy A is still alive, and the client already counted it
+                local notA = function(e) return not (A and alive(A) and e.path == path(A)) end
+                C = pick(function(e) return e.class:find("^BP_Lootable") and hostOnly(e.actor) and notA(e) end) or pick(function(e) return e.class:find("^BP_Lootable") and notA(e) end)
                 log("PT|info x2 target C (lootable) = %s %s hostOnly=%s %s%s", cls(C), C and path(C) or "none", tostring(C and hostOnly(C)), C and hlInfo(C) or "", C and lootState(C) or "")
                 announce("C", C)
                 approach(C)
@@ -497,7 +506,8 @@ return function(T, MAP, TAG)
                 callSummary("afterC")
             end },
             { check = "host_open_lootable_game_path", timeout = 0, cond = function() return calledAny(since, { "BP_Lootable_Base_C:", "BP_InventoryManager_C:OpenInventoryContainer" }) end },
-            { check = "host_took_loot", timeout = 0, cond = function() return bagCount() > before.bag end },
+            -- the bot's own TransferStackIntoContainer, not a UI or player transfer
+            { check = "host_transfer_takes_loot", timeout = 0, cond = function() return bagCount() > before.bag end },
             { run = function() destroy(C, "C") end },
             { wait = 20 },
         }) end
@@ -539,13 +549,21 @@ return function(T, MAP, TAG)
                 me["Pickup Actor"](me, B, false)
             end },
             { wait = 3 },
+            -- the zone's balls (IA_Garage_*Ball_Item) did not go into the backpack, even an empty one: try to hands
+            { run = function()
+                if MUTATE == "nointeract" or not alive(B) or B.bHidden then return end
+                log("PT|info Pickup Actor to backpack left B; to hands")
+                local me = T.myPawn()
+                me["Pickup Actor"](me, B, true)
+            end },
+            { wait = 3 },
             { run = function()
                 log("PT|info after pickup B: alive=%s hidden=%s backpack %d -> %s calls=%s", tostring(alive(B)), tostring(alive(B) and B.bHidden),
                     before.bag, contents(backpack()), table.concat(newCalls(since), ","))
                 callSummary("afterB")
             end },
-            { check = "host_pickup_game_path", timeout = 0, cond = function() return calledAny(since, { "BP_WorldItem_C:", "ItemContainer:AddItem", "BP_InventoryManager_C:AddTo" }) end },
-            -- a completed pickup destroys the world item (Pickup Actor did); destroy it ourselves when nothing did
+            -- the pickup (ours or the game's) took B: the world actor is gone and we carry one more; we have not destroyed it yet
+            { check = "host_pickup_completes", timeout = 0, cond = function() return not alive(B) and bagCount() > before.bag end },
             { run = function() log("PT|info pickup completed=%s carried %d -> %d", tostring(not alive(B)), before.bag, bagCount()); destroy(B, "B") end },
             { wait = 30 },
             { run = function() callSummary("end") end },
@@ -580,16 +598,24 @@ return function(T, MAP, TAG)
             tostring(mine and mine.Role), n, tostring(a.bHidden), l.X, l.Y, l.Z, tostring(t.mine ~= "none" and select(2, pcall(function() return StaticFindObject(t.mine):IsValid() end))), lootState(a))
     end
     -- told = the host announced the target; seen = it arrived replicated within 20 s; gone = destroyed / picked up
-    local function phase(tag)
+    local function phase(tag, nextTag)
+        -- gone gets its 90 s only once seen; unseen it fails at once, so the client stays in step with the host. Once the
+        -- host has announced the next target it walks away, and a removal after that is relevancy, not the host's destroy
+        local gone
+        gone = { check = "client_" .. tag .. "_gone", timeout = 0, cond = function()
+            if rep[tag] == nil then return false end
+            if nextTag and announced(nextTag) then gone.timeout = 0; return false end
+            return not alive(rep[tag]) or rep[tag].bHidden == true
+        end }
         local s = {
             { check = "client_told_" .. tag, timeout = 400, cond = function() tgt[tag] = announced(tag); return tgt[tag] ~= nil end },
             { check = "client_sees_replicated_" .. tag, timeout = 20, cond = function()
                 rep[tag] = find(tgt[tag])
-                if rep[tag] then report(tag, rep[tag]) end
+                if rep[tag] then report(tag, rep[tag]); gone.timeout = 90 end
                 return rep[tag] ~= nil
             end },
+            gone,
         }
-        s[#s + 1] = { check = "client_" .. tag .. "_gone", timeout = 90, cond = function() return not alive(rep[tag]) or rep[tag].bHidden == true end }
         s[#s + 1] = { run = function()
             local m = mineAlive(tgt[tag])
             log("PT|info after %s: replicated alive=%s hidden=%s; own copy %s alive=%s", tag, tostring(alive(rep[tag])), tostring(alive(rep[tag]) and rep[tag].bHidden),
@@ -608,10 +634,10 @@ return function(T, MAP, TAG)
         listStep(),
         { run = function() for _, e in ipairs(actorList()) do own[e.path] = e.class; if e.role == "1" then preRep[e.path] = true end end end },
     }
-    if TAG == "garage" then add(steps, phase("L")) end
-    add(steps, phase("A"))
+    if TAG == "garage" then add(steps, phase("L", "A")) end
+    add(steps, phase("A", TAG == "zone" and "C" or "B"))
     if TAG == "zone" then
-        add(steps, phase("C"))
+        add(steps, phase("C", "B"))
     end
     add(steps, phase("B"))
     add(steps, { { run = function() callSummary("end") end }, { wait = 5 } })
