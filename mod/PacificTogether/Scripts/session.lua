@@ -96,6 +96,14 @@ local function setBody(c, visible)
     end
     log("PT|session body %s visible=%s material=%s", key, tostring(visible), fullName(mesh:GetMaterial(0)))
 end
+-- Every PDP_MainCharacter binds these to the process's single-player managers (BP_MainCharacterManager CommandEnterCar /
+-- CommandExitCar, storm and feedback managers), so the local player's enter-car also ran on the other player's character:
+-- it attached itself to the car, replicated to the guest and dropped them through the map (playtest 2026-10-20).
+local LOCAL_ONLY = "CommandEnterCar|Exit Car|PlayerEnteredStorm|PlayerExitStorm|LongInventoryInteract|On player Burst feedback|On Player Ambient Feedback|FOVZoomPipelineStep"
+local function isolate(c, remote)
+    if not PTNative_Mute then return end
+    if remote then PTNative_Mute(c:GetAddress(), LOCAL_ONLY) else PTNative_Unmute(c:GetAddress()) end
+end
 local function refreshBodies()
     local w = world()
     local pc, cm = localPC(w), charManager()
@@ -103,7 +111,11 @@ local function refreshBodies()
     -- ours: the pawn, or the manager's character while we sit in the car
     local own = cm and cm.CharacterActor
     for _, c in ipairs(FindAllOf("BaseCharacter") or {}) do
-        if inWorld(c, w) then setBody(c, not same(c, pc.Pawn) and not same(c, own)) end
+        if inWorld(c, w) then
+            local remote = not same(c, pc.Pawn) and not same(c, own)
+            isolate(c, remote)
+            setBody(c, remote)
+        end
     end
 end
 
@@ -253,6 +265,7 @@ local function hookAll()
     hook("/Script/Engine.PlayerController:ClientWasKicked", function(self, reason)
         if not self:get():IsLocalController() then return end
         guestActive = false
+        if PTNative_SetRejoin then PTNative_SetRejoin("") end
         log("PT|session refused by host: %s", reason:get():ToString())
     end)
     hook("/Script/Engine.PlayerController:ClientRestart", function(self, pawn)
@@ -276,6 +289,7 @@ local function hookAll()
             -- leaving on purpose ends the guest's session
             if f == "QuitToMenu" and common.netMode() == "client" and guestActive then
                 guestActive = false
+                if PTNative_SetRejoin then PTNative_SetRejoin("") end
                 log("PT|session left")
             end
         end)
@@ -287,6 +301,7 @@ RegisterLoadMapPreHook(function(engine, worldp, url, pending)
         local w = worldp:get()
         if not valid(pending:get()) and listening(w) then removeRemoteCharacters(w) end
         changed = {}
+        if PTNative_MuteClear then PTNative_MuteClear() end
     end)
     if not ok then log("PT|error session loadmap pre %s", tostring(err)) end
 end)
@@ -307,5 +322,10 @@ ExecuteInGameThreadWithDelay(1000, function()
     if host and not PTNative_SetAutoListen then log("PT|error session native layer missing, cannot host") end
     local patched = host and PTNative_SetAutoListen and PTNative_SetAutoListen(true)
     log("PT|session ready role=%s join=%s autolisten=%s game=%s build=%d", host and "host" or "guest", tostring(JOIN), tostring(patched), gameVersion(), gameBuild())
-    if not host then join() end
+    if not host then
+        -- the host's map changes drop us: go straight back to the host instead of through the menu (native Browse swap)
+        StaticFindObject("/Script/OnlineSubsystemUtils.Default__IpNetDriver").ResolutionConnectionTimeout = CONNECT_TIMEOUT
+        log("PT|session rejoin without menu=%s", tostring(PTNative_SetRejoin and PTNative_SetRejoin(JOIN)))
+        join()
+    end
 end)

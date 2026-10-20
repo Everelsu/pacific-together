@@ -31,9 +31,15 @@ return function(T)
     end
 
     local steps = { T.onMap("RB_MainMenu", 90) }
+    local mark
     for i = 1, N do
         table.insert(steps, { check = "client_in_" .. i, timeout = 240, cond = function() return T.netMode() == "client" and T.map() == "RB_Garage" and L.guestSeesHost() end })
-        table.insert(steps, { check = "client_dropped_" .. i, timeout = 60, cond = function() return T.map() == "RB_MainMenu" end })
+        table.insert(steps, { run = function() mark = L.mark() end })
+        -- dropped: straight back to the host (PTNative_SetRejoin); with the kick mutation the mod stays out, in the menu
+        table.insert(steps, { check = "client_dropped_" .. i, timeout = 60, cond = function()
+            if T.MUTATE == "kick" then return T.map() == "RB_MainMenu" end
+            return L.reloadedNoMenu(mark)
+        end })
     end
     return steps
 end

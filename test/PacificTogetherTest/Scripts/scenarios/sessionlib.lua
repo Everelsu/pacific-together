@@ -1,6 +1,18 @@
 -- Shared checks for the session* scenarios (M2). They look at game state only; the shipping mod does the work.
 return function(T)
     local L = {}
+    -- guest: since PTNative_SetRejoin a host's map change or drop reloads us straight back to the host, not via the menu
+    local loads, menus = 0, 0
+    RegisterLoadMapPostHook(function() pcall(function()
+        loads = loads + 1
+        if T.map() == "RB_MainMenu" then menus = menus + 1 end
+    end) end)
+    function L.mark() return { loads = loads, menus = menus } end
+    -- the world was reloaded since the mark, and never into the menu
+    function L.reloadedNoMenu(m)
+        assert(menus == m.menus, "went through the main menu")
+        return loads > m.loads
+    end
     function L.chars()
         local r = {}
         for _, c in ipairs(FindAllOf("BaseCharacter") or {}) do if T.inWorld(c) then r[#r + 1] = c end end

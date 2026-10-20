@@ -388,3 +388,29 @@ Observations
 Unknowns
 - Story and garage-station save writers (S7), the moving-car disconnect (S5).
 - Q9: the firewalled crash run (`tools/q9-firewall.ps1`) needs an elevated shell; not run yet.
+
+## 2026-10-20: first playtest fixes (car entry, rejoin without the menu)
+
+The owner and Djecka played the dev preview: the guest joined and walked around, but the host getting into the car pulled the
+guest's character into the car and dropped it through the map, and the host's next run start crashed (access violation reading
+0x178 under a Blueprint call, right after `ServerMove: TimeStamp expired` warnings for the guest's character).
+
+Observations
+- Reproduced with the game MCP (`enter_car`): on the host the guest's character was attached to `BP_PlayerCarNew_C` (and stayed
+  attached after the host left the car); on the guest its own character was attached and falling (movement mode 3).
+- Cause: every `PDP_MainCharacter` binds its own `CommandEnterCar` / `Exit Car` to the process's `BP_MainCharacterManager`
+  `CommandEnterCar` / `CommandExitCar` delegates in its event graph (also storm and feedback manager events), so a broadcast reaches
+  every character in the process. The handler attaches `self` to the manager's car (`K2_AttachToActor` in the ubergraph).
+- Fix: native `mute.cpp` (`PTNative_Mute(address, names)`) drops those UFunction calls in a ProcessEvent pre-callback
+  (`PreventOriginalFunctionCall`) for the other player's character on each side; `session.lua` mutes when it marks the other body.
+  `carenter` 21/21 (host enters the car through `StartEntry`, guest stays out, run start with the guest connected, guest back in
+  the zone), mutation `nomute` fails. The run start no longer crashes; the crash was not reproduced separately (guess: it needed the
+  fallen guest character).
+- `/Engine/Maps/Entry` is not cooked (opening it lands in `RB_MainMenu`); `GameMapsSettings.TransitionMap` is None.
+- Rejoin without the menu: native `Browse` vtable swap (slot 0x460). While `PTNative_SetRejoin(host)` is set, the engine's
+  `?closed` browse (connection dropped) goes to the host instead of the default map; the guest waits on the old map until the host
+  listens again. A failed reconnect browses without `closed` and ends in the menu. `sessiontravel` 54/54 with a check that the guest
+  never loads the menu; `session` 40/40, `sessionrejoin` 36/36 updated the same way.
+
+Unknowns
+- The guest's view while it waits on the old map (a frozen last frame or a loading screen); not seen with a renderer.

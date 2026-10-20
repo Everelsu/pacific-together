@@ -8,7 +8,10 @@ What works in this build
 - The guest joins the host by IP address straight from the main menu.
 - Both players see each other's bodies and name tags, in the garage and out on a run.
 - The guest follows the host through every map change: starting a run, the gateway home, death, run failure, and the
-  host's save and quit. If the guest's game drops or crashes, the host keeps going and the guest can join again.
+  host's save and quit. The guest's screen holds still for a few seconds while the host loads, then it loads the
+  same map (no trip through the main menu). If the guest's game drops or crashes, the host keeps going and the guest
+  can join again.
+- The host can get in and out of the car; the guest stays where they stand.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 

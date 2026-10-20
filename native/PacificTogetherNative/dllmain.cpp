@@ -18,8 +18,9 @@ using namespace RC::Unreal;
 
 auto pt_register_trace(const LuaMadeSimple::Lua& lua) -> void; // trace.cpp
 auto pt_register_net(const LuaMadeSimple::Lua& lua) -> void;   // net.cpp
+auto pt_register_mute(const LuaMadeSimple::Lua& lua) -> void;  // mute.cpp
 
-static constexpr const char* NATIVE_VERSION = "0.0.3";
+static constexpr const char* NATIVE_VERSION = "0.0.4";
 
 namespace pt_guard // guard.cpp
 {
@@ -60,22 +61,57 @@ static auto keep_listen_load_map(UEngine* engine, FWorldContext* context, FURL* 
     return g_load_map(engine, context, url, pending, error);
 }
 
-// LoadMap is virtual and Browse/TickWorldTravel call it through the vtable: swap the engine's slot, which keeps UE4SS's detour behind ours.
-static auto patch_load_map(UEngine* engine) -> void
+// Guest: the host's map change closes our connection and the engine browses to "?closed" = the main menu. While a
+// session is wanted, browse straight back to the host instead: we wait on the old map until the host has loaded (no menu).
+// A failed reconnect browses without "closed" and still ends in the menu, where session.lua's join() takes over.
+using BrowseFn = int (*)(UEngine*, FWorldContext*, FURL*, FString*);
+static BrowseFn g_browse{};
+static std::wstring g_rejoin_host; // "ip" or "ip:port"; empty = off (PTNative_SetRejoin)
+
+static auto rejoin_browse(UEngine* engine, FWorldContext* context, FURL* url, FString* error) -> int
 {
-    auto offset = UEngine::VTableLayoutMap.at(STR("LoadMap"));
+    bool closed = false;
+    for (auto& op : url->Op) closed = closed || _wcsicmp(*op, STR("closed")) == 0;
+    if (closed && url->Host.Len() == 0 && !g_rejoin_host.empty())
+    {
+        auto host = g_rejoin_host;
+        int port = 7777;
+        if (auto colon = host.rfind(L':'); colon != std::wstring::npos)
+        {
+            port = _wtoi(host.c_str() + colon + 1);
+            host = host.substr(0, colon);
+        }
+        url->Host = FString(host.c_str());
+        url->Port = port;
+        url->Op.Empty();
+        Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native rejoin browse {}:{} instead of the menu\n"), host, port);
+    }
+    return g_browse(engine, context, url, error);
+}
+
+// Swaps one virtual of the engine; Browse/TickWorldTravel call LoadMap and Browse through the vtable. UE4SS's detour stays behind ours.
+static auto patch_slot(UEngine* engine, const wchar_t* name, void* mine) -> void*
+{
+    auto offset = UEngine::VTableLayoutMap.at(name);
     auto slot = reinterpret_cast<void**>(*reinterpret_cast<uint8_t**>(engine) + offset);
     DWORD old{};
     if (!VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old))
     {
-        Output::send<LogLevel::Error>(STR("[PacificTogether] PT|error native vtable protect failed\n"));
-        return;
+        Output::send<LogLevel::Error>(STR("[PacificTogether] PT|error native vtable protect failed {}\n"), name);
+        return nullptr;
     }
-    g_load_map = reinterpret_cast<LoadMapFn>(*slot);
-    *slot = reinterpret_cast<void*>(&keep_listen_load_map);
+    auto original = *slot;
+    *slot = mine;
     VirtualProtect(slot, sizeof(void*), old, &old);
-    Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loadmap patched slot=0x{:x} original={} ue4ss={}\n"), offset,
-                                    reinterpret_cast<void*>(g_load_map), UEngine::LoadMapInternal.get_function_address());
+    Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native {} patched slot=0x{:x} original={}\n"), name, offset, original);
+    return original;
+}
+
+static auto patch_load_map(UEngine* engine) -> void
+{
+    g_load_map = reinterpret_cast<LoadMapFn>(patch_slot(engine, STR("LoadMap"), reinterpret_cast<void*>(&keep_listen_load_map)));
+    // patch_load_map runs again while LoadMap is unpatched: never wrap Browse twice
+    if (!g_browse) g_browse = reinterpret_cast<BrowseFn>(patch_slot(engine, STR("Browse"), reinterpret_cast<void*>(&rejoin_browse)));
 }
 
 // S4: the Steam build id of the running game, through the game's own steam_api64.dll; 0 when Steam is not up
@@ -95,7 +131,7 @@ class PacificTogetherNative : public CppUserModBase
     PacificTogetherNative() : CppUserModBase()
     {
         ModName = STR("PacificTogether");
-        ModVersion = STR("0.0.3");
+        ModVersion = STR("0.0.4");
         ModDescription = STR("Pacific Together native layer");
         ModAuthors = STR("Pacific Together contributors");
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loaded\n"));
@@ -121,6 +157,7 @@ class PacificTogetherNative : public CppUserModBase
             if (!l) continue;
             pt_register_trace(*l);
             pt_register_net(*l);
+            pt_register_mute(*l);
             pt_guard::register_lua(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);
@@ -130,6 +167,14 @@ class PacificTogetherNative : public CppUserModBase
             l->register_function("PTNative_SetKeepListen", [](const LuaMadeSimple::Lua& l) -> int {
                 g_keep_listen = l.get_bool();
                 l.set_bool(g_load_map != nullptr);
+                return 1;
+            });
+            // PTNative_SetRejoin("ip[:port]" or ""): while set, a dropped connection browses back to that host instead of the menu.
+            // Returns whether Browse is patched.
+            l->register_function("PTNative_SetRejoin", [](const LuaMadeSimple::Lua& l) -> int {
+                auto host = std::string(l.get_string());
+                g_rejoin_host.assign(host.begin(), host.end());
+                l.set_bool(g_browse != nullptr);
                 return 1;
             });
             l->register_function("PTNative_GameBuild", [](const LuaMadeSimple::Lua& l) -> int {

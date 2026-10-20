@@ -91,6 +91,7 @@ return function(T)
     end
 
     local function back(id) return { check = id, timeout = 300, cond = function() return T.netMode() == "client" and L.gameplay(T.map()) and L.guestSeesHost() end } end
+    local mark
     return {
         T.onMap("RB_MainMenu", 90),
         { check = "client_joined_garage", timeout = 240, cond = function() return T.netMode() == "client" and T.map() == "RB_Garage" end },
@@ -103,14 +104,16 @@ return function(T)
         { check = "client_sees_host", timeout = 20, cond = function() return L.guestSeesHost() end },
         { check = "client_manager_own", timeout = 10, cond = function() return L.managerIsMine() end },
         { run = function()
+            mark = L.mark()
             T.log("PT|info garage %s", L.describe())
             if M == "leave" then T.quitToMenu() end
             if M == "rename" then T.localPC():ServerChangeName("PT|hello mod=renamed") end
         end },
-        { check = "client_dropped_by_travel", timeout = 300, cond = function() return T.map() == "RB_MainMenu" end },
+        -- the host's travel and quit drop us; the mod browses straight back to the host (no menu)
+        { check = "client_dropped_by_travel", timeout = 300, cond = function() return L.reloadedNoMenu(mark) end },
         back("client_rejoined_after_travel"),
-        { run = function() T.log("PT|info %s %s", T.map(), L.describe()) end },
-        { check = "client_dropped_by_quit", timeout = 300, cond = function() return T.map() == "RB_MainMenu" end },
+        { run = function() mark = L.mark(); T.log("PT|info %s %s", T.map(), L.describe()) end },
+        { check = "client_dropped_by_quit", timeout = 300, cond = function() return L.reloadedNoMenu(mark) end },
         back("client_rejoined_after_menu"),
         { run = function() T.log("PT|info %s %s", T.map(), L.describe()) end },
         { wait = 10 },

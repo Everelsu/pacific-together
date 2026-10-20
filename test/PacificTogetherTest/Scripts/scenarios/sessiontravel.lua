@@ -127,8 +127,17 @@ return function(T)
         inMap(p.id .. "_client_in_garage", isGarage)
     end
     inMap("quit_client_in_zone", isZone)
-    add({ check = "quit_client_in_menu", timeout = 300, cond = function() return T.map() == "RB_MainMenu" end })
-    inMap("quit_client_in_zone_resumed", isZone)
+    -- the host's quit drops us; we wait for its reload on the old map (PTNative_SetRejoin), never in the menu
+    local loads, menus, mark = 0, 0, nil
+    RegisterLoadMapPostHook(function() pcall(function()
+        loads = loads + 1
+        if T.map() == "RB_MainMenu" then menus = menus + 1 end
+    end) end)
+    add({ run = function() mark = { loads = loads, menus = menus } end })
+    add({ check = "quit_client_back_without_menu", timeout = to(300) + 240, cond = function()
+        assert(menus == mark.menus, "guest went through the main menu")
+        return loads > mark.loads and T.netMode() == "client" and isZone(T.map()) and T.cls(T.myPawn()) == T.CHAR
+    end })
     add({ wait = 25 })
     return steps
 end
