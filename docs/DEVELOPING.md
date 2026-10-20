@@ -31,6 +31,25 @@ The build copies the DLL to `mod/PacificTogether/dlls/main.dll`.
 CLion: open `native/` as a CMake project, toolchain Visual Studio (amd64), generator Ninja,
 build type `Game__Shipping__Win64`, target `PacificTogetherNative`.
 
+## Fast mod build in worktrees
+
+A git worktree normally needs the submodules and a full UE4SS build (10-15 min). Instead, with the main
+checkout's `native/build` already built, run from the worktree:
+
+```
+powershell -File tools/build-mod-fast.ps1 [-Out <path/main.dll>] [-MainBuild <dir>]
+```
+
+It takes the compile and link commands for `PacificTogetherNative` from the main build (via `ninja -t commands`),
+compiles this checkout's `native/PacificTogetherNative/*.cpp` into `native/build-fast/` (only changed files),
+links against the main build's UE4SS libraries and copies the result to `mod/PacificTogether/dlls/main.dll`
+(or `-Out`). About 5 s when nothing changed, 15-25 s after a source change.
+
+Use it for edits to our own C++ files, including new .cpp files. It refuses (use `tools/build-native.cmd`)
+when the main build is missing, the `RE-UE4SS` pin differs from main's, or our `CMakeLists.txt` adds libraries,
+compile settings or include directories. It does not read the CMake source list: every `.cpp` in the folder is built,
+and a changed header rebuilds all of them. Rebuild the main build after UE4SS or compiler flag changes.
+
 ## Test copies and tests
 
 1. Get the pinned UE4SS dev build into `local/cache/ue4ss/` (hash in `tools/setup-test.ps1`):

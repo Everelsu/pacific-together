@@ -7,3 +7,4 @@ native/build/
 cmake-build-*/
 mod/PacificTogether/dlls/
 .claude/worktrees/
+native/build-fast/
