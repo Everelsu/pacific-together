@@ -5,7 +5,9 @@
 --                      call BP_ProgressionManager:TravelToGarage(2) (the portal's car-in-range trigger is not driven)
 --   zone -> garage     death: BP_MainCharacterManager:OnPlayerDeathReturnTimer (checkpoint load or TravelToGarage(3))
 --   zone -> garage     run failure: TravelToGarage(3), the call RunFinished_Failure makes
---   zone -> menu       TravelToGarage(3, SaveAndQuit) as the pause menu calls it = SaveGame + QuitToMenu; the host reloads the garage save from the menu
+--   zone -> menu       the pause menu's save and quit: SaveGame(current slot, "", 1) + QuitToMenu (PDP_PauseMenu; its
+--                      TravelToGarage(3, .., true) call is a garage return: return states 2 and 3 skip the SaveAndQuit
+--                      branch), then the host resumes that mid-run save from the menu
 -- Each time: the host's remote characters are gone before the teardown, the host listens on the new map and the guest is back
 -- by itself, possessing a character, with the host's player controller still the host's manager character.
 -- Mutation nokeep: after the first join the host turns auto-listen and keep-listen off, so the first map change drops the guest for good.
@@ -85,18 +87,25 @@ return function(T)
             add({ wait = 8 })
             add({ run = function() T.log("PT|info %s garage %s", p.id, L.describe()) end })
         end
-        -- save and quit: the host ends in the menu, loads the garage again, the guest is back
+        -- save and quit mid-run: the host ends in the menu, resumes the run's save, the guest is back
+        local quitSlot
         add({ run = function() mark = atTeardown.maps; helpers():TravelToNextLeg(T.world()) end })
         add({ check = "quit_host_in_zone", timeout = 240, cond = function() return inZone() and sceneReady() end })
         add(guestBack("quit_guest_back_zone"))
         add({ wait = 8 })
-        add({ run = function() mark = atTeardown.maps; pm():TravelToGarage(3, false, false, true, 1, {}) end })
+        add({ run = function()
+            mark = atTeardown.maps
+            local sm = T.saveMgr()
+            quitSlot = sm.CurrentSaveSlot
+            T.log("PT|info quit: SaveGame slot=%s ok=%s", tostring(quitSlot), tostring(sm:SaveGame(quitSlot, "", 1)))
+            T.quitToMenu()
+        end })
         add({ check = "quit_host_in_menu", timeout = 120, cond = function() return T.map() == "RB_MainMenu" and T.netMode() == "standalone" end })
         add(teardownClean("quit_cleanup_before_menu"))
         add({ wait = 15 })
-        add({ run = function() T.saveMgr():UserLoadGame(7, 1, 0) end })
-        add({ check = "quit_host_listens_garage", timeout = 240, cond = function() return T.map() == "RB_Garage" and T.netMode() == "listen" and T.listening() end })
-        add(guestBack("quit_guest_back_garage"))
+        add({ run = function() T.saveMgr():UserLoadGame(quitSlot, 1, 0) end })
+        add({ check = "quit_host_listens_zone", timeout = 240, cond = function() return inZone() and T.netMode() == "listen" and T.listening() end })
+        add(guestBack("quit_guest_back_zone_resumed"))
         add({ wait = 5 })
         add({ check = "host_alive_at_end", timeout = 45, cond = L.holds(20, function() return T.netMode() == "listen" and T.pcs() == 2 end) })
         return steps
@@ -119,7 +128,7 @@ return function(T)
     end
     inMap("quit_client_in_zone", isZone)
     add({ check = "quit_client_in_menu", timeout = 300, cond = function() return T.map() == "RB_MainMenu" end })
-    inMap("quit_client_in_garage", isGarage)
+    inMap("quit_client_in_zone_resumed", isZone)
     add({ wait = 25 })
     return steps
 end

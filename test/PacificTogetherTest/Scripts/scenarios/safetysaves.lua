@@ -63,7 +63,8 @@ return function(T)
         snapAfter(w[1])
     end
     -- still in the session after all that? then the last writer: save and quit (SaveGame, then QuitToMenu = the guest leaves)
-    steps[#steps + 1] = call("travel_saveandquit", function() return T.first("BP_ProgressionManager_C"):TravelToGarage(3, false, false, true, 1, {}) end)
+    -- return states 2 and 3 jump past the SaveAndQuit branch (BP_ProgressionManager TravelToGarage bytecode), so use 0
+    steps[#steps + 1] = call("travel_saveandquit", function() return T.first("BP_ProgressionManager_C"):TravelToGarage(0, false, false, true, 1, {}) end)
     steps[#steps + 1] = { wait = 8 }
     steps[#steps + 1] = { run = function() T.snap("saveandquit") end }
     steps[#steps + 1] = { wait = 4 }
