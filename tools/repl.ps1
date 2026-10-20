@@ -12,6 +12,8 @@ param(
     [switch]$Stop
 )
 $ErrorActionPreference = "Stop"
+# a mangled -Root (e.g. bash turning C:\\PTLanes\\x into C:PTLanesx) must not silently write somewhere else
+if (-not (Test-Path (Join-Path $Root "client1\PenDriverPro"))) { throw "no test pair at '$Root' (expected $Root\client1\PenDriverPro)" }
 $copies = @{ host = "client1"; client = "client2" }
 function Get-Dir($side) { Join-Path $Root "$($copies[$side])\PenDriverPro\Binaries\Win64\ue4ss\pt_repl" }
 # Lua chokes on a BOM, which PowerShell 5.1's utf8 writers add
