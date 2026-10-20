@@ -317,7 +317,6 @@ TOOLS = {
                       dict(root=ROOT, port={"type": "integer"}, players={"type": "integer", "enum": [1, 2], "description": "1 = host only, 2 = host + joining client"},
                            fixture={"type": "string", "description": "fixture save(s) from local/fixtures, e.g. garage or zone (host standalone)"},
                            map={"type": "string", "description": "map path the host opens, e.g. /Game/Maps/RunProto/RB_Garage"},
-                           fixtures_dir={"type": "string", "description": "folder holding the fixtures (default <repo>/local/fixtures; worktrees need the main checkout's)"},
                            headless={"type": "boolean", "description": "default true; false is needed for screenshot"}, seconds={"type": "integer"},
                            ready_timeout={"type": "integer"},
                            fixtures_dir={"type": "string", "description": "folder holding the fixtures (default <repo>/local/fixtures, or env PT_FIXTURES_DIR); worktrees need the main checkout's"}), []),
