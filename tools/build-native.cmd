@@ -1,5 +1,5 @@
 @echo off
-rem Builds native/ (UE4SS + PacificTogetherNative); the DLL lands in mod/PacificTogether/dlls/main.dll.
+rem Builds native/ (UE4SS + PacificTogetherNative); the DLL lands in mod/PacificTogetherNative/dlls/main.dll.
 rem First run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
 setlocal
 set "VS="

@@ -52,6 +52,8 @@ if ($installed -ne (Get-Content (Join-Path $PSScriptRoot "game\$stamp"))) {
         Compress-Archive -Path $saved -DestinationPath $backup
         Write-Host "Saves backed up to $backup"
     }
+    # older builds kept main.dll in the Lua mod's folder; left there it would load twice
+    Remove-Item (Join-Path $bin "ue4ss\Mods\PacificTogether\dlls") -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item (Join-Path $PSScriptRoot "game\*") $bin -Recurse -Force
 }
 $joinFile = Join-Path $bin "ue4ss\Mods\PacificTogether\join.txt"

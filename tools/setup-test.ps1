@@ -36,7 +36,7 @@ function Link-Game($src, $dst) {
             New-Item -ItemType HardLink -Path $target -Target $_.FullName | Out-Null
         }
     }
-    robocopy "$Game\$BinRel" "$dst\$BinRel" /E /NFL /NDL /NJH /NP /R:1 /W:1 | Out-Null
+    robocopy "$Game\$BinRel" "$dst\$BinRel" /E /NFL /NDL /NJH /NP /R:1 /W:1 /XD "$Game\$BinRel\ue4ss" /XF dwmapi.dll | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "robocopy Binaries failed with $LASTEXITCODE" }
 }
 
@@ -45,7 +45,8 @@ if ($LinkFrom) {
     Link-Game (Resolve-Path $LinkFrom).Path $c1
 } else {
     Write-Host "client1: copying the game (first run takes a while, later runs only copy changes)"
-    robocopy $Game $c1 /E /NFL /NDL /NJH /NP /R:1 /W:1 /XD "$Game\PenDriverPro\Saved" | Out-Null
+    # never the real install's UE4SS or mod: copied through the mod junctions it would overwrite the repo
+    robocopy $Game $c1 /E /NFL /NDL /NJH /NP /R:1 /W:1 /XD "$Game\PenDriverPro\Saved" "$Game\$BinRel\ue4ss" /XF dwmapi.dll | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 }
 if ((Get-FileHash "$c1\$ExeRel").Hash -ne $PinnedExe) { throw "client1 exe hash mismatch" }
@@ -61,7 +62,7 @@ foreach ($c in $c1, $c2) {
     Set-Content -Path "$bin\steam_appid.txt" -Value "1458140" -Encoding ascii -NoNewline
     if (-not (Test-Path "$bin\ue4ss\UE4SS.dll")) { Expand-Archive -Path $UE4SSZip -DestinationPath $bin -Force }
     # junctions, so edits in the repo apply on the next game launch
-    foreach ($m in @(@{n = "PacificTogether"; s = "$Repo\mod\PacificTogether"}, @{n = "PacificTogetherTest"; s = "$Repo\test\PacificTogetherTest"})) {
+    foreach ($m in @(@{n = "PacificTogether"; s = "$Repo\mod\PacificTogether"}, @{n = "PacificTogetherNative"; s = "$Repo\mod\PacificTogetherNative"}, @{n = "PacificTogetherTest"; s = "$Repo\test\PacificTogetherTest"})) {
         $link = "$bin\ue4ss\Mods\$($m.n)"
         if ((Test-Path $m.s) -and -not (Test-Path $link)) { New-Item -ItemType Junction -Path $link -Target $m.s | Out-Null }
     }

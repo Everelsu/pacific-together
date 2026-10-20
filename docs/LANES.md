@@ -39,6 +39,7 @@ Background: `coop-anything/playbook/multi-agent-workflows.md`, `methods.md` sect
 | Tool | Use |
 |---|---|
 | `tools/repl.ps1` + `repl` scenario | ask the running game questions in ~1 s instead of a relaunch per question |
+| `tools/repl.ps1 -Reload` | load edited mod Lua into the running games in seconds instead of relaunching (not `main.dll`) |
 | `tools/gamemcp` (MCP `pacific-game`, `docs/GAME-MCP.md`) | the same console as agent tools: find/describe/call objects, watch which functions fire, screenshot, logs, xref |
 | `local/atlas`, `docs/research/game-atlas.md` | grep the game's Blueprint code and call graph instead of re-extracting it |
 | `tools/run-test.ps1 -Fixture <name>` | start a test in a saved state (garage, zone, gateway) instead of building it each run |

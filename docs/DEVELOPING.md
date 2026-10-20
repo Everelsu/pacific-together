@@ -19,8 +19,8 @@
 
 Tasks that don't touch `native/` (most research, Lua features, tests, docs; see `docs/TASKS.md`) need only the game,
 git, Python and PowerShell. Skip Visual Studio, Rust, the Epic link and the submodules: clone, then take `main.dll` from
-the newest dev preview zip (`game/ue4ss/Mods/PacificTogether/dlls/main.dll`, ask the owner) into
-`mod/PacificTogether/dlls/`, and continue at "Test copies and tests". If `native/` changed on main since that zip, ask
+the newest dev preview zip (`game/ue4ss/Mods/PacificTogetherNative/dlls/main.dll`, older zips: `Mods/PacificTogether/dlls/`;
+ask the owner) into `mod/PacificTogetherNative/dlls/`, and continue at "Test copies and tests". If `native/` changed on main since that zip, ask
 for a newer one.
 
 ## Clone and build
@@ -34,7 +34,8 @@ tools\build-native.cmd
 
 `native/RE-UE4SS` is pinned to the commit of the UE4SS build we run (8333063, release
 `UE4SS_v3.0.1-1181-g83330635`). Our DLL links against it and loads in that official release (spike X9).
-The build copies the DLL to `mod/PacificTogether/dlls/main.dll`.
+The build copies the DLL to `mod/PacificTogetherNative/dlls/main.dll`: its own UE4SS mod, so reloading the Lua mod
+(`tools/repl.ps1 -Reload`) never unloads it.
 
 CLion: open `native/` as a CMake project, toolchain Visual Studio (amd64), generator Ninja,
 build type `Game__Shipping__Win64`, target `PacificTogetherNative`.
@@ -50,7 +51,7 @@ powershell -File tools/build-mod-fast.ps1 [-Out <path/main.dll>] [-MainBuild <di
 
 It takes the compile and link commands for `PacificTogetherNative` from the main build (via `ninja -t commands`),
 compiles this checkout's `native/PacificTogetherNative/*.cpp` into `native/build-fast/` (only changed files),
-links against the main build's UE4SS libraries and copies the result to `mod/PacificTogether/dlls/main.dll`
+links against the main build's UE4SS libraries and copies the result to `mod/PacificTogetherNative/dlls/main.dll`
 (or `-Out`). About 5 s when nothing changed, 15-25 s after a source change.
 
 Use it for edits to our own C++ files, including new .cpp files. It refuses (use `tools/build-native.cmd`)

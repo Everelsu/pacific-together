@@ -26,8 +26,9 @@ A tag is cut only when all of these are true:
 `PacificTogether-vX.Y.Z.zip`, unpacked into `<game dir>/PenDriverPro/Binaries/Win64/`:
 
 ```
-ue4ss/Mods/PacificTogether/   Lua scripts, dlls/main.dll, enabled.txt
-README.txt                    install, play, uninstall, known issues, where logs are
+ue4ss/Mods/PacificTogether/         Lua scripts, enabled.txt
+ue4ss/Mods/PacificTogetherNative/   dlls/main.dll, enabled.txt (own mod, so a Lua reload never unloads it)
+README.txt                          install, play, uninstall, known issues, where logs are
 ```
 
 - UE4SS itself is bundled (MIT, its `ue4ss/LICENSE` ships along): the pinned dev build the tests run on, minus its PDB and docs,

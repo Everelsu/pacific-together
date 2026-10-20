@@ -414,3 +414,44 @@ Observations
 
 Unknowns
 - The guest's view while it waits on the old map (a frozen last frame or a loading screen); not seen with a renderer.
+
+## 2026-10-20: hot reload probe, engine source
+
+Observations
+- UE 4.27.2 engine source (runtime + OnlineSubsystemSteam/Utils) is in `local/ue` (shallow sparse clone of tag
+  `4.27.2-release`, commit d94b38ae, 195 MB, git-ignored). Read it instead of probing engine behaviour in a game.
+- Lua `RestartMod("PacificTogether")` (UE4SS `LuaMod.cpp:5591`) reinstalls both the Lua mod and our C++ mod `main.dll`,
+  because both carry the folder's name (`UE4SSProgram.cpp:2031` queues `LuaMod` and `CppMod`). Log shows
+  `Stopping C++ mod 'PacificTogether' for uninstall`, `PT|native loaded`, `guard imports patched=5/5` per call.
+- Three calls in a row in a headless garage host: the first two reloads come back (`PT|boot` each), the game dies right after
+  the third (`local/test-results/20261020-230953-repl`, runner: crash, no CrashContext).
+- Lua uninstall unregisters the mod's hooks and callbacks (`LuaMod::uninstall`, `LuaMod.cpp:6129`).
+- A Lua-only reinstall exists (`queue_reinstall_lua_mod_by_name`, used by the UE4SS GUI) but is not exported
+  (no `RC_UE4SS_API`), so neither Lua nor our DLL can call it.
+
+- Split: `main.dll` now lives in its own mod `Mods/PacificTogetherNative/dlls/`, so `RestartMod("PacificTogether")` only
+  restarts the Lua mod (no `Stopping C++ mod` line). Plain Lua-only RestartMod with a guest connected still killed the host on
+  the first reload (`20261020-232445-reload`, log ends after `Stopping mod 'PacificTogether' for uninstall`): UE4SS
+  uninstalls on its event loop thread while the game thread keeps firing the mod's hooks.
+- Fix (native 0.0.5, test runs only): `PTNative_ReloadLua()` before `RestartMod` queues an event ahead of the reinstall that
+  waits until the game thread sits in an engine-tick pre-callback; that callback waits until `on_lua_start` sees the new
+  `PacificTogether` Lua mod (timeouts 5 s / 10 s). Scenario `reload` 28/28 (`20261020-232939-reload`): 5 reloads per side
+  with a guest in the garage, 5 `reload resumed started=true` per side, then native travel and the guest's rejoin.
+  Repeats: with the wait 3/3 (`232939`, `233701`, `234025`); mutation `nowait` (plain RestartMod) 3/3 too (`232445`'s crash
+  was 1 of 4 plain runs). Mutation `noreload` fails 26/28 as it should.
+
+Guesses
+- The wait fixes the crash: unproven (1 crash in 4 plain runs, 0 in 3 with the wait). The race is visible in UE4SS's code
+  (`LuaMod::uninstall` runs off the game thread, hooks fire on it), so the wait stays; it is test-only.
+- The first solo crash (3 reloads with `main.dll` reinstalled each time) was the same race, or the DLL reload, or both.
+
+Unknowns
+- Lua state that the old mod held (session flags, delayed callbacks already queued) starts fresh; a reload mid-travel is untested.
+
+Observation (setup bug, fixed): `tools/setup-test.ps1` robocopied the real install's `Binaries/Win64` including `ue4ss/`.
+Once the owner had a dev preview installed, the copy went through the test copies' `Mods/PacificTogether` junction and
+overwrote the repo's `mod/PacificTogether` with the installed 0.0.2 build (Lua files with their 19:52/20:12 mtimes,
+`dlls/main.dll`, `version.txt`), and replaced the test copies' UE4SS settings with the preview's (consoles off). The real
+install was only read. Fix: both copies skip `ue4ss/` and `dwmapi.dll`; setup expands the pinned UE4SS zip itself.
+Pairs set up while a preview was installed: re-expand the UE4SS zip into each copy's `Binaries/Win64` and check
+`git status` in the repo the junctions point at.

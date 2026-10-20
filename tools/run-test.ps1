@@ -21,9 +21,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420); sessionabrupt = @(2, 900); sessionabruptzone = @(2, 900); sessiontravel = @(2, 1500); safetysaves = @(2, 900); carenter = @(2, 1200) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420); sessionabrupt = @(2, 900); sessionabruptzone = @(2, 900); sessiontravel = @(2, 1500); safetysaves = @(2, 900); carenter = @(2, 1200); reload = @(2, 900) }
 # M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
-$AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin", "sessionabrupt", "sessionabruptzone", "sessiontravel", "carenter")
+$AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin", "sessionabrupt", "sessionabruptzone", "sessiontravel", "carenter", "reload")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 # Q9: a side crashes on purpose, so the run needs that crash instead of "no crash" and keeps waiting after it
@@ -48,6 +48,7 @@ foreach ($s in $sides) {
     $s.Snaps = [ordered]@{}
     $s.Prefix = ""; $s.Life = 1
     if (-not (Test-Path "$($s.Bin)\ue4ss\Mods\PacificTogetherTest")) { throw "$($s.Dir) is not set up; run tools\setup-test.ps1" }
+    if (-not (Test-Path "$($s.Bin)\ue4ss\Mods\PacificTogetherNative")) { throw "$($s.Dir) has no PacificTogetherNative mod (main.dll moved there); run tools\setup-test.ps1 again" }
 }
 
 function Get-TestProcesses($names) {

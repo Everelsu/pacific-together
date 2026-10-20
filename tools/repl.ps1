@@ -2,6 +2,7 @@
 # background: run-test.ps1 -Scenario repl -Seconds 3600 -Headless. Exit code 0 = ok, 1 = Lua error, 2 = no answer.
 #   repl.ps1 -Code "FindFirstOf('BP_PlayerCarNew_C')"            # an expression returns its value
 #   repl.ps1 -Side client -File probe.lua                        # a block can call out(...) and return values
+#   repl.ps1 -Reload                                             # reloads the main mod's Lua from the repo (not main.dll)
 #   repl.ps1 -Stop                                               # ends the repl scenario on both sides
 param(
     [string]$Root = "C:\PacificTogetherTest",
@@ -9,6 +10,7 @@ param(
     [string]$Code = "",
     [string]$File = "",
     [int]$Timeout = 20,
+    [switch]$Reload,
     [switch]$Stop
 )
 $ErrorActionPreference = "Stop"
@@ -24,6 +26,8 @@ if ($Stop) {
     Write-Host "stop requested"; exit 0
 }
 if ($File) { $Code = [IO.File]::ReadAllText((Resolve-Path $File)) }
+# main.dll is its own mod (PacificTogetherNative), so only the Lua mod restarts; PTNative_ReloadLua holds the game thread meanwhile
+if ($Reload) { $Code = 'if not PTNative_ReloadLua() then return "reload already under way" end RestartMod("PacificTogether") return "reload queued"' }
 if (-not $Code) { throw "give -Code or -File" }
 
 $dir = Get-Dir $Side

@@ -109,7 +109,13 @@ Several agents or developers can test at once, each in their own lane:
    its value; a block can call `out(...)` for extra lines and `return` values. Every helper of the test mod's `T`
    table is in scope (`state`, `first`, `inWorld`, `console`, `map`, `netMode`, `dist`, ...), plus all UE4SS globals.
    Exit code 0 = ok, 1 = Lua error (message printed), 2 = no answer (game not running or not past the main menu).
-3. End it: `tools/repl.ps1 [-Root ...] -Stop`; the scenario passes `repl_session_stopped`, the runner closes both
+3. Change Lua without a relaunch: edit `mod/PacificTogether/Scripts/*.lua`, then `tools/repl.ps1 [-Root ...] [-Side ...] -Reload`
+   restarts the main mod's Lua in that game (UE4SS `RestartMod`; hooks are unregistered and registered again, Lua state
+   starts fresh). `main.dll` stays loaded (it is its own mod, `PacificTogetherNative`); a native change still needs a
+   relaunch. The game thread waits during the reinstall (`PTNative_ReloadLua`, test runs only): a plain `RestartMod` races
+   the hooks (crashed a host with a guest once in 4 runs). Scenario `reload` proves it in a live two-player session (mutation
+   `noreload`; `nowait` drops the wait but rarely fails).
+4. End it: `tools/repl.ps1 [-Root ...] -Stop`; the scenario passes `repl_session_stopped`, the runner closes both
    games and frees the slot.
 
 The console also runs during every other scenario, so a failing test can be inspected while it runs. It exists only

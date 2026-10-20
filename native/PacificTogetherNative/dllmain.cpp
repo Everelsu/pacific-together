@@ -6,6 +6,12 @@
 #include <Unreal/FWorldContext.hpp>
 #include <Unreal/World.hpp>
 #include <Unreal/FURL.hpp>
+#include <UE4SSProgram.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <thread>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -23,7 +29,22 @@ auto pt_register_blackbox(const LuaMadeSimple::Lua& lua) -> void; // blackbox.cp
 auto pt_blackbox_install() -> void;
 auto pt_blackbox_set_game_thread() -> void;
 
-static constexpr const char* NATIVE_VERSION = "0.0.4";
+static constexpr const char* NATIVE_VERSION = "0.0.5";
+
+// Lua hot reload (test runs): UE4SS uninstalls a Lua mod on its event loop thread while the game thread keeps firing
+// that mod's hooks (a host with a guest died on the first RestartMod). The game thread waits in an engine tick instead.
+// 0 idle, 1 armed, 2 game thread waiting, 3 the new Lua mod started
+static std::atomic<int> g_reload{};
+static auto wait_while(int state, std::chrono::seconds limit) -> bool
+{
+    auto end = std::chrono::steady_clock::now() + limit;
+    while (g_reload == state)
+    {
+        if (std::chrono::steady_clock::now() > end) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return true;
+}
 
 namespace pt_guard // guard.cpp
 {
@@ -134,7 +155,7 @@ class PacificTogetherNative : public CppUserModBase
     PacificTogetherNative() : CppUserModBase()
     {
         ModName = STR("PacificTogether");
-        ModVersion = STR("0.0.4");
+        ModVersion = STR("0.0.5");
         ModDescription = STR("Pacific Together native layer");
         ModAuthors = STR("Pacific Together contributors");
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loaded\n"));
@@ -149,6 +170,14 @@ class PacificTogetherNative : public CppUserModBase
             pt_blackbox_set_game_thread();
             if (!g_load_map) patch_load_map(engine);
         }, {true, true, STR("PacificTogether"), STR("PatchLoadMap")});
+        // outside UE4SS's own Lua game-thread work (a separate tick callback), so its Lua lock is free for the uninstall
+        Hook::RegisterEngineTickPreCallback([](auto&, UEngine*, float, bool) {
+            int armed = 1;
+            if (!g_reload.compare_exchange_strong(armed, 2)) return;
+            bool started = wait_while(2, std::chrono::seconds(10));
+            g_reload = 0;
+            Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native reload resumed started={}\n"), started);
+        }, {false, true, STR("PacificTogether"), STR("ReloadWait")});
     }
 
     // Called after every Lua mod starts; ours and the test mod (PacificTogetherTest) get the functions.
@@ -157,6 +186,7 @@ class PacificTogetherNative : public CppUserModBase
             -> void override
     {
         if (!mod_name.starts_with(STR("PacificTogether"))) return;
+        if (mod_name == STR("PacificTogether")) { int waiting = 2; g_reload.compare_exchange_strong(waiting, 3); }
         for (auto* l : {&lua, &main_lua, &async_lua, hook_lua})
         {
             if (!l) continue;
@@ -193,6 +223,26 @@ class PacificTogetherNative : public CppUserModBase
                 l.set_bool(g_load_map != nullptr);
                 return 1;
             });
+            if (std::getenv("PT_SCENARIO"))
+            {
+                // test runs only: PTNative_ReloadLua() right before RestartMod("PacificTogether"). The event queued here
+                // runs before the reinstall's and holds it until the game thread waits. Returns false while one is under way.
+                l->register_function("PTNative_ReloadLua", [](const LuaMadeSimple::Lua& l) -> int {
+                    int idle = 0;
+                    bool ok = g_reload.compare_exchange_strong(idle, 1);
+                    if (ok)
+                    {
+                        UE4SSProgram::get_program().queue_event([] {
+                            if (wait_while(1, std::chrono::seconds(5))) return;
+                            int armed = 1;
+                            g_reload.compare_exchange_strong(armed, 0);
+                            Output::send<LogLevel::Warning>(STR("[PacificTogether] PT|native reload: game thread did not wait, reinstalling anyway\n"));
+                        });
+                    }
+                    l.set_bool(ok);
+                    return 1;
+                });
+            }
             transport_register(*l);
             steam_register(*l);
         }

@@ -5,7 +5,8 @@ $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..\..").Path
 if ((Get-FileHash $UE4SSZip).Hash -ne "82378CD7F679D055026286F11347355AC67C712F21EB892060C902BB0184B907") { throw "UE4SS zip hash mismatch: $UE4SSZip" }
 $mod = Join-Path $Repo "mod\PacificTogether"
-if (-not (Test-Path "$mod\dlls\main.dll")) { throw "build the native layer first (tools\build-native.cmd)" }
+$native = Join-Path $Repo "mod\PacificTogetherNative"
+if (-not (Test-Path "$native\dlls\main.dll")) { throw "build the native layer first (tools\build-native.cmd)" }
 if (git -C $Repo status --porcelain -- mod) { throw "mod/ has uncommitted changes; commit first so the zip name matches its contents" }
 
 $version = [regex]::Match((Get-Content "$mod\Scripts\common.lua" -Raw), 'MOD_VERSION = "([^"]+)"').Groups[1].Value
@@ -21,7 +22,9 @@ $ini = "$game\ue4ss\UE4SS-settings.ini"
 (Get-Content $ini) -replace '^(ConsoleEnabled|GuiConsoleEnabled|GuiConsoleVisible) = 1', '$1 = 0' | Set-Content $ini -Encoding ascii
 
 $dst = New-Item -ItemType Directory -Force "$game\ue4ss\Mods\PacificTogether"
-Copy-Item "$mod\enabled.txt", "$mod\Scripts", "$mod\dlls" $dst -Recurse
+Copy-Item "$mod\enabled.txt", "$mod\Scripts" $dst -Recurse
+$ndst = New-Item -ItemType Directory -Force "$game\ue4ss\Mods\PacificTogetherNative"
+Copy-Item "$native\enabled.txt", "$native\dlls" $ndst -Recurse
 Set-Content "$dst\version.txt" $name -Encoding ascii  # install.ps1 skips the copy and backup when this matches
 Copy-Item "$PSScriptRoot\install.ps1", "$PSScriptRoot\install.cmd", "$PSScriptRoot\launcher.ps1", "$PSScriptRoot\launcher.cmd", "$PSScriptRoot\README.txt" $stage
 

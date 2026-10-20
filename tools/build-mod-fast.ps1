@@ -14,7 +14,7 @@ function Die($m) { Write-Host "build-mod-fast: $m" -ForegroundColor Red; exit 1 
 
 $root = if ($Root) { (Resolve-Path $Root).Path } else { (Resolve-Path "$PSScriptRoot/..").Path }
 $src = "$root\native\PacificTogetherNative"
-if (-not $Out) { $Out = "$root\mod\PacificTogether\dlls\main.dll" }
+if (-not $Out) { $Out = "$root\mod\PacificTogetherNative\dlls\main.dll" }
 $Out = [IO.Path]::GetFullPath($Out)
 $tgt = 'PacificTogetherNative'
 $mainRoot = (Resolve-Path "$MainBuild\..\..").Path
