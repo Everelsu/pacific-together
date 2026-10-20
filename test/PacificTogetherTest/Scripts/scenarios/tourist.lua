@@ -118,6 +118,8 @@ return function(T)
             local hostChar = T.myPawn()
             guestPC = remotePCs()[1]
             if not hostChar or not guestPC then return false end
+            -- M2: the shipping mod (session.lua, P1) already gave the guest a character after its hello; use that one
+            if T.cls(guestPC.Pawn) == T.CHAR then guest = guestPC.Pawn; return true end
             local cm = T.first("BP_MainCharacterManager_C")
             local before = cm and cm.CharacterActor
             local l = hostChar:K2_GetActorLocation()

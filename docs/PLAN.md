@@ -196,11 +196,35 @@ Timeboxed experiments. Each writes Observations / Derived / Unknowns to `NOTES.m
 | X10 | Real risk: the game's autosave wrote the host's world into the guest's own save. A Lua pre-hook on `BaseSaveGameManager:SaveGame` setting the slot to -1 blocks it. M2 adds that plus guards for the other writers; a native write guard under `Saved/SaveGames` for a hard guarantee. Never change guest settings in place (`GameUserSettings.ini` is rewritten on every map load) |
 | X11 | Solved: the 20 s limit is `IpNetDriver.ResolutionConnectionTimeout`. Set it on the CDO from Lua before `open` |
 | X3 | Duplicates are wider than the car: every car part, garage stations and storage, quest actors and zone lootables exist separately on the guest. Gate them in M3/M4; stable ids (X2) must cover lootables and storage. Redo the zone survey once the guest has a character (relevancy hid the host's actors) |
+| X2 | **Partly free ids.** Loaded actors keep the same path on both sides (skip pending-kill ones); spawned actors, garage storage and zone loot do not (zone loot is a separate random pick per side), so M4 ids = path for loaded, class + spot + ordinal for spawned. Host replication shows and removes host actors on the guest but does not sync state. Only "open container" was seen on the game's own path; take and pickup were host calls, the loot-UI take path is unknown. `docs/spikes/X2.md` |
+| X4 | **Guest interaction works locally only**: highlight, container menu and pickup run through the game's code on the guest's own copies; nothing reaches the host. Running an interaction on the host "as the guest" lands the result on the host player, so M4 = guest-local interaction, hooked effect points send intents. Zone loot blocked by X2 duplicates. `docs/spikes/X4.md` |
+| X5 | **Passes.** A ws2_32 `sendto`/`recvfrom` import-table hook moves UE's traffic onto our link; listen, travel, zonejoin pass through a loopback tunnel, listen and travel also at 150 ms + 2 % loss (tunnel emulation; shipping UE has no NetEmulation). Keep the transport plan. `docs/spikes/X5.md` |
+| X6 | **Groundwork, one account**: the game's own Steam session (appid 1458140) gives lobby, rich presence, relay and Messages with no init of our own. The first unreliable send after a reliable one can stall the game thread 1-6 s, so M6 sends off the `sendto` path. Two-account test not run yet (`docs/spikes/X6.md`) |
+| X7 | **Plan ready**: kinematic car on the guest with motion-time Hermite interpolation, adaptive delay 100-250 ms; same-time error about 43-55 / 80 / 103 uu at 0 / 100 / 150 ms lag. The guest destroys its own car copy on arrival. `docs/spikes/X7.md` |
+| X8 | **Seat found, the guest must hold it**: the guest sits on the mirrored driver seat; the host's attach replicates but the pawn is sometimes thrown kilometres away, so a guest-side seat guard re-places it (cause unknown). ARC (Gobbler + screen) moved between the seats, both seats clear; overlap with the gear shifter and car computer unchecked. `docs/spikes/X8.md` |
+| X12 | **Yes**: the guest's backpack round-trips as a one-line record (items, counts, grid, rotation, durability, hand, quick slots) through leave/rejoin and a host reload from a side file; the game's `.sav` is untouched. Destroy guest characters before a host LoadGame (else crash 0x20). `docs/spikes/X12.md` |
+| Lane E | Research for D13/D16/D17/D19/D21: Tourist freeze via a `CreepCheck` hook works; Fabrication = host `Craft Recipe Asset`, guest craft blockable; gateway summon = host `Select Exit Portal Actor`; ARC map marker registers (not seen drawn); Sentry dormant, CrashReportClient is the uploader. `docs/spikes/E.md`, `docs/research/` |
 
 ### M2 Session core (M)
 
 S1, S3-S7, P1, P7, Q9: event-driven join (game mode login hooks, no polling), spawn and possess, travel keeps the session,
 rejoin, handshake, guest saves blocked, name tags, game crash upload off, mod inert outside sessions. **Release 0.1.0** (direct IP, internal).
+
+Progress (2026-10-20, lanes F1 and F2 merged; details in `docs/spikes/M2-session.md`, `docs/spikes/M2-safety.md`):
+
+| Id | State |
+|---|---|
+| S1 | Implemented, tested: auto-listen on every gameplay map (`session`). The Steam lobby part is M6 |
+| S3 | Implemented, tested via `PT_JOIN` (`session`, `sessionrejoin`); `join.txt` untested |
+| S4 | Implemented, tested: accept, mismatch refusal, no-hello refusal (`session`, `sessionmismatch`, mutations `match`, `hello2`). DLC report not done |
+| S5 | Implemented, tested for a polite drop, 6 cycles (`sessionrejoin`); abrupt drop, mid-run and moving car untested |
+| S6 | Partly: `UserNewGame` and `QuitToMenu` + new game (`session`), native travel keeps listening (`travel`); gateway/zone travel and run failure untested |
+| S7 | Implemented, tested for the writers exercised (`safety`, `guestsave`); `SaveCheckpoint`, story, run-end and station saves not exercised |
+| P1 | Implemented, tested (`session`, `body`, `sessionlook`) |
+| P7 | Implemented, tested (`nametag`); shows the PlayerState name until Steam (M6); fade checks have no failing mutation |
+| Q7 | Implemented, tested (`sessionsolo`, `safety_solo`) |
+| Q9 | Implemented: own crash marker, no CrashReportClient start, Sentry DSN cleared, `sentry_init` refused (`safety_crash`, `safety_solo`). The D23 firewall crash run is still owed |
+| G5 | Implemented, tested with a guest (`safety`); not isolated from the game's own multiplayer behaviour, real menu path untested |
 
 ### M3 Car (M-L)
 

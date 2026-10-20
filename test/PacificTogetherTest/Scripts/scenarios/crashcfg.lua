@@ -1,9 +1,8 @@
 -- D16 probe (docs/research/crash-reports.md), one game. Reads the Sentry plugin's settings as the game loaded them
 -- (DefaultEngine.ini plus any Saved/Config override) and finds its subsystem. Values only, the DSN is never printed.
--- PT_SENTRY_EXPECT=off: an override in Saved/Config sets InitAutomatically=False and an empty DsnUrl; the check
--- fails without it, which is the mutation (run once with and once without the override).
+-- Q9 (M2): the shipping mod (safety.lua) empties DsnUrl at load, so with the mod installed the DSN reads empty with or
+-- without a Saved/Config override; the vanilla values (DSN set) are in docs/research/crash-reports.md.
 return function(T)
-    local expectOff = os.getenv("PT_SENTRY_EXPECT") == "off"
     local function settings()
         local s = StaticFindObject("/Script/Sentry.Default__SentrySettings")
         if not s:IsValid() then return nil end
@@ -21,8 +20,7 @@ return function(T)
         { check = "sentry_settings_loaded", timeout = 10, cond = function()
             local v, sub = report("menu")
             if not v or not sub then return false end
-            if expectOff then return v.init == false and v.dsn == 0 end
-            return v.dsn > 0
+            return v.init == false and v.dsn == 0
         end },
         -- the window in which the runner's caller looks for crashpad_handler.exe under this copy
         { wait = 40 },

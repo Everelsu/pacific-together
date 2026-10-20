@@ -7,8 +7,12 @@ function M.spawnGuest(T)
     local hostChar, guest = T.myPawn(), nil
     assert(hostChar and T.cls(hostChar) == T.CHAR, "host pawn " .. T.cls(hostChar))
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
+        -- M2: the shipping mod (session.lua, P1) already gave a guest that sent its hello a character; use that one
+        if T.inWorld(pc) and not pc:IsLocalController() and pc.Player:IsValid() and T.cls(pc.Pawn) == T.CHAR then
+            guest = pc.Pawn
+            T.log("PT|info guest character %s from the shipping mod for %s", T.name(guest), T.name(pc))
         -- a PC whose guest left stays findable until GC: only PCs with a live connection and no character yet
-        if T.inWorld(pc) and not pc:IsLocalController() and pc.Player:IsValid() and T.cls(pc.Pawn) ~= T.CHAR then
+        elseif T.inWorld(pc) and not pc:IsLocalController() and pc.Player:IsValid() and T.cls(pc.Pawn) ~= T.CHAR then
             local cm = T.first("BP_MainCharacterManager_C")
             local before = cm.CharacterActor
             local l = hostChar:K2_GetActorLocation()

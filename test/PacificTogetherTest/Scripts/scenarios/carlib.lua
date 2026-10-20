@@ -95,7 +95,11 @@ return function(T)
             local hostChar = T.myPawn()
             assert(hostChar and T.cls(hostChar) == T.CHAR, "host pawn " .. T.cls(hostChar))
             for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-                if T.inWorld(pc) and not pc:IsLocalController() then
+                -- M2: the shipping mod (session.lua, P1) already gave the guest a character after its hello; use that one
+                if T.inWorld(pc) and not pc:IsLocalController() and T.cls(pc.Pawn) == T.CHAR then
+                    guest, L.guest = pc.Pawn, pc.Pawn
+                    log("PT|info guest character %s from the shipping mod for %s", T.name(guest), T.name(pc))
+                elseif T.inWorld(pc) and not pc:IsLocalController() then
                     local cm = T.first("BP_MainCharacterManager_C")
                     local before = cm and cm.CharacterActor
                     local l = hostChar:K2_GetActorLocation()

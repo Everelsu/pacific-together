@@ -342,3 +342,29 @@ choreography); `20261019-182606-body` 17/20 (another lane's client took the gues
 Verdict: change the plan slightly: P1's body needs no new mesh, only a visible material on the other player's
 character (M2: apply WorldGridMaterial or a better cooked material to remote `CharacterMesh0` on both sides). Djecka's
 model becomes optional polish.
+
+## 2026-10-19: parallel lanes
+
+Seven lanes (worktrees `lane/*`, run `wf_27e42d54-d99`, continued 2026-10-20) ran M1 spikes and the M2 session core in
+parallel and were merged into main on 2026-10-20. Results, with observations, derived facts, guesses and unknowns, are
+in the lane docs; verdicts are in `docs/PLAN.md` (M1 results table, M2 progress).
+
+- A transport: `docs/spikes/X5.md` (UDP tunnel), `docs/spikes/X6.md` (Steam lobby, rich presence, messages; one account).
+- B world: `docs/spikes/X2.md` (stable ids, runtime replication, loot call paths).
+- C interaction: `docs/spikes/X4.md` (guest interaction), `docs/spikes/X12.md` (backpack record).
+- D car: `docs/spikes/X7.md` (car interpolation), `docs/spikes/X8.md` (passenger seat, ARC move).
+- E research: `docs/spikes/E.md`, `docs/research/{tourists,garage-stations,arc-device,arc-marker,crash-reports}.md`.
+- F1 session: `docs/spikes/M2-session.md`. F2 safety: `docs/spikes/M2-safety.md`.
+
+Merge regression (main test pair, port 7777): after the merge the shipping session mod gives every guest that sends the
+hello a character, so lane scenarios that spawned their own guest character (`nametag`, `interact`/`backpack` via
+`guestchar.lua`, `carlib.lua`, `tourist`) now use the shipping one; `crashcfg` now expects the empty DSN that `safety.lua`
+sets (Q9). Derived from the code, not run: the native `PTNative_NetStats` counters (game MCP) and the X5 tunnel both swap the exe's `sendto`/`recvfrom`
+import slots by value, so whichever runs second in a process finds no slot (tunnel: `PT|error`, net_stats: 0 slots).
+
+Regression after the merge and these fixes, native 0.0.3 built from main (`local/test-results/20261020-1533*` to
+`-170232*`): boot, listen, travel, guestsave, zonejoin, body, fixtureload, listen through the tunnel, session,
+sessionmismatch, sessionrejoin, sessionsolo, sessionlook, safety, safety_crash, safety_solo, nametag, x2garage, x2zone,
+interact, backpack, interactzone, carseat, carride (with car-error), tourist, stations, arc, crashcfg: all checks PASS.
+Not run: steamsolo (puts a lobby on the owner's real Steam account), steamhost/steamguest (two accounts), probes and
+diagnostics (dump, repl, invprobe, safety_probe, sessionchurn, sessionmats, sessionprobe), and no mutations.

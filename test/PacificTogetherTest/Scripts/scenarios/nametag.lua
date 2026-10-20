@@ -61,19 +61,10 @@ return function(T)
         for _, s in ipairs({
             { check = "host_two_pcs", timeout = 180, cond = function() return T.pcs() == 2 end },
             { wait = 10 },
+            -- M2: the shipping mod (session.lua, P1) gives the guest its character after the hello; a second one would take the tag's PlayerState
             { check = "host_spawned_guest", timeout = 30, cond = function()
-                local hostChar = T.myPawn()
                 for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-                    if T.inWorld(pc) and not pc:IsLocalController() then
-                        local cm = T.first("BP_MainCharacterManager_C")
-                        local before = cm and cm.CharacterActor
-                        local l = hostChar:K2_GetActorLocation()
-                        local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = l.X, Y = l.Y + 600, Z = l.Z + 60 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
-                        local gs = StaticFindObject("/Script/Engine.Default__GameplayStatics")
-                        guest = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(T.world(), hostChar:GetClass(), xf, 2, nil), xf)
-                        pc:Possess(guest)
-                        if cm and before and before:IsValid() then cm.CharacterActor = before end
-                    end
+                    if T.inWorld(pc) and not pc:IsLocalController() and T.cls(pc.Pawn) == T.CHAR then guest = pc.Pawn end
                 end
                 return guest ~= nil and guest:IsValid()
             end },
