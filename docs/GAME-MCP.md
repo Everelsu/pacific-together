@@ -42,6 +42,11 @@ Results are capped at 20k characters and say when cut. Errors come back as tool 
 
 State and sync (`snapshot`, `compare`, `diff_snapshots`, `fixture_save`, and `session_start fixtures_dir=`): `docs/gamemcp/state.md`.
 
+**Actions** (`teleport`, `move_to`, `jump`, `interact`, `enter_car`, `drive`, `give_item`, `pickup`, `journal`, `promote`, ...): make a
+player walk, interact, drive and handle items with one call each, through the game's own input and interaction paths, and turn
+the session into a scenario skeleton: `docs/gamemcp/actions.md`. `session_start` also takes `fixtures_dir` (worktrees find the
+main checkout's `local/fixtures` themselves).
+
 `session_start` waits for a free game slot (`PT_SLOTS`) and takes 15-60 s headless, longer in a queue. Use your own root
 and port (`docs/TESTING.md`, "Parallel lanes"): one session per root, a second `session_start` on a busy root is refused.
 
