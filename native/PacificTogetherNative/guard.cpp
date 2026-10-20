@@ -109,6 +109,8 @@ namespace pt_guard
             SetLastError(ERROR_FILE_NOT_FOUND);
             return FALSE;
         }
+        // the test switch starts it suspended: the process exists for the check but never runs, so nothing is sent
+        if (g_test_allow_crc && line.find(L"crashreportclient") != std::wstring::npos) flags |= CREATE_SUSPENDED;
         return real_create_process(app, cmd, pa, ta, inherit, flags, env, dir, si, pi);
     }
 

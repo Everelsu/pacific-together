@@ -1,7 +1,8 @@
 -- Q9: the guest crashes on purpose (PTNative_TestCrash) during a session; the host then checks what the crash left in the
 -- guest's copy: a new crash folder with our PacificTogether-crash.txt marker, and no CrashReportClient process started.
 -- Sentry is never initialised by this build (see docs/spikes/M2-safety.md), so nothing could upload there either.
--- -Mutate crc: the native layer lets CrashReportClient start (test-only switch), so host_no_crashreportclient FAILs.
+-- -Mutate crc: the native layer lets CrashReportClient start, suspended so it never runs (test-only switch), so
+-- host_no_crashreportclient FAILs.
 -- The runner treats the crash as expected for this scenario (tools/run-test.ps1 $CrashExpected).
 return function(T)
     local L = require("scenarios.safety_lib")
@@ -21,7 +22,16 @@ return function(T)
         p:close()
         return r
     end
-    local function crcRunning() return L.children("CrashReportClient.exe", crashes:match("^(.*)\\PenDriverPro\\Saved\\Crashes$")) end
+    -- CrashReportClient processes for this crash, found by the crash folder in their command line (a suspended one has no
+    -- ExecutablePath); kill stops them too, since the runner's cleanup only finds running ones
+    local function crc(kill)
+        local cmd = [[powershell -NoProfile -Command "$p = @(Get-CimInstance Win32_Process -Filter \"Name='CrashReportClient.exe'\" | Where-Object { $_.CommandLine -like '*GUID*' }); KILL$p.Count"]]
+        cmd = cmd:gsub("GUID", found:match("[^\\]+$")):gsub("KILL", kill and "$p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; " or "")
+        local p = io.popen(cmd)
+        local n = tonumber(p:read("a"):match("%d+"))
+        p:close()
+        return n
+    end
     return {
         T.onMap("RB_MainMenu", 90),
         { run = function()
@@ -43,6 +53,7 @@ return function(T)
             T.log("PT|info marker %s: %s", found, tostring(m))
             return m ~= nil and m:find("Pacific Together crash marker", 1, true) ~= nil and m:find("guest=true", 1, true) ~= nil
         end },
-        { check = "host_no_crashreportclient", timeout = 1, cond = function() local n = crcRunning(); T.log("PT|info CrashReportClient processes: %s", tostring(n)); return n == 0 end },
+        { check = "host_no_crashreportclient", timeout = 1, cond = function() local n = crc(); T.log("PT|info CrashReportClient processes: %s", tostring(n)); return n == 0 end },
+        { run = function() crc(true) end },
     }
 end
