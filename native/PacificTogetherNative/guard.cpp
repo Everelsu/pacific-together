@@ -16,6 +16,8 @@
 
 using namespace RC;
 
+auto pt_blackbox_dump() -> std::string; // blackbox.cpp
+
 namespace pt_guard
 {
     static std::atomic<bool> g_on{};
@@ -67,7 +69,8 @@ namespace pt_guard
         g_marked = dir;
         HANDLE f = real_create_file((dir + L"\\PacificTogether-crash.txt").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (f == INVALID_HANDLE_VALUE) return;
-        std::string text = "Pacific Together crash marker\r\nCrash upload: off (the mod never starts CrashReportClient or Sentry)\r\n" + g_crash_info + "\r\n";
+        std::string text = "Pacific Together crash marker\r\nCrash upload: off (the mod never starts CrashReportClient or Sentry)\r\n" + g_crash_info + "\r\n" +
+                           pt_blackbox_dump();
         DWORD n{};
         WriteFile(f, text.data(), static_cast<DWORD>(text.size()), &n, nullptr);
         CloseHandle(f);

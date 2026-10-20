@@ -99,7 +99,9 @@ end
 -- Every PDP_MainCharacter binds these to the process's single-player managers (BP_MainCharacterManager CommandEnterCar /
 -- CommandExitCar, storm and feedback managers), so the local player's enter-car also ran on the other player's character:
 -- it attached itself to the car, replicated to the guest and dropped them through the map (playtest 2026-10-20).
-local LOCAL_ONLY = "CommandEnterCar|Exit Car|PlayerEnteredStorm|PlayerExitStorm|LongInventoryInteract|On player Burst feedback|On Player Ambient Feedback|FOVZoomPipelineStep"
+-- Only events: a muted call returns zeros, so a pipeline step with a return value (FOVZoomPipelineStep: max(Input - zoom, 25))
+-- would clamp the local player's FOV to 25 (playtest 2 "weird FOV"). The other player's zoom is 0 on our side, so it may run.
+local LOCAL_ONLY = "CommandEnterCar|Exit Car|PlayerEnteredStorm|PlayerExitStorm|LongInventoryInteract|On player Burst feedback|On Player Ambient Feedback"
 local function isolate(c, remote)
     if not PTNative_Mute then return end
     if remote then PTNative_Mute(c:GetAddress(), LOCAL_ONLY) else PTNative_Unmute(c:GetAddress()) end

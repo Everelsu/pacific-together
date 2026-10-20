@@ -19,6 +19,9 @@ using namespace RC::Unreal;
 auto pt_register_trace(const LuaMadeSimple::Lua& lua) -> void; // trace.cpp
 auto pt_register_net(const LuaMadeSimple::Lua& lua) -> void;   // net.cpp
 auto pt_register_mute(const LuaMadeSimple::Lua& lua) -> void;  // mute.cpp
+auto pt_register_blackbox(const LuaMadeSimple::Lua& lua) -> void; // blackbox.cpp
+auto pt_blackbox_install() -> void;
+auto pt_blackbox_set_game_thread() -> void;
 
 static constexpr const char* NATIVE_VERSION = "0.0.4";
 
@@ -140,8 +143,10 @@ class PacificTogetherNative : public CppUserModBase
 
     auto on_unreal_init() -> void override
     {
+        pt_blackbox_install();
         // the first LoadMap (boot -> menu) hands us the live engine; patch its vtable then
         Hook::RegisterLoadMapPreCallback([](auto&, UEngine* engine, FWorldContext&, FURL, UPendingNetGame*, FString&) {
+            pt_blackbox_set_game_thread();
             if (!g_load_map) patch_load_map(engine);
         }, {true, true, STR("PacificTogether"), STR("PatchLoadMap")});
     }
@@ -158,6 +163,7 @@ class PacificTogetherNative : public CppUserModBase
             pt_register_trace(*l);
             pt_register_net(*l);
             pt_register_mute(*l);
+            pt_register_blackbox(*l);
             pt_guard::register_lua(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);
