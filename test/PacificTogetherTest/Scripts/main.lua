@@ -654,6 +654,9 @@ for _, m in ipairs({ "mcp_state", "mcp_actions", "mcp_observe" }) do
     if ok then f(T)
     elseif not tostring(f):find("module '" .. m .. "' not found", 1, true) then log("PT|error %s %s", m, tostring(f)) end
 end
+-- X5: run-test.ps1 -Tunnel puts the scenario through the native tunnel (tunnel.lua); the client then opens 10.77.0.1
+local tunnel, realHost = os.getenv("PT_TUNNEL") and require("tunnel"), HOST
+if tunnel then HOST = tunnel.host(HOST); T.HOST = HOST end
 
 local make = scenarios[SCENARIO]
 if not make then
@@ -665,6 +668,7 @@ if not make then
     make = function() return mod(T) end
 end
 local steps = make()
+if tunnel then steps = tunnel.wrap(T, steps, realHost) end
 local planned = 0
 for _, s in ipairs(steps) do if s.check then planned = planned + 1 end end
 log("PT|plan side=%s checks=%d scenario=%s mutate=%s", ROLE, planned, SCENARIO, MUTATE)

@@ -14,7 +14,9 @@ param(
     [string]$ResultsDir = "",
     # copy local/fixtures/<name>/*.sav into the host copy's Saved/SaveGames for the run (its own saves are restored after) and set PT_FIXTURE
     [string]$Fixture = "",
-    [string]$FixturesDir = ""
+    [string]$FixturesDir = "",
+    # X5: "udp [lag=ms] [loss=pct] [hold=s]" runs the scenario through the native tunnel (test Scripts/tunnel.lua)
+    [string]$Tunnel = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
@@ -128,6 +130,7 @@ if ($Fixture) {
 $started = Get-Date
 $procs = @()
 $env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
+if ($Tunnel) { $env:PT_TUNNEL = $Tunnel }
 try {
     foreach ($s in $sides) {
         if ($procs) { Start-Sleep 8 }
@@ -140,7 +143,7 @@ try {
         Write-Host "started $($s.Role) PID $($procs[-1].Id)"
     }
 } finally {
-    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN -ErrorAction SilentlyContinue
+    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN, Env:PT_TUNNEL -ErrorAction SilentlyContinue
 }
 
 function Get-NewCrashes {
@@ -166,6 +169,7 @@ Write-Host "stopped waiting: $stop ($elapsed s)"
 
 if (-not $ResultsDir) { $ResultsDir = Join-Path $Repo "local\test-results" }
 $lane = if ($Root.TrimEnd('\') -ne "C:\PacificTogetherTest") { "-" + (Split-Path $Root -Leaf) } else { "" }
+if ($Tunnel) { $lane += "-tunnel" }
 $results = Join-Path $ResultsDir ("{0}{1}-{2}{3}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $lane, $Scenario, $(if ($Mutate) { "-$Mutate" }))
 New-Item -ItemType Directory -Force $results | Out-Null
 if (-not $KeepOpen) {

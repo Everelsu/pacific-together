@@ -11,6 +11,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#include "transport.hpp"
+
 using namespace RC;
 using namespace RC::Unreal;
 
@@ -140,6 +142,8 @@ class PacificTogetherNative : public CppUserModBase
                 l.set_bool(g_load_map != nullptr);
                 return 1;
             });
+            transport_register(*l);
+            steam_register(*l);
         }
     }
 };
