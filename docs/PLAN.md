@@ -28,6 +28,8 @@ Anything marked **(spike)** is a design assumption that a milestone M1 experimen
 | D19 | **Tourists freeze if any player looks at them** (W7 moves to P0). |
 | D20 | **No co-op difficulty scaling**: the host's difficulty preset rules; the mod changes no balance values. |
 | D21 | **Guest can use the garage stations** (Fabrication, Tinker, Detailing) in v1.0, spending the host's shared resources (G2). |
+| D22 | **ARC scope for the guest in v1.0: gateway summon and energy use only.** Route planning stays host-only until v1.1 (it runs through native `UBaseRouteState`; lane E research, 2026-10-20). Narrows D13 / W11. |
+| D23 | **Prove the crash-upload block (D16/Q9) before 1.0** with one deliberate test-copy crash while a Windows Firewall rule blocks the test copy's CrashReportClient outbound (owner approved; needs a UAC prompt). Until then test copies have no CrashReportClient.exe at all (`setup-test.ps1` removes it). |
 
 ## 2. Fixed constraints
 
@@ -114,7 +116,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | W7 | Tourists count as observed if any player looks at them (D19) | P0 |
 | W8 | Remaining anomalies and Whispers in the Woods content | P1 |
 | W9 | Expeditions mode | P1 |
-| W11 | Either player can use the ARC: route planning, gateway summon, energy (D13) | P0 |
+| W11 | Either player can summon the gateway and use ARC energy (D13, D22); guest route planning is P1 | P0 |
 | W10 | A guest without the DLC can play the base-game zones with a DLC-owning host. Whether DLC content is installed for non-owners is unknown; until checked, the host is warned before travelling into DLC content | P1 |
 
 ### Garage, story, progression

@@ -54,6 +54,8 @@ Write-Host "client2: hardlinking game data, copying Binaries"
 Link-Game $c1 $c2
 
 foreach ($c in $c1, $c2) {
+    # the stock crash reporter can upload to Ironwood without a click; modded test crashes must never reach them
+    Remove-Item (Join-Path $c "Engine\Binaries\Win64\CrashReportClient.exe") -Force -ErrorAction SilentlyContinue
     $bin = Join-Path $c $BinRel
     # without it the copy restarts through Steam into the real install
     Set-Content -Path "$bin\steam_appid.txt" -Value "1458140" -Encoding ascii -NoNewline
