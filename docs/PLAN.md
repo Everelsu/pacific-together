@@ -261,8 +261,9 @@ DLC-less guests (W10), Expeditions, in-game host/join menu.
 
 - Two developers, each with Claude. One milestone at a time; inside a milestone, parallel lanes per subsystem
   (see `coop-anything/playbook/multi-agent-workflows.md`), each lane owning its own files.
-- Branches: `main` always passes the test suite. Work on `feat/<area>-<topic>` or `spike/<id>`, merge via PR reviewed
-  by the other developer.
+- Branches: `main` always passes the test suite. Work on `feat/<area>-<topic>`, `spike/<id>`, `research/<topic>`,
+  `test/<topic>` or `fix/<topic>`, merge via PR reviewed by the other developer. Open work for contributors, by cost:
+  `docs/TASKS.md`.
 - Commits: imperative summary, optional scope prefix (`car: interpolate client transform`).
 - Every PR touching gameplay names the test scenario that covers it and pastes its summary.
 - `NOTES.md`: observations / derived / guesses / unknowns, with sources, written as you go.

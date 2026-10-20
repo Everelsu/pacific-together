@@ -3,7 +3,9 @@
 Two-player online co-op mod for [Pacific Drive](https://store.steampowered.com/app/1458140/Pacific_Drive/):
 one drives, one rides along, both scavenge, the run is shared. Join through Steam invites.
 
-**Status: planning. Nothing playable yet.** See [docs/PLAN.md](docs/PLAN.md) for scope and milestones.
+**Status: early development.** Two players can join by IP, see each other and walk the garage and zones together;
+the car, loot and the run aren't synced yet. No public release before 1.0. See [docs/PLAN.md](docs/PLAN.md) for scope
+and milestones.
 
 - Game build: Steam v1.15.0 (buildid 21896301). Other builds are not supported.
 - Built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS). Not affiliated with Ironwood Studios.
@@ -36,6 +38,12 @@ Epic-linked GitHub accounts can download.
    ```
    Do not use `git clone --recursive`: it uses the SSH addresses and fails without an SSH key.
 
-Test copies of the game, the test runner and CLion settings: [docs/DEVELOPING.md](docs/DEVELOPING.md).
+Test copies of the game, the test runner and CLion settings: [docs/DEVELOPING.md](docs/DEVELOPING.md). Many tasks need
+none of the C++ setup above (see its "Lua-only setup").
+
+## Contributing
+
+[docs/TASKS.md](docs/TASKS.md) lists self-contained tasks, each on its own branch, sorted by AI-token cost and by how
+many game instances they need. Some need no AI at all. To claim one, open a draft PR named after its id.
 
 MIT license. This repository contains no game files.

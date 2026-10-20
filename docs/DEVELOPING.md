@@ -15,6 +15,14 @@
 - Fetching the submodules uses `-c url."https://github.com/".insteadOf="git@github.com:"` (below) because UE4SS's
   `.gitmodules` uses SSH addresses. If you have an SSH key on GitHub, a plain `git submodule update --init --recursive` works too.
 
+### Lua-only setup (no C++ toolchain)
+
+Tasks that don't touch `native/` (most research, Lua features, tests, docs; see `docs/TASKS.md`) need only the game,
+git, Python and PowerShell. Skip Visual Studio, Rust, the Epic link and the submodules: clone, then take `main.dll` from
+the newest dev preview zip (`game/ue4ss/Mods/PacificTogether/dlls/main.dll`, ask the owner) into
+`mod/PacificTogether/dlls/`, and continue at "Test copies and tests". If `native/` changed on main since that zip, ask
+for a newer one.
+
 ## Clone and build
 
 ```
