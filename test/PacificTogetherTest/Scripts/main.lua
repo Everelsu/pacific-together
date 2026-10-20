@@ -635,6 +635,7 @@ local T = {
 
 require("repl")(T)
 require("fixtures")(T)
+require("gamemcp")(T)
 
 local make = scenarios[SCENARIO]
 if not make then

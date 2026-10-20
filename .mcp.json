@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pacific-game": {
+      "command": "python",
+      "args": ["tools/gamemcp/server.py"]
+    }
+  }
+}

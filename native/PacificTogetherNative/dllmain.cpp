@@ -14,6 +14,8 @@
 using namespace RC;
 using namespace RC::Unreal;
 
+auto pt_register_trace(const LuaMadeSimple::Lua& lua) -> void; // trace.cpp
+
 static constexpr const char* NATIVE_VERSION = "0.0.2";
 
 // X1b: native travel (Browse -> LoadMap) drops ?listen, so the host would come back standalone.
@@ -93,6 +95,7 @@ class PacificTogetherNative : public CppUserModBase
         for (auto* l : {&lua, &main_lua, &async_lua, hook_lua})
         {
             if (!l) continue;
+            pt_register_trace(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);
                 return 1;
