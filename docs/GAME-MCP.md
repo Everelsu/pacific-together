@@ -39,6 +39,8 @@ Results are capped at 20k characters and say when cut. Errors come back as tool 
 | `logs` | tail of the copy's `UE4SS.log` (`game_log=true`: `PenDriverPro.log`), regex filter | `pattern="PT\|" tail=50` |
 | `xref` | `local/atlas/xref.py` callers / callees / class / find | `command=callers name=SaveGame` |
 
+State and sync (`snapshot`, `compare`, `diff_snapshots`, `fixture_save`, and `session_start fixtures_dir=`): `docs/gamemcp/state.md`.
+
 `session_start` waits for a free game slot (`PT_SLOTS`) and takes 15-60 s headless, longer in a queue. Use your own root
 and port (`docs/TESTING.md`, "Parallel lanes"): one session per root, a second `session_start` on a busy root is refused.
 

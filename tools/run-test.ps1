@@ -116,6 +116,8 @@ if ($Fixture) {
     if (Test-Path $saveDir) { Rename-Item $saveDir "$(Split-Path $saveDir -Leaf).ptbak" }
     New-Item -ItemType Directory $saveDir | Out-Null
     foreach ($fx in $fxDirs) { Copy-Item "$fx\*.sav" $saveDir }
+    # fixtures made by the game MCP (fixture_save) carry fixture.json {slot,map}; the test mod reads PT_FIXTURE_SPEC for them
+    $env:PT_FIXTURE_SPEC = ($fxDirs | Where-Object { Test-Path "$_\fixture.json" } | ForEach-Object { $j = Get-Content "$_\fixture.json" -Raw | ConvertFrom-Json; "$(Split-Path $_ -Leaf)=$($j.slot):$($j.map)" }) -join ","
     Write-Host "fixture $Fixture -> $saveDir"
 }
 

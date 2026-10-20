@@ -138,7 +138,7 @@ def lua_call(fn, side, root, *args, timeout=30):
 
 # ---------------------------------------------------------------- session
 
-def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=None, headless=True, seconds=3600, ready_timeout=420):
+def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=None, headless=True, seconds=3600, ready_timeout=420, fixtures_dir=None):
     root_p = check_root(root)
     if players not in (1, 2):
         raise ToolError("players must be 1 or 2")
@@ -155,6 +155,8 @@ def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=N
         cmd.append("-Headless")
     if fixture:
         cmd += ["-Fixture", fixture]
+        if fixtures_dir:
+            cmd += ["-FixturesDir", str(fixtures_dir)]
     env = dict(os.environ)
     if map:
         env["PT_MAP"] = map
@@ -311,6 +313,7 @@ TOOLS = {
                       dict(root=ROOT, port={"type": "integer"}, players={"type": "integer", "enum": [1, 2], "description": "1 = host only, 2 = host + joining client"},
                            fixture={"type": "string", "description": "fixture save(s) from local/fixtures, e.g. garage or zone (host standalone)"},
                            map={"type": "string", "description": "map path the host opens, e.g. /Game/Maps/RunProto/RB_Garage"},
+                           fixtures_dir={"type": "string", "description": "folder holding the fixtures (default <repo>/local/fixtures; worktrees need the main checkout's)"},
                            headless={"type": "boolean", "description": "default true; false is needed for screenshot"}, seconds={"type": "integer"},
                            ready_timeout={"type": "integer"}), []),
     "session_status": (t_session_status, "Is the session on this root alive, and what does each side report (net mode, map, controllers)?", dict(root=ROOT), []),
