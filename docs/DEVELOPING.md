@@ -60,3 +60,9 @@ and a changed header rebuilds all of them. Rebuild the main build after UE4SS or
 
 Game class dumps for reading: run `tools/run-test.ps1 -Scenario dump`, output in `local/dumps/`
 (open `UHTHeaderDump` in CLion).
+
+## Game MCP and Blueprint atlas
+
+`tools/gamemcp` (`.mcp.json`, `docs/GAME-MCP.md`) needs only Python and a test pair; its `watch` tool needs the native DLL built
+with `trace.cpp` (the build above). Its `xref` tool reads `local/atlas`, which is git-ignored game data: copy the folder from
+the owner or rebuild it as described in `docs/research/game-atlas.md`.

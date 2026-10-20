@@ -14,6 +14,7 @@ work by others is in `reference/` as read-only research material.
 - `docs/LANES.md`: how agent lanes work (test-first, candidate tournament, Sonnet workers, speed tools). Read before any lane work.
 - `docs/DEVELOPING.md` (setup, build), `docs/TESTING.md` (test runner, live console). `mod/PacificTogether` = shipping Lua mod,
   `native/PacificTogetherNative` = its C++ part (`dlls/main.dll`), `test/PacificTogetherTest` = test bots (never shipped).
+- `tools/gamemcp/` + `.mcp.json`: MCP server `pacific-game` to ask a running test game things (`docs/GAME-MCP.md`).
 - `NOTES.md`: our lab notes, shared and committed.
 - `local/`: git-ignored, per-developer private state (install paths, logs, dumps). Reread at session start.
 
