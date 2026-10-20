@@ -455,3 +455,24 @@ overwrote the repo's `mod/PacificTogether` with the installed 0.0.2 build (Lua f
 install was only read. Fix: both copies skip `ue4ss/` and `dwmapi.dll`; setup expands the pinned UE4SS zip itself.
 Pairs set up while a preview was installed: re-expand the UE4SS zip into each copy's `Binaries/Win64` and check
 `git status` in the repo the junctions point at.
+
+## 2026-10-20: message channel (intents and state)
+
+Observations
+- UE 4.27.2 source (`local/ue`): `APlayerController::ServerExecRPC(FString)` is `Reliable, Server, WithValidation`, and in
+  shipping its body is empty (`PlayerController.cpp:1739`, `#if !UE_BUILD_SHIPPING`). `ClientMessage(FString, FName, float)`
+  is `Reliable, Client` and only reaches `ClientTeamMessage`, which prints to the viewport console
+  (`PlayerController.cpp:1384`, `1399`). No Blueprint in the game references either (`local/atlas`).
+- Native `msg.cpp`: guest to host on `ServerExecRPC`, host to guest on `ClientMessage`, chunks of 1000 bytes
+  `PT1|<kind>|<m|e>|<bytes>` caught in a ProcessEvent pre-callback (original call dropped), reassembled per controller
+  and kind, kept in an inbox that each Lua mod polls by kind prefix. Max message 32 KB (33 chunks, far below UE's 256
+  outstanding reliable bunches).
+- Scenario `channel` 21/21 (`20261020-234822-channel`): 50 ordered messages and a 20 KB message with every byte value
+  but NUL, each way, sender = the guest's controller, 70 chunks each way, dropped 0; 40 KB refused. Mutation `nocapture`
+  16/21.
+- Upstream PDCoopNet v0.6 (BroZYTnikkkk/pacific-drive-coop @23d6957) carries its items, trunk and car sync in PlayerState
+  names polled every 200 ms (one message in flight, 8 KB cap; 60 KB never arrived). Facts mined from it are in the
+  session's review; the car part functions (`Set Fuel`, `GetFuelStatus`, `Set Battery`, `GetBatteryStatus`) match our atlas.
+
+Unknowns
+- Behaviour under packet loss and over the Steam tunnel (reliable RPCs should resend; not run).
