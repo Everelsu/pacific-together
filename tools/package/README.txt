@@ -7,8 +7,8 @@ Game build: Steam v1.15.0 (build 21896301). The installer refuses any other buil
 What works in this build
 - The guest joins the host by IP address straight from the main menu.
 - Both players see each other's bodies and name tags, in the garage and out on a run.
-- The guest follows the host when the garage reloads and rejoins on its own if a map load drops it. Starting a run
-  and coming back from one with a guest connected are still being tested.
+- The guest follows the host through every map change: starting a run, the gateway home, death, run failure, and the
+  host's save and quit. If the guest's game drops or crashes, the host keeps going and the guest can join again.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
@@ -16,7 +16,6 @@ Not done yet (expect oddities)
 - The car: only the host drives, and the guest can't ride along yet.
 - Loot, items, world changes and the run's state aren't synced yet. What the guest picks up or does may not
   show up for the host.
-- After the guest leaves or crashes, its character may stay standing in the host's world (being fixed).
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.

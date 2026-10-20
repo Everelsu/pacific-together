@@ -3,6 +3,15 @@
 Rules for every workflow or agent lane from M3 on (owner decision 2026-10-20: speed and token cost matter most).
 Background: `coop-anything/playbook/multi-agent-workflows.md`, `methods.md` section 8, `lessons.md`.
 
+## Priority: gameplay first, crucial checks only (owner, 2026-10-20)
+
+- Gameplay and sync features come first: item sync, loot, the guest's backpack, the car, anything a player notices.
+- Each feature gets **one** scenario that proves it works, plus its mutation. After each merge, run the smoke set:
+  `session`, `travel`, `body`, `sessionrejoin`, `zonejoin`, `safety`, about 10 minutes. The full suite runs only before a
+  build goes to friends or a release.
+- Don't hunt edge cases (rare crashes, odd disconnect timings, rarely used save paths) and don't polish tests or
+  over-engineer. Write a found edge case into `NOTES.md` as a known gap and move on, unless it breaks normal play.
+
 ## Roles
 
 - **Lead (Opus):** splits the milestone into requirements, writes each requirement's **failing test scenario first**
