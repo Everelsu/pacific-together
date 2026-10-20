@@ -47,6 +47,27 @@ actors). Counts are host / client.
 | d | `SpectatorPawn`, cameras, HUD, `ParticleEventManager` | | fine |
 | host only | the whole run spawn pass: `BP_Spawner_Car_Civ/Gov/Stripped_C`, template cars and parts, `BP_Spawn_GasBarrel_C` x96, `BP_Spawn_Resource_ReactiveLockbox_*`, `BP_WorldItem_ReactiveLockbox_Base_C` x5, `BP_WorldItem_C` x3, `BP_Hazard_RadiatedZone_*` (~140), `BP_LevelTransition_ExitPortal_C` x2, `BP_CarSpawnpoint_C`, `SpawnModifierActor` x14, the host's car and its parts | n / 0 | Host log has 63 `LogSpawnExecutor` lines, client 0: the procedural run spawn ran on the host only |
 
+### Zone redo with the guest's character next to the host (spike X2)
+
+Scenario `x2zone` (`scenarios/x2.lua`): the host opens `Wilderness_Forest_01?listen`, spawns and possesses a
+`PDP_MainCharacter_C` for the guest 150 uu from its own, survey 25 s later. Source:
+`local/test-results/20261019-194408-laneB-x2zone/actors-zone.csv` (host 1618 actors, client 633); same picture in
+`20261019-195159-laneB-x2zone`. Per-actor names and spots: `PT|id` / `PT|iddiff` lines in the run's `*-UE4SS.log`.
+
+Counts here come from `FindAllOf`, which also returns actors already destroyed (pending kill, until GC). In the
+pending-kill-aware rerun `20261020-114921-laneB-x2zone` the client had 50 of 680 actors dead, the host 0 of 1507.
+Alive lootables there: host 3 `BP_Lootable_CoolingBox_01_C` + 3 `BP_Lootable_Backpack_Civilian_C`, client the same
+counts plus 6 + 6 dead variants at 0,0,0; `BP_ItemSpawner_C` 0 / 2 alive (+3 dead). Details in `docs/spikes/X2.md`.
+
+| Cat | Classes | Host / client | Note |
+|---|---|---|---|
+| a | host's `PDP_MainCharacter_C` (role 1), own character (role 2), `BP_PlayerCarNew_C` (role 1), `PlayerState` x2 | | With a character nearby the host's character and car now arrive (the X3 run had neither: relevancy) |
+| b | the car's part actors, e.g. `BP_CarPart_Interactive_C` 53 / 53, `BP_Storage_Trunk_Base_C` 1 / 1 | | One set on the client (no local car in a zone, unlike the garage); not replicated, built locally for the replicated car |
+| c, own roll | `BP_Lootable_Backpack_Civilian_C` 3/3, `BP_Lootable_CoolingBox_01_C` 4/3, `BP_Spawn_Resource_ElectronicDevice_Radio_C` 2/2, `BP_SpawnPoint_C` 23/23, `BP_LeafSpawner_C` 3/3, `PrefabSettingsActor` 23/7, `ManageChildrenActor` 112/24 | | **Not the same objects.** Spawn points are level content (same 23 on both), but the guest spawns every prefab variant, keeps one at random and destroys the rest (seen on the guest only: the host's list had no dead actors left; that the host picks the same way is derived), so the kept ones differ: of the lootables only 1 per class has the same name and spot (`BP_Lootable_CoolingBox_40`, `BP_Lootable_Backpack_Civilian_0`; 2 of 6 in `114921`), the others are metres to tens of metres apart, and the contents differ even for the matching ones (e.g. host `CoolingBox_40` = Plastic, Food; client = Food, Battery x2, Food) |
+| d | `BP_ItemSpawner_C` 0 / 3 | | Client only, sitting where the host has world items (`BP_ItemSpawner5` at -12639,-41152 = a host `BP_WorldItem_C`) |
+| host only | run spawn pass products: lootable crates (`BP_Lootable_Crate_*` 4), `BP_Container_*`, `BP_Spawner_Site_Open_Container_*`, template cars 16 + 120 `BP_TemplatePart_*`, `BP_Spawn_GasBarrel_C` 97, reactive lockboxes, light-array resources, `BP_WorldItem_*` 8, `BP_Hazard_RadiatedZone_*` 138, `BP_Hazard_Landmine_C` 2, `BP_LevelTransition_ExitPortal_C` 2, `SpawnModifierActor` (spawned) 14 | n / 0 | Confirmed with the guest next to the host: these are not hidden by relevancy, they do not exist on the client (`LogSpawnExecutor` 62 lines host, 0 client) |
+| loaded | 181 level-placed actors (foliage structures, road endings, site spawners `BP_Spawner_Site_Closed_*`, vista, landscape) | same path | Same full path and spot on both sides. 3 `BP_ClumpedArea_Residental_PrePlaced_C` are on the client only (the host destroys them: in `20261020-134653`, listed before a GC, the host had all 3 pending kill at 0,0,0, with a `DummyPlayerStart` and 6 `BP_Vista_Tile_Test_*`; in `125124` the same unfiltered list made them look moved and failed `x2_loaded_ids_stable`, so the diff now skips pending-kill actors) |
+
 ## Spawners seen in logs
 
 - `AEntitlementSpawner` (`LogEntitlementSpawner`): runs on both sides in the garage (both fail on Chapter08).
@@ -57,9 +78,10 @@ actors). Counts are host / client.
 
 ## Unknowns
 
-- Streaming and relevancy: the client spectator sits elsewhere than the host's character, so sublevels and
-  network-relevant actors differ. The zone run shows neither the host's character nor its car on the client. A
-  survey with the guest's character next to the host (after M2 spawn) is needed before trusting "host only" rows.
-- Whether the client's copies of loot containers (`BP_Lootable_*`) roll their own contents.
+- ~~Streaming and relevancy~~: answered by the zone redo above; the "host only" rows hold with the guest's
+  character next to the host.
+- ~~Whether the client's copies of loot containers roll their own contents~~: they do (zone redo).
 - Whether client-only `BP_ItemSpawner_C` spawn items later.
+- The zone was opened directly (`open ...?listen`), not reached through a run (route, junction state); a real run
+  may spawn more (anchors were absent).
 - Category "c" includes harmless visual actors; which of them matter needs X2/X4.

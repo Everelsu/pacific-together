@@ -21,7 +21,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420) }
 # M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
 $AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
