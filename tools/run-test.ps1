@@ -73,8 +73,8 @@ if ($running) {
     exit 2
 }
 
-# at most $env:PT_SLOTS (default 5) runs at once across all lanes on this machine; a dead runner's mutex is abandoned and reusable
-$maxSlots = if ($env:PT_SLOTS) { [int]$env:PT_SLOTS } else { 5 }
+# at most $env:PT_SLOTS (default 4) runs at once across all lanes on this machine; a dead runner's mutex is abandoned and reusable
+$maxSlots = if ($env:PT_SLOTS) { [int]$env:PT_SLOTS } else { 4 }
 $slot = $null
 while (-not $slot) {
     foreach ($i in 1..$maxSlots) {
