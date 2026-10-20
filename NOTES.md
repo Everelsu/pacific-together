@@ -368,3 +368,23 @@ sessionmismatch, sessionrejoin, sessionsolo, sessionlook, safety, safety_crash, 
 interact, backpack, interactzone, carseat, carride (with car-error), tourist, stations, arc, crashcfg: all checks PASS.
 Not run: steamsolo (puts a lobby on the owner's real Steam account), steamhost/steamguest (two accounts), probes and
 diagnostics (dump, repl, invprobe, safety_probe, sessionchurn, sessionmats, sessionprobe), and no mutations.
+
+## 2026-10-20: M2 gaps (S5, S6, S7, Q9)
+
+Lane pair `C:\PTLanes\m2gaps`, port 7811, results in the lane worktree's `local/test-results/20261020-17*` to `-19*`.
+
+Observations
+- Killed guest process (`sessionabrupt`, `sessionabruptzone`): the host stays up, its remote controller and the guest's character
+  are gone within seconds (`chars` 2 -> 1 in the host log), a relaunched guest joins again. The same after a polite leave. Lane C's
+  "a leaving guest's character stays in the host's world" does not reproduce with the shipping guest spawn.
+- `BP_ProgressionManager:TravelToGarage(ReturnState, ..., SaveAndQuit, ...)`: return states 2 and 3 jump past the SaveAndQuit
+  branch (bytecode, `local/atlas/bp/BP_ProgressionManager.txt`), so `TravelToGarage(3, .., true)` is a plain garage return.
+  The pause menu's save and quit is `SaveGame(CurrentSaveSlot, "", 1)` then `QuitToMenu(self)` (`PDP_PauseMenu`).
+- `BaseSaveGameManager:QuitToMenu` takes a world-context parameter; calling it with none is a Lua error.
+- Gateway, death return, run failure and save-and-quit mid-run + resume all keep the session: the host listens on every new map
+  and the guest is back by itself (`sessiontravel` 55/55). With keep-listen off (mutation `nokeep`) the host is standalone after the
+  first change (29/52).
+
+Unknowns
+- Story and garage-station save writers (S7), the moving-car disconnect (S5).
+- Q9: the firewalled crash run (`tools/q9-firewall.ps1`) needs an elevated shell; not run yet.

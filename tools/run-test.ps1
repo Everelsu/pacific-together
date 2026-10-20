@@ -21,13 +21,16 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420); sessionabrupt = @(2, 900); sessionabruptzone = @(2, 900); sessiontravel = @(2, 1500); safetysaves = @(2, 900) }
 # M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
-$AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin")
+$AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin", "sessionabrupt", "sessionabruptzone", "sessiontravel")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 # Q9: a side crashes on purpose, so the run needs that crash instead of "no crash" and keeps waiting after it
-$CrashExpected = @("safety_crash")
+$CrashExpected = @("safety_crash", "crashfw")
+# S5: a scenario asks the runner to kill a side (PT|runner kill side=<role> n=<k>) and start it again later
+# (PT|runner relaunch side=<role> n=<k>; the new process gets PT_LIFE=2, 3, ...); an exit after a kill is no failure
+$KillExpected = @("sessionabrupt", "sessionabruptzone")
 $d = if ($Defaults.ContainsKey($Scenario)) { $Defaults[$Scenario] } else { @(2, 300) }
 if (-not $Clients) { $Clients = $d[0] }
 if (-not $Seconds) { $Seconds = $d[1] }
@@ -43,6 +46,7 @@ foreach ($s in $sides) {
     $s.Crashes = Join-Path $s.Dir "PenDriverPro\Saved\Crashes"
     $s.Ini = Join-Path $s.Dir "PenDriverPro\Saved\Config\WindowsNoEditor\Engine.ini"
     $s.Snaps = [ordered]@{}
+    $s.Prefix = ""; $s.Life = 1
     if (-not (Test-Path "$($s.Bin)\ue4ss\Mods\PacificTogetherTest")) { throw "$($s.Dir) is not set up; run tools\setup-test.ps1" }
 }
 
@@ -55,6 +59,9 @@ function Read-Shared($path) {
     $r = New-Object IO.StreamReader([IO.File]::Open($path, "Open", "Read", "ReadWrite, Delete"))
     try { $r.ReadToEnd() } finally { $r.Close() }
 }
+
+# the log of every life of a side: a relaunch moves the old log into $s.Prefix before the new process truncates it
+function Get-Log($s) { $s.Prefix + (Read-Shared $s.Log) }
 
 # X10: names, sizes, times and hashes of everything under Saved\SaveGames and Saved\Config
 function Get-Snapshot($s) {
@@ -69,7 +76,7 @@ function Get-Snapshot($s) {
 # a side prints PT|snap side=<role> tag=<tag>; the runner snapshots that side within one poll (3 s)
 function Update-Snapshots {
     foreach ($s in $sides) {
-        foreach ($m in [regex]::Matches((Read-Shared $s.Log), "PT\|snap side=$($s.Role) tag=(\S+)")) {
+        foreach ($m in [regex]::Matches((Get-Log $s), "PT\|snap side=$($s.Role) tag=(\S+)")) {
             $tag = $m.Groups[1].Value
             if (-not $s.Snaps.Contains($tag)) { $s.Snaps[$tag] = @(Get-Snapshot $s) }
         }
@@ -129,21 +136,49 @@ if ($Fixture) {
 
 $started = Get-Date
 $procs = @()
-$env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
-if ($Tunnel) { $env:PT_TUNNEL = $Tunnel }
-try {
-    foreach ($s in $sides) {
-        if ($procs) { Start-Sleep 8 }
+function Start-Side($s, $life) {
+    $env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
+    if ($Tunnel) { $env:PT_TUNNEL = $Tunnel }
+    $env:PT_LIFE = "$life"
+    try {
         $env:PT_ROLE = $s.Role
         $env:PT_JOIN = if ($s.Role -eq "client" -and $AutoJoin -contains $Scenario) { "127.0.0.1:$Port" } else { "" }
         $exe = Join-Path $s.Bin "PenDriverPro-Win64-Shipping.exe"
         # -nullrhi: no rendering, ~1 GB RAM and no GPU per instance, so many lanes can test at once; screenshots need a normal run
         $gameArgs = if ($Headless) { "-NotInstalled", "-nullrhi", "-nosound", "-log", "-port=$Port" } else { "-NotInstalled", "-windowed", "-ResX=960", "-ResY=540", "-log", "-port=$Port" }
-        $procs += Start-Process $exe -ArgumentList $gameArgs -WorkingDirectory $s.Bin -PassThru
-        Write-Host "started $($s.Role) PID $($procs[-1].Id)"
+        $s.Proc = Start-Process $exe -ArgumentList $gameArgs -WorkingDirectory $s.Bin -PassThru
+        $script:procs += $s.Proc
+        Write-Host "started $($s.Role) life $life PID $($s.Proc.Id)"
+    } finally {
+        Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN, Env:PT_TUNNEL, Env:PT_LIFE -ErrorAction SilentlyContinue
     }
-} finally {
-    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN, Env:PT_TUNNEL -ErrorAction SilentlyContinue
+}
+foreach ($s in $sides) {
+    if ($procs) { Start-Sleep 8 }
+    Start-Side $s 1
+}
+# scenario directives (each handled once): kill a side's process, or start it again with the next life number
+$handled = @{}
+$killed = @()
+function Invoke-Directives {
+    foreach ($s in $sides) {
+        foreach ($m in [regex]::Matches((Get-Log $s), "PT\|runner (kill|relaunch) side=(\S+) n=(\d+)")) {
+            $target = $sides | Where-Object Role -eq $m.Groups[2].Value
+            if ($handled.ContainsKey($m.Value) -or -not $target) { continue }
+            $handled[$m.Value] = $true
+            if ($m.Groups[1].Value -eq "kill") {
+                Write-Host "runner: killing $($target.Role) PID $($target.Proc.Id)"
+                $script:killed += $target.Proc.Id
+                Stop-Process -Id $target.Proc.Id -Force -ErrorAction SilentlyContinue
+                $target.Proc.WaitForExit(15000) | Out-Null
+            } else {
+                $target.Prefix = (Get-Log $target) + "`n"
+                Remove-Item $target.Log -ErrorAction SilentlyContinue
+                $target.Life++
+                Start-Side $target $target.Life
+            }
+        }
+    }
 }
 
 function Get-NewCrashes {
@@ -158,10 +193,11 @@ $stop = "timeout after $Seconds s"
 while ((Get-Date) -lt $deadline) {
     Start-Sleep 3
     Update-Snapshots
-    $done = @($sides | Where-Object { (Read-Shared $_.Log) -match "\[PacificTogetherTest\] PT\|done side=" })
+    if ($KillExpected -contains $Scenario) { Invoke-Directives }
+    $done = @($sides | Where-Object { (Get-Log $_) -match "\[PacificTogetherTest\] PT\|done side=" })
     if ($done.Count -eq $sides.Count) { $stop = "all sides done"; break }
     if ((Get-NewCrashes) -and $CrashExpected -notcontains $Scenario) { $stop = "crash"; break }
-    $exited = @($procs | Where-Object HasExited)
+    $exited = @($procs | Where-Object { $_.HasExited -and $killed -notcontains $_.Id })
     if ($exited -and $CrashExpected -notcontains $Scenario) { $stop = "process exited (PID $($exited.Id -join ', '))"; break }
 }
 $elapsed = [int]((Get-Date) - $deadline.AddSeconds(-$Seconds)).TotalSeconds
@@ -201,7 +237,7 @@ $checks = New-Object System.Collections.Generic.List[object]
 function Add-Check($name, $pass, $detail) { $checks.Add([pscustomobject]@{ Name = $name; Pass = [bool]$pass; Detail = $detail }) }
 foreach ($s in $sides) {
     $r = $s.Role
-    $text = Read-Shared $s.Log
+    $text = Get-Log $s
     [IO.File]::WriteAllText((Join-Path $results "$r-UE4SS.log"), $text)
     Copy-Item (Join-Path $s.Dir "PenDriverPro\Saved\Logs\PenDriverPro.log") (Join-Path $results "$r-PenDriverPro.log") -ErrorAction SilentlyContinue
     # X13: HighResShot writes under Saved\Screenshots; copy this run's shots in the order they were taken
@@ -210,9 +246,10 @@ foreach ($s in $sides) {
 
     $boot = [regex]::Match($text, "\[PacificTogether\] PT\|boot (.*)")
     Add-Check "$r main mod booted" $boot.Success $boot.Groups[1].Value.Trim()
-    $plan = [regex]::Match($text, "\[PacificTogetherTest\] PT\|plan side=$r checks=(\d+)")
-    $planned = if ($plan.Success) { [int]$plan.Groups[1].Value } else { -1 }
-    Add-Check "$r test plan" $plan.Success "checks=$planned"
+    # one plan line per life of the process (a relaunched side plans again; the killed life must have reported all its checks)
+    $plans = @([regex]::Matches($text, "\[PacificTogetherTest\] PT\|plan side=$r checks=(\d+)"))
+    $planned = if ($plans.Count) { ($plans | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum } else { -1 }
+    Add-Check "$r test plan" ($plans.Count -gt 0) "checks=$planned lives=$($plans.Count)"
     $reported = [regex]::Matches($text, "\[PacificTogetherTest\] PT\|check side=$r name=(\S+) result=(PASS|FAIL) detail=(.*)")
     foreach ($m in $reported) { Add-Check "$r $($m.Groups[1].Value)" ($m.Groups[2].Value -eq "PASS") $m.Groups[3].Value.Trim() }
     if ($planned -ge 0 -and $reported.Count -ne $planned) { Add-Check "$r all planned checks reported" $false "$($reported.Count) of $planned" }
@@ -233,7 +270,7 @@ foreach ($s in $sides) {
 }
 # X3: host and client actor counts side by side, one csv per survey tag
 $actors = foreach ($s in $sides) {
-    foreach ($m in [regex]::Matches((Read-Shared $s.Log), "PT\|actors side=(\S+) tag=(\S+) class=(\S+) role=(\S+) rep=(\d) loaded=(\d) owner=(\S+) n=(\d+)")) {
+    foreach ($m in [regex]::Matches((Get-Log $s), "PT\|actors side=(\S+) tag=(\S+) class=(\S+) role=(\S+) rep=(\d) loaded=(\d) owner=(\S+) n=(\d+)")) {
         $g = $m.Groups
         [pscustomobject]@{ Side = $g[1].Value; Tag = $g[2].Value; Class = $g[3].Value; Role = $g[4].Value; Rep = $g[5].Value; Loaded = $g[6].Value; Owner = $g[7].Value; N = [int]$g[8].Value }
     }

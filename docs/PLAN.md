@@ -215,15 +215,15 @@ Progress (2026-10-20, lanes F1 and F2 merged; details in `docs/spikes/M2-session
 | Id | State |
 |---|---|
 | S1 | Implemented, tested: auto-listen on every gameplay map (`session`). The Steam lobby part is M6 |
-| S3 | Implemented, tested via `PT_JOIN` (`session`, `sessionrejoin`); `join.txt` untested |
+| S3 | Implemented, tested via `PT_JOIN` (`session`, `sessionrejoin`); `join.txt`: its path rule checked against the live source path (`@C:/.../ue4ss/Mods/<mod>/Scripts/x.lua`) and the installer dry run, no two-client run |
 | S4 | Implemented, tested: accept, mismatch refusal, no-hello refusal (`session`, `sessionmismatch`, mutations `match`, `hello2`). DLC report not done |
-| S5 | Implemented, tested for a polite drop, 6 cycles (`sessionrejoin`); abrupt drop, mid-run and moving car untested |
-| S6 | Partly: `UserNewGame` and `QuitToMenu` + new game (`session`), native travel keeps listening (`travel`); gateway/zone travel and run failure untested |
-| S7 | Implemented, tested for the writers exercised (`safety`, `guestsave`); `SaveCheckpoint`, story, run-end and station saves not exercised |
+| S5 | Implemented, tested: polite drop 6 cycles (`sessionrejoin`); killed guest process in the garage (`sessionabrupt` 25/25) and in a zone (`sessionabruptzone` 26/26): host stays up, guest's controller and character gone, relaunched guest rejoins; mutation `nokill` fails. Moving car untested |
+| S6 | Implemented, tested: run start (`TravelToNextLeg`), gateway return, death return, run failure, save and quit mid-run + resume, each with the guest back by itself (`sessiontravel` 55/55, mutation `nokeep` fails); `UserNewGame`/`QuitToMenu` (`session`) |
+| S7 | Implemented, tested: `safety`, `guestsave`, plus `safetysaves` 28/28 (DbgActEvt save graph events, checkpoint, bookmark, `Rinse`, run-failure and save-and-quit branches of `TravelToGarage` as a guest), mutation `nosession` fails. Story and station saves not exercised |
 | P1 | Implemented, tested (`session`, `body`, `sessionlook`) |
 | P7 | Implemented, tested (`nametag`); shows the PlayerState name until Steam (M6); fade checks have no failing mutation |
 | Q7 | Implemented, tested (`sessionsolo`, `safety_solo`) |
-| Q9 | Implemented: own crash marker, no CrashReportClient start, Sentry DSN cleared, `sentry_init` refused (`safety_crash`, `safety_solo`). The D23 firewall crash run is still owed |
+| Q9 | Implemented: own crash marker, no CrashReportClient start, Sentry DSN cleared, `sentry_init` refused (`safety_crash`, `safety_solo`). The D23 firewall crash run is ready (`tools/q9-firewall.ps1`, scenario `crashfw`, dry run checked) and needs the owner's elevated run |
 | G5 | Implemented, tested with a guest (`safety`); not isolated from the game's own multiplayer behaviour, real menu path untested |
 
 ### M3 Car (M-L)
