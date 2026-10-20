@@ -636,6 +636,12 @@ local T = {
 require("repl")(T)
 require("fixtures")(T)
 require("gamemcp")(T)
+-- optional game-MCP tool families (Scripts/mcp_*.lua, one per file); a missing one is fine, a broken one is an error
+for _, m in ipairs({ "mcp_state", "mcp_actions", "mcp_observe" }) do
+    local ok, f = pcall(require, m)
+    if ok then f(T)
+    elseif not tostring(f):find("module '" .. m .. "' not found", 1, true) then log("PT|error %s %s", m, tostring(f)) end
+end
 
 local make = scenarios[SCENARIO]
 if not make then

@@ -333,6 +333,21 @@ TOOLS = {
 }
 
 
+# More tools live in ext_*.py next to this file (one family per file, so parallel work does not collide):
+# each defines register(tools, api), where api is this module (run_lua, lua_call, check_root, ToolError, ROOT, SIDE, S, ...).
+def load_extensions():
+    import glob, importlib.util
+    api = sys.modules[__name__]
+    for path in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ext_*.py"))):
+        spec = importlib.util.spec_from_file_location(os.path.basename(path)[:-3], path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.register(TOOLS, api)
+
+
+load_extensions()
+
+
 def tool_list():
     return [{"name": n, "description": d, "inputSchema": {"type": "object", "properties": props, "required": req}}
             for n, (_, d, props, req) in TOOLS.items()]
