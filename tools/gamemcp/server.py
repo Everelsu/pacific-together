@@ -138,7 +138,7 @@ def lua_call(fn, side, root, *args, timeout=30):
 
 # ---------------------------------------------------------------- session
 
-def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=None, headless=True, seconds=3600, ready_timeout=420):
+def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=None, headless=True, seconds=3600, ready_timeout=420, fixtures_dir=None):
     root_p = check_root(root)
     if players not in (1, 2):
         raise ToolError("players must be 1 or 2")
@@ -155,6 +155,12 @@ def t_session_start(root=DEFAULT_ROOT, port=7777, players=1, fixture=None, map=N
         cmd.append("-Headless")
     if fixture:
         cmd += ["-Fixture", fixture]
+        fx_dir = fixtures_dir or os.environ.get("PT_FIXTURES_DIR")
+        if not fx_dir and not (REPO / "local" / "fixtures").is_dir():  # a worktree (<main>/.claude/worktrees/<name>) has no git-ignored local/
+            main_fx = REPO.parents[2] / "local" / "fixtures" if REPO.parent.name == "worktrees" and len(REPO.parents) > 2 else None
+            fx_dir = main_fx if main_fx and main_fx.is_dir() else None
+        if fx_dir:
+            cmd += ["-FixturesDir", str(fx_dir)]
     env = dict(os.environ)
     if map:
         env["PT_MAP"] = map
@@ -312,7 +318,8 @@ TOOLS = {
                            fixture={"type": "string", "description": "fixture save(s) from local/fixtures, e.g. garage or zone (host standalone)"},
                            map={"type": "string", "description": "map path the host opens, e.g. /Game/Maps/RunProto/RB_Garage"},
                            headless={"type": "boolean", "description": "default true; false is needed for screenshot"}, seconds={"type": "integer"},
-                           ready_timeout={"type": "integer"}), []),
+                           ready_timeout={"type": "integer"},
+                           fixtures_dir={"type": "string", "description": "folder holding the fixtures (default <repo>/local/fixtures, or env PT_FIXTURES_DIR); worktrees need the main checkout's"}), []),
     "session_status": (t_session_status, "Is the session on this root alive, and what does each side report (net mode, map, controllers)?", dict(root=ROOT), []),
     "session_stop": (t_session_stop, "End the session: asks both sides to stop, waits for the runner, kills only the runner it started if it hangs.", dict(root=ROOT), []),
     "eval": (t_eval, "Run Lua in the game (expression or block; out(...) prints lines, returned values are shown). All UE4SS globals and the test mod's helpers (state, first, map, console, ...) are in scope. Lua errors come back as tool errors.",
