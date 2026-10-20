@@ -118,7 +118,8 @@ local function refuse(pc, reason)
     pc:ClientReturnToMainMenuWithTextReason(text)
 end
 
-local function spawnFor(pc)
+-- returns false while there is nothing to spawn next to yet and last is not set
+local function spawnFor(pc, last)
     local w = pc:GetWorld()
     local me, cm = localPC(w), charManager()
     local own = cm and cm.CharacterActor
@@ -126,8 +127,9 @@ local function spawnFor(pc)
     if not valid(base) then base = own end
     local cls = valid(own) and own:GetClass() or StaticFindObject(CHAR_CLASS)
     if not valid(base) or not valid(cls) then
+        if not last then return false end
         log("PT|error session no host pawn or character class to spawn next to (%s)", fullName(base))
-        return
+        return true
     end
     -- next to whatever the host controls (character or car); the spawn moves it out of collisions
     local l, r = base:K2_GetActorLocation(), base:GetActorRightVector()
@@ -138,13 +140,14 @@ local function spawnFor(pc)
     local c = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(w, cls, xf, 2, nil), xf)
     if not valid(c) then
         log("PT|error session spawn failed for %s", fullName(pc))
-        return
+        return true
     end
     pc:Possess(c)
     -- the game's single-player manager follows the newest character; it must keep the host's
     if cm and valid(own) and not same(cm.CharacterActor, own) then cm.CharacterActor = own end
     log("PT|session spawned %s for %s possessed=%s manager=%s", fullName(c), fullName(pc), tostring(same(pc.Pawn, c)), fullName(cm and cm.CharacterActor))
     refreshBodies()
+    return true
 end
 
 local function onHello(pc, s)
@@ -163,15 +166,19 @@ local function onHello(pc, s)
         end
     end
     greeted[key] = true
-    -- outside the RPC's hook, so the spawn's own hooks and Blueprint events do not run nested in it
-    ExecuteInGameThreadWithDelay(100, function()
-        local ok, err = pcall(function()
-            if not valid(pc) or not greeted[key] then return end
-            UEHelpers.GetGameModeBase():ChangeName(pc, name, false)
-            spawnFor(pc)
+    -- outside the RPC's hook, so the spawn's own hooks and Blueprint events do not run nested in it. A guest that
+    -- connects while the host still loads a zone logs in before the host's own character exists: look again each second.
+    local function try(n)
+        ExecuteInGameThreadWithDelay(n == 0 and 100 or 1000, function()
+            local ok, err = pcall(function()
+                if not valid(pc) or not greeted[key] then return end
+                if n == 0 then UEHelpers.GetGameModeBase():ChangeName(pc, name, false) end
+                if not spawnFor(pc, n >= 60) then try(n + 1) end
+            end)
+            if not ok then log("PT|error session spawn %s", tostring(err)) end
         end)
-        if not ok then log("PT|error session spawn %s", tostring(err)) end
-    end)
+    end
+    try(0)
 end
 
 local function onLogin(pc)
@@ -260,7 +267,8 @@ local function hookAll()
         ExecuteInGameThreadWithDelay(3000, function() pcall(refreshBodies) end)
     end)
     -- the save manager starts most native travel: remove the guest's character before the travel is even queued
-    -- (removing it in the LoadMap pre-hook alone still crashed the host's next map load)
+    -- (removing it in the LoadMap pre-hook alone crashed the host's next map load, seen before the s:set heap fix;
+    -- run travel (BaseRouteState::TravelTo) has only that fallback, untested)
     for _, f in ipairs({ "UserNewGame", "UserLoadGame", "LoadGame", "LoadFromCheckpoint", "Rinse", "LoadGameCmd", "LoadBookmarkCmd", "QuitToMenu" }) do
         hook("/Script/PenDriverPro.BaseSaveGameManager:" .. f, function()
             local w = world()

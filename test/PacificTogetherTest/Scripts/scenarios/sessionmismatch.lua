@@ -1,6 +1,7 @@
 -- S4 refusal with the real host mod. The guest has no PT_JOIN, so its own mod stays out; the test plays a guest that
 -- (1) sends a hello with a wrong mod version, (2) sends no hello at all. The host must refuse both with a reason and
--- never give them a character. Mutation: match (the hello carries the right versions, so refusal 1 must FAIL).
+-- never give them a character. Mutations: match (the hello carries the right versions, so refusal 1 must FAIL), hello2
+-- (the second guest sends a valid hello, so refusal 2 must FAIL).
 return function(T)
     local L = require("scenarios.sessionlib")(T)
 
@@ -28,17 +29,8 @@ return function(T)
 
     local reason
     RegisterHook("/Script/Engine.PlayerController:ClientWasKicked", function(self, r) reason = r:get():ToString(); T.log("PT|info kicked: %s", reason) end)
-    local function badHello()
-        local mod, protocol = "0.0.0-mismatch", 1
-        if T.MUTATE == "match" then
-            local common = dofile("ue4ss/Mods/PacificTogether/Scripts/common.lua")
-            mod, protocol = common.MOD_VERSION, common.PROTOCOL_VERSION
-        end
-        local game = StaticFindObject("/Script/EngineSettings.Default__GeneralProjectSettings").ProjectVersion:ToString()
-        local s = string.format("PT|hello mod=%s protocol=%d game=%s build=%d name=Tester", mod, protocol, game, PTNative_GameBuild and PTNative_GameBuild() or 0)
-        T.log("PT|info sending %s", s)
-        T.localPC():ServerChangeName(s)
-    end
+    local function send(s) T.log("PT|info sending %s", s); T.localPC():ServerChangeName(s) end
+    local function badHello() send(T.hello(T.MUTATE ~= "match" and "0.0.0-mismatch" or nil)) end
     local function connected() return T.netMode() == "client" and T.map() == "RB_Garage" and T.localPC() ~= nil end
     local function kicked(id, want)
         return { check = id, timeout = 60, cond = function()
@@ -56,6 +48,8 @@ return function(T)
         { run = function() T.log("PT|info reason 1: %s", tostring(reason)); reason = nil end },
         { wait = 5 },
         T.join("client_connected_silent", "RB_Garage", 120, 60),
+        { wait = 2 },
+        { run = function() if T.MUTATE == "hello2" then send(T.hello()) end end },
         kicked("client_refused_no_hello", "no handshake"),
         { run = function() T.log("PT|info reason 2: %s", tostring(reason)) end },
     }

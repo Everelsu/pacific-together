@@ -99,11 +99,52 @@ Mutations (each must fail):
 | session leave | guest quits to the menu after the first join | `20261020-132320-laneF1-session-leave` | FAIL rejoin checks (no auto-rejoin after a deliberate quit) |
 | sessionrejoin kick | the drop is a refusal, the guest's mod must not rejoin | `20261020-122638-laneF1-sessionrejoin-kick` | FAIL `host_guest_in_2..4`, `client_in_2..4` |
 | sessionsolo spawn | a second character appears | `20261020-122949-laneF1-sessionsolo-spawn` | FAIL `solo_vanilla_new_game` |
-| sessionmismatch match | the bad hello carries the right versions | `20261020-123543-laneF1-sessionmismatch-match` | FAIL both refusal checks on both sides (ran before the login-hook fix; the accepted hello gave a character) |
+| sessionmismatch match | the bad hello carries the right versions | `20261020-134928-laneF1-sessionmismatch-match` (verifier, final login hook; also `123543`) | FAIL both refusal checks on both sides (the accepted hello gave a character) |
+| sessionmismatch hello2 | the second, "silent" guest sends a valid hello | `20261020-141454-laneF1-sessionmismatch-hello2` | FAIL `host_refused_no_hello`, `client_refused_no_hello` (19/21) |
 
 Diagnostics (no pass/fail meaning): `sessionchurn` (solo spawn/destroy), `sessionprobe` (which objects point at the
 guest's character: only its own movement component, `20261020-113304-laneF1-sessionprobe`; the scan sees only each
 class's own properties), `sessionmats` (material names).
+
+## Older two-client scenarios with the shipping mod (verifier fix)
+
+The verifier found that with `session.lua` installed every older two-client scenario whose guest joins with the
+test mod's own `open` (no `PT_JOIN`) was refused 20 s after login ("no handshake received"): `body` 15/20
+(`20261020-140646-laneF1-body`, on M1 code 20/20 `20261019-183958-body`). Fix, test side only
+(`test/PacificTogetherTest/Scripts/main.lua`): a `ClientSetHUD` hook on the client sends the same hello as the
+shipping guest when `PT_JOIN` is unset (not in `sessionmismatch`, which plays the bad and silent guests itself, and
+not in `body -Mutate nospawn`); `T.hello(mod, protocol)` builds it, `sessionmismatch` uses it too. `body` no longer
+spawns its own guest character: it takes the one the shipping mod gives the guest (P1). `travel -Mutate
+nokeep|norehost` also call `PTNative_SetAutoListen(false)`. `guestsave`'s guest turns auto-listen off before its own
+single-player game.
+
+Two shipping-side findings from these reruns:
+
+- `zonejoin` (`20261020-150518-laneF1-zonejoin`, 13/14): the guest connects ~1 s after the host's zone starts
+  listening, before the host's own character exists, so the spawn found nothing to spawn next to
+  (`PT|error session no host pawn ...`). This is also the real rejoin case (the guest's open waits up to 120 s and
+  lands as soon as the host listens). Fix in `session.lua`: the spawn looks again every second, up to 60 s.
+  Rerun `20261020-150853-laneF1-zonejoin` 14/14, the guest's character spawned 8.4 s after its hello. The failed run
+  is the check's natural failure.
+- `guestsave` (`20261020-150323-laneF1-guestsave`, 19/23): the guest's own single-player game (D14 auto-listen,
+  the guest has no `PT_JOIN` so its mod acts as a host) bound UDP 7861 at the same moment as the host, the host fell
+  back to 7862 and the guest's `open 127.0.0.1:7861` timed out. Only possible with two games on one machine; the
+  test turns the guest's auto-listen off. Rerun `20261020-151258-laneF1-guestsave` 23/23, saves unchanged.
+
+| Scenario | Result folder | Result |
+|---|---|---|
+| body | `20261020-152250-laneF1-body` (also `141234`) | 20/20, the shipping hello and spawn |
+| body -Mutate nospawn (no hello) | `20261020-142154-laneF1-body-nospawn` | 13/20, FAIL as meant: guest refused, no character |
+| travel | `20261020-152720-laneF1-travel` (also `142405`) | 23/23, cleanup before `UserNewGame`, rejoin, hello, spawn on both maps |
+| travel -Mutate nokeep | `20261020-152455-laneF1-travel-nokeep` | 22/23, FAIL `host_listen_after_native_travel` as meant; the `servertravel ?listen` fallback re-hosts |
+| guestsave | `20261020-151258-laneF1-guestsave` | 23/23 |
+| zonejoin | `20261020-150853-laneF1-zonejoin` | 14/14 |
+| listen | `20261020-150546-laneF1-listen` | 14/14 |
+
+After the spawn-retry change the session scenarios were rerun: session 40/40 (`20261020-151600-laneF1-session`),
+sessionrejoin 36/36 (`20261020-151805`), sessionsolo 13/13 (`20261020-151921`), sessionmismatch 21/21
+(`20261020-152031`). One earlier `travel -Mutate nokeep` attempt (`20261020-144920`) is void: the host game hung in
+UE4SS start-up (log ends after the signature scan, no mod loaded) until the 1500 s timeout; the rerun above ran normally.
 
 ## Derived
 
@@ -126,15 +167,33 @@ class's own properties), `sessionmats` (material names).
 - How the cloth body looks in other zones and lighting, in the car and while carrying (one garage screenshot pair).
 - The guest's name when it has no login name (falls back to "Guest").
 - Lag/loss behaviour of the join and rejoin (Q2) and a guest joining while the host drives (M3).
+- S6 beyond the tested paths: gateway/junction/zone travel and run failure. Run travel goes through
+  `BaseRouteState::TravelTo`, which is not in the hooked `BaseSaveGameManager` list (PDCoopNet saw that hook never
+  fire), so only the `LoadMap` pre-hook cleanup covers it. That this fallback alone crashed the host's next map load
+  is a guess now: it was seen before the `s:set` heap-corruption fix and not retested.
+- S5 abrupt drops: only the polite drop is tested (the host's `ClientReturnToMainMenuWithTextReason` on native travel,
+  the guest's own `QuitToMenu`). A killed guest process, a host-side connection timeout, a drop mid-run or while the
+  car moves: not tested.
+- `join.txt`: implemented, not tested.
+- Two games on one machine both auto-listen on the same `-port`; the second one falls back to the next port
+  (observed in `guestsave`). Harmless on separate machines; for local testing of a real guest's own single-player
+  game it means the host may not be where the guest expects.
+- Exposure: with D14 every mod user's host listens on a reachable UDP port while a save is loaded; anyone who sends a
+  matching public hello gets a character. Acceptable for 0.1.0 internal (direct IP, M2); the M6 Steam work should
+  close it (Steam sessions / invites instead of an open port).
 
 ## Verdicts
 
 - S1 auto-listen on every gameplay map, including the first load from the menu and native travel: **works** (session).
 - S3 direct IP join from `PT_JOIN`: **works** (session, sessionrejoin). `join.txt`: implemented, not tested.
-- S4 handshake: accept, mismatch refusal with a clear message, and no-hello refusal **work** (session, sessionmismatch).
+- S4 handshake: accept, mismatch refusal with a clear message, and no-hello refusal **work** (session, sessionmismatch;
+  mutations match and hello2 each fail their refusal).
+- Older two-client scenarios with the shipping mod installed (body, travel, guestsave, zonejoin, listen): **pass**
+  again once the test guest sends the hello; a zone join before the host's character exists now **works** (zonejoin).
 - S5 leave and rejoin without a host crash: **works** (sessionrejoin 6 cycles; session guest leave). Key fix: never
   write a hooked RPC's string parameter.
-- S6 session survives `UserNewGame` and `QuitToMenu` + new game, guest rejoins by itself: **works** (session).
+- S6 session survives `UserNewGame` and `QuitToMenu` + new game, guest rejoins by itself: **works for these two
+  paths only** (session). Gateway/zone travel and run failure: **untested** (see Unknowns).
 - P1 guest character next to the host, possessed, manager stays the host's: **works** (session).
 - X13 other player's body visible on both sides, own body untouched: **works**, cooked `MI_GenManMade_Cloth_01`
   (session, sessionlook screenshots).
@@ -145,6 +204,8 @@ class's own properties), `sessionmats` (material names).
 
 - `tools/run-test.ps1`: `$Defaults` for `session`, `sessionmismatch`, `sessionsolo`, `sessionrejoin`; `$AutoJoin` list;
   sets `PT_JOIN=127.0.0.1:<port>` for the client of those scenarios and clears it afterwards.
-- `test/PacificTogetherTest/Scripts/main.lua`: `inWorld` and `pcs` skip PendingKill objects.
+- `test/PacificTogetherTest/Scripts/main.lua`: `inWorld` and `pcs` skip PendingKill objects; `T.hello` and the
+  client hello hook for scenarios without `PT_JOIN`; `body` uses the shipping spawn; `travel` nokeep/norehost turn
+  auto-listen off; `guestsave`'s guest turns auto-listen off.
 - `.gitignore`: `mod/PacificTogether/join.txt`.
 - `native/PacificTogetherNative/dllmain.cpp`: `PTNative_SetAutoListen`, `PTNative_GameBuild`, version 0.0.3.
