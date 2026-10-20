@@ -633,6 +633,8 @@ local T = {
     bodyReport = bodyReport, moveState = moveState, shot = shot, flip = flip,
 }
 
+require("repl")(T)
+
 local make = scenarios[SCENARIO]
 if not make then
     local ok, mod = pcall(require, "scenarios." .. SCENARIO)

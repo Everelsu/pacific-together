@@ -91,3 +91,21 @@ Several agents or developers can test at once, each in their own lane:
 - **Scenario files:** put a new scenario in `test/PacificTogetherTest/Scripts/scenarios/<name>.lua`, returning
   `function(T) return steps end`, where `T` holds the helpers from `main.lua` (`T.onMap`, `T.join`, `T.console`, ...).
   The runner's defaults for an unknown scenario are 2 clients and 300 s; pass `-Clients` / `-Seconds` otherwise.
+
+## Live console (explore without relaunching)
+
+`tools/repl.ps1` runs Lua inside a running test game and prints the result in about a second, so questions like
+"what does this function return" or "which actors exist now" need no new scenario and no relaunch.
+
+1. Start a session in the background: `tools/run-test.ps1 -Scenario repl -Seconds 3600 -Headless [-Clients 1]
+   [-Root ... -Port ...]`. The host opens `$env:PT_MAP` (default the garage) as a listen server, the client joins,
+   both hold.
+2. Ask: `tools/repl.ps1 [-Root ...] [-Side host|client] -Code "state()"` or `-File probe.lua`. An expression returns
+   its value; a block can call `out(...)` for extra lines and `return` values. Every helper of the test mod's `T`
+   table is in scope (`state`, `first`, `inWorld`, `console`, `map`, `netMode`, `dist`, ...), plus all UE4SS globals.
+   Exit code 0 = ok, 1 = Lua error (message printed), 2 = no answer (game not running or not past the main menu).
+3. End it: `tools/repl.ps1 [-Root ...] -Stop`; the scenario passes `repl_session_stopped`, the runner closes both
+   games and frees the slot.
+
+The console also runs during every other scenario, so a failing test can be inspected while it runs. It exists only
+in the test mod. Once a question is answered, turn the answer into a scenario check: the console explores, scenarios prove.
