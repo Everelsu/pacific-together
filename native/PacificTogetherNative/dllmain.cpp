@@ -19,6 +19,12 @@ auto pt_register_net(const LuaMadeSimple::Lua& lua) -> void;   // net.cpp
 
 static constexpr const char* NATIVE_VERSION = "0.0.3";
 
+namespace pt_guard // guard.cpp
+{
+    auto install() -> void;
+    auto register_lua(const LuaMadeSimple::Lua& l) -> void;
+}
+
 // X1b: native travel (Browse -> LoadMap) drops ?listen, so the host would come back standalone.
 // MSVC x64 passes the by-value FURL as a pointer to the caller's temporary (the callee destroys it), so we take it
 // as FURL* and edit it before the real LoadMap. UE4SS's own LoadMap callbacks only get copies.
@@ -91,6 +97,7 @@ class PacificTogetherNative : public CppUserModBase
         ModDescription = STR("Pacific Together native layer");
         ModAuthors = STR("Pacific Together contributors");
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loaded\n"));
+        pt_guard::install();
     }
 
     auto on_unreal_init() -> void override
@@ -112,6 +119,7 @@ class PacificTogetherNative : public CppUserModBase
             if (!l) continue;
             pt_register_trace(*l);
             pt_register_net(*l);
+            pt_guard::register_lua(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);
                 return 1;

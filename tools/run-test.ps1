@@ -19,11 +19,13 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600) }
 # M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
 $AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
+# Q9: a side crashes on purpose, so the run needs that crash instead of "no crash" and keeps waiting after it
+$CrashExpected = @("safety_crash")
 $d = if ($Defaults.ContainsKey($Scenario)) { $Defaults[$Scenario] } else { @(2, 300) }
 if (-not $Clients) { $Clients = $d[0] }
 if (-not $Seconds) { $Seconds = $d[1] }
@@ -155,9 +157,9 @@ while ((Get-Date) -lt $deadline) {
     Update-Snapshots
     $done = @($sides | Where-Object { (Read-Shared $_.Log) -match "\[PacificTogetherTest\] PT\|done side=" })
     if ($done.Count -eq $sides.Count) { $stop = "all sides done"; break }
-    if (Get-NewCrashes) { $stop = "crash"; break }
+    if ((Get-NewCrashes) -and $CrashExpected -notcontains $Scenario) { $stop = "crash"; break }
     $exited = @($procs | Where-Object HasExited)
-    if ($exited) { $stop = "process exited (PID $($exited.Id -join ', '))"; break }
+    if ($exited -and $CrashExpected -notcontains $Scenario) { $stop = "process exited (PID $($exited.Id -join ', '))"; break }
 }
 $elapsed = [int]((Get-Date) - $deadline.AddSeconds(-$Seconds)).TotalSeconds
 Write-Host "stopped waiting: $stop ($elapsed s)"
@@ -240,7 +242,8 @@ foreach ($t in @($actors | Group-Object Tag)) {
             Client = [int]($_.Group | Where-Object Side -eq "client" | Measure-Object N -Sum).Sum }
     } | Sort-Object Class, Role | Export-Csv -NoTypeInformation (Join-Path $results "actors-$($t.Name).csv")
 }
-Add-Check "no crash" ($crashes.Count -eq 0) ($crashes -join "; ")
+if ($CrashExpected -contains $Scenario) { Add-Check "expected crash" ($crashes.Count -gt 0) ($crashes -join "; ") }
+else { Add-Check "no crash" ($crashes.Count -eq 0) ($crashes -join "; ") }
 
 if ($Scenario -eq "dump") {
     $dumps = Join-Path $Repo "local\dumps"
