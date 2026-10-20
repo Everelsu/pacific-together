@@ -18,12 +18,14 @@ Not done yet (expect oddities)
   show up for the host.
 - After the guest leaves or crashes, its character may stay standing in the host's world (being fixed).
 
-Install (both players, with the game closed)
+Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.
-2. Host: double-click install.cmd.
-   Guest: open a terminal in this folder and run   install.cmd -Join <host IP>   (for example install.cmd -Join 100.64.1.2)
-   The installer first backs up your saves to Documents\PacificDrive-saves-backup-<date>.zip.
-3. Start Pacific Drive from Steam as usual.
+2. Double-click launcher.cmd. Check the game folder (Browse... if your game is on another drive). Enter the host's IP
+   if you are the guest, or leave it empty if you are the host. Press Play.
+   The launcher installs the mod, then starts Pacific Drive through Steam. It remembers both fields for next time.
+   The first install of each build backs up your saves to Documents\PacificDrive-saves-backup-<date>.zip.
+Without the launcher: install.cmd (host) or install.cmd -Join <host IP> (guest), then start the game from Steam.
+Starting from Steam directly also works after an install; it uses the last IP you set.
 
 Play
 - Host: load your save. The game now accepts one guest on UDP port 7777.

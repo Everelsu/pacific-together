@@ -22,7 +22,8 @@ $ini = "$game\ue4ss\UE4SS-settings.ini"
 
 $dst = New-Item -ItemType Directory -Force "$game\ue4ss\Mods\PacificTogether"
 Copy-Item "$mod\enabled.txt", "$mod\Scripts", "$mod\dlls" $dst -Recurse
-Copy-Item "$PSScriptRoot\install.ps1", "$PSScriptRoot\install.cmd", "$PSScriptRoot\README.txt" $stage
+Set-Content "$dst\version.txt" $name -Encoding ascii  # install.ps1 skips the copy and backup when this matches
+Copy-Item "$PSScriptRoot\install.ps1", "$PSScriptRoot\install.cmd", "$PSScriptRoot\launcher.ps1", "$PSScriptRoot\launcher.cmd", "$PSScriptRoot\README.txt" $stage
 
 $zip = "$stage.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
