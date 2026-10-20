@@ -4,7 +4,8 @@
 -- wipes its backpack and rejoins, the host sends the record back (ClientMessage) and the guest rebuilds it; then the
 -- host reloads its save (LoadGame), reads the record from the file only, and the guest rejoins and rebuilds again.
 -- -Mutate nosend: the host never sends the record back; nopersist: the host writes no file and forgets the record
--- before the reload; nodur: rebuilding skips durability (every comparison with durability changes fails).
+-- before the reload; nodur: rebuilding skips durability (every comparison with durability changes fails); keepguest: the
+-- guest character stays in the world through the host's LoadGame (expect the 0x20 BeginTearingDown crash).
 local G = require("scenarios.guestchar")
 local SLOT, GUEST_ID = 7, "76561190000000002" -- stand-in SteamID; the real one must come from the handshake (S4)
 local DUR_FIELD = "Durability_5_448CDA0B4D9935979EBC4AA6A500ADAF"
@@ -170,7 +171,7 @@ return function(T)
     end
 
     if T.ROLE == "host" then
-        local guest, stored, hostC, hostInv0, gcAt = nil, {}, nil, 0, 0
+        local guest, stored, hostC, hostInv0, gcAt, gcName = nil, {}, nil, 0, 0, "none"
         local function file(id) return string.format("../../Saved/SaveGames/odsave%d.pt-%s.txt", SLOT, id) end
         local function guestPC()
             for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
@@ -212,6 +213,12 @@ return function(T)
             local line = f:read("l"); f:close()
             return line and decode(line)
         end
+        local function containersFor()
+            local im = T.first("BP_InventoryManager_C")
+            gcAt = os.time()
+            return { bag = lib:CreateContainerWithLayout(im, FText("Guest backpack"), im.Inventory_Player.Layout),
+                     hand = lib:CreateContainerWithLayout(im, FText("Guest hand"), im.Inventory_PlayerHand.Layout) }
+        end
         local function spawnStep(id) return { check = id, timeout = 30, cond = function() guest = G.spawnGuest(T); return guest ~= nil and guest:IsValid() end } end
         return {
             T.onMap("RB_MainMenu", 90),
@@ -232,17 +239,13 @@ return function(T)
                 if f then f:close() end
                 return ok and f ~= nil
             end },
-            { run = function()
-                hostInv0 = G.invCount(T)
-                local im = T.first("BP_InventoryManager_C")
-                hostC = { bag = lib:CreateContainerWithLayout(im, FText("Guest backpack"), im.Inventory_Player.Layout),
-                          hand = lib:CreateContainerWithLayout(im, FText("Guest hand"), im.Inventory_PlayerHand.Layout) }
-                gcAt = os.time()
-                log("PT|info host inventory %d items; guest containers %s %s", hostInv0, T.name(hostC.bag), T.name(hostC.hand))
-            end },
+            { run = function() hostInv0 = G.invCount(T); log("PT|info host inventory %d items", hostInv0) end },
             { check = "host_got_backpack", timeout = 120, cond = function() return stored[GUEST_ID] ~= nil and count(stored[GUEST_ID]) > 0 end },
             -- the host can hold the guest's backpack in real game containers of its own (not registered with the manager)
+            -- created, filled and read in one tick: nothing roots these containers, a GC between steps frees them
             { check = "host_container_roundtrip", timeout = 5, cond = function()
+                hostC = containersFor()
+                gcName = T.name(hostC.bag)
                 write(stored[GUEST_ID], hostC)
                 local a, b = encode({ bag = readC(hostC.bag), hand = readC(hostC.hand), hot = {} }), encode({ bag = stored[GUEST_ID].bag, hand = stored[GUEST_ID].hand, hot = {} })
                 if a ~= b then log("PT|info roundtrip differs:\n  got  %s\n  want %s", a, b) end
@@ -262,13 +265,13 @@ return function(T)
             { run = send },
             { wait = 25 },
             { run = function()
-                local ok, valid = pcall(function() return hostC.bag:IsValid() and hostC.bag:GetNumItems() end)
-                log("PT|info host-side guest container %ds after creation: %s", os.time() - gcAt, ok and tostring(valid) or "gone")
+                -- looked up by name, never through the old pointer: it may be freed
+                log("PT|info host-side guest container %ds after creation: alive=%s", os.time() - gcAt, tostring(StaticFindObject(gcName:match("^%S+ (.+)$") or ""):IsValid()))
             end },
             -- reload the host's save: the record must come back from the file alone
             { run = function()
                 stored = {}
-                G.destroyGuests(T)
+                if MUTATE ~= "keepguest" then G.destroyGuests(T) end
                 loads0 = loads
                 log("PT|info LoadGame(%d) -> %s", SLOT, tostring(T.saveMgr():LoadGame(SLOT, 0, 1, 0)))
             end },

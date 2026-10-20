@@ -2,7 +2,7 @@
 -- Each side has its own local copy of these actors (X3). Guest: aim, check the highlight, press, check the local
 -- effect. Host: check its copy, inventory and menu are unaffected, then run the same interaction itself for the
 -- guest's character (host-authority model) and log where it lands. Garage: a storage container and a pickup;
--- interactzone.lua runs the same in a zone with a loot container and a host-only abandoned-car door.
+-- interactzone.lua observes a zone loot container and a host-only abandoned-car door (targets with observe = true).
 -- -Mutate noaim: the guest does not aim (guest_highlight_* fail); nopress: the guest does not press (guest_effect_*
 -- fail); hostpress: the host presses its own copy before its check (host_unaffected_* fail).
 local G = require("scenarios.guestchar")
@@ -127,22 +127,24 @@ return function(T, opts)
                 add({ wait = 3 })
             end
         end
-        steps[#steps + 1] = { wait = 10 }
+        steps[#steps + 1] = { wait = opts.hostTail or 10 }
         return steps
     end
 
-    local me0, ga, before
+    local me0, ga, before, seen = nil, nil, nil, {}
     local function moved()
         local l = T.myPawn():K2_GetActorLocation()
         return math.sqrt((l.X - me0.X) ^ 2 + (l.Y - me0.Y) ^ 2) >= 60, l
     end
     local function aim()
+        if not ga then return end
         local p, pc = center(ga), T.localPC()
         local c = pc.PlayerCameraManager:GetCameraLocation()
         local dx, dy, dz = p.X - c.X, p.Y - c.Y, p.Z - c.Z
         pc:SetControlRotation({ Pitch = math.deg(math.atan(dz, math.sqrt(dx * dx + dy * dy))), Yaw = math.deg(math.atan(dy, dx)), Roll = 0 })
     end
     local function highlighted(t)
+        if not ga then return false end
         local h = T.first("BP_HighlightManager_C").CurrentHighlight
         local o = h:IsValid() and h:GetOwner()
         log("PT|info guest highlight %s", T.name(o))
@@ -175,6 +177,7 @@ return function(T, opts)
                 if not ok then return false end
                 local a, d = G.nearest(T, t.class, l)
                 if a and d < 400 then ga = a; return true end
+                if not seen[t.id] then seen[t.id] = true; log("PT|info guest moved, nearest %s %s d=%.0f me=%.0f,%.0f,%.0f", t.id, T.name(a), d, l.X, l.Y, l.Z) end
                 return false
             end })
             add({ wait = 2 })
