@@ -30,6 +30,7 @@ Anything marked **(spike)** is a design assumption that a milestone M1 experimen
 | D21 | **Guest can use the garage stations** (Fabrication, Tinker, Detailing) in v1.0, spending the host's shared resources (G2). |
 | D22 | **ARC scope for the guest in v1.0: gateway summon and energy use only.** Route planning stays host-only until v1.1 (it runs through native `UBaseRouteState`; lane E research, 2026-10-20). Narrows D13 / W11. |
 | D23 | **Prove the crash-upload block (D16/Q9) before 1.0** with one deliberate test-copy crash while a Windows Firewall rule blocks the test copy's CrashReportClient outbound (owner approved; needs a UAC prompt). Until then test copies have no CrashReportClient.exe at all (`setup-test.ps1` removes it). |
+| D24 | **Deferred to v1.1** (not immersion blockers): guest use of the garage stations (D21, G2), the other player's marker on the ARC map (D17 second half, P8), Tourists freezing for any player's view (D19, W7). Name tags (P7) stay in v1.0. Research for all three is done (`docs/research/garage-stations.md`, `arc-marker.md`, `tourists.md`). |
 
 ## 2. Fixed constraints
 
@@ -86,7 +87,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | P5 | Guest backpack persists between sessions, stored next to the host's save slot per guest SteamID, saved whenever the host saves and when the guest leaves; a new guest starts empty (D7). Must not change the game's own save format | P0 |
 | P6 | Voice/text chat | Won't (Steam has it) |
 | P7 | Steam name tag over the other player, fading with distance (D17) | P0 |
-| P8 | The other player shown on the ARC map (D17) | P0 |
+| P8 | The other player shown on the ARC map (D17; deferred by D24) | P1 |
 
 ### Car
 
@@ -113,7 +114,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | W4 | Instability, storm walls, gateway summon and the exit warp happen for both at the same time | P0 |
 | W5 | Run failure (emergency protocol) returns both players to the garage with the host's failure penalty | P0 |
 | W6 | Anomalies run on the host and look and act the same for the guest; the run-shaping ones first: Abductor, Bunnies, Pickpocket, Tourists, Spark Tower, Can Opener | P0 |
-| W7 | Tourists count as observed if any player looks at them (D19) | P0 |
+| W7 | Tourists count as observed if any player looks at them (D19; deferred by D24) | P1 |
 | W8 | Remaining anomalies and Whispers in the Woods content | P1 |
 | W9 | Expeditions mode | P1 |
 | W11 | Either player can summon the gateway and use ARC energy (D13, D22); guest route planning is P1 | P0 |
@@ -124,7 +125,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | Id | Requirement | P |
 |---|---|---|
 | G1 | Guest can walk the garage and hand items to the host or the locker | P0 |
-| G2 | Guest can use the Fabrication, Tinker and Detailing stations; the host performs each action with the shared resources (D21) | P0 |
+| G2 | Fabrication, Tinker, Detailing stations: host-only in v1.0; guest use with the host performing each action on the shared resources is v1.1 (D21, D24) | P0 (guest use P1) |
 | G3 | Story missions, radio transmissions, cutscenes play on the host; guest is a bystander and nothing breaks | P0 |
 | G4 | Story audio and cutscenes for the guest | P1 |
 | G5 | Co-op forces "Pause Game While in Menus" off and disables the Chrono Dilator | P0 |
@@ -213,7 +214,7 @@ backpack and its persistence in the host's save, guest damage and death. **Relea
 
 ### M5 Run lifecycle and anomalies (L)
 
-W3-W7, W11, G2, G3, G5, G6, P8: routes, ARC use by both players, guest garage stations, ARC map marker, conditions, storm and gateway, exit warp, run failure, the listed anomalies, story bystander
+W3-W6, W11, G3, G5, G6: routes, gateway summon and ARC energy for both players, conditions, storm and gateway, exit warp, run failure, the listed anomalies, story bystander
 safety, co-op settings. **Release 0.4.0.**
 
 ### M6 Steam (M)
@@ -229,7 +230,7 @@ Rough total to 1.0: 3-4 months part-time. Guess, revisit after M1.
 
 ### After 1.0
 
-P1 items: guest driving (C8), story audio for the guest, all anomalies, Whispers in the Woods,
+P1 items: guest driving (C8), guest garage stations (G2), ARC map marker (P8), Tourists watched by any player (W7), guest route planning (D22), story audio for the guest, all anomalies, Whispers in the Woods,
 DLC-less guests (W10), Expeditions, in-game host/join menu.
 
 ## 6. How we work
