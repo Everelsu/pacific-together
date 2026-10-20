@@ -30,7 +30,11 @@ ue4ss/Mods/PacificTogether/   Lua scripts, dlls/main.dll, enabled.txt
 README.txt                    install, play, uninstall, known issues, where logs are
 ```
 
-- UE4SS itself: link the exact pinned release and its SHA-256 in the README, or bundle it if its license allows (check before 0.1).
+- UE4SS itself is bundled (MIT, its `ue4ss/LICENSE` ships along): the pinned dev build the tests run on, minus its PDB and docs,
+  with its console windows off.
+- `tools/package/package.ps1` builds the zip into `dist/` (git-ignored) with `install.cmd` (finds the Steam install, checks
+  the exe hash, backs up `%LOCALAPPDATA%\PenDriverPro\Saved`, `-Join <ip>` for a guest, `-Uninstall`). Until 0.1.0 it is a
+  `-dev-<commit>` preview passed to friends by hand, not a GitHub release.
 - No game files, no debug test bots, no test-only scenarios.
 - `main.dll` still registers test-only natives (`PTNative_TestCrash`, `PTNative_TestAllowSentry`) when the environment
   variable `PT_SCENARIO` is set; compile them out of release builds before 1.0.
