@@ -34,7 +34,7 @@ Results are capped at 20k characters and say when cut. Errors come back as tool 
 | `find` | live objects of a class in the current world, full names | `class_name=BP_PlayerCarNew_C limit=20` |
 | `describe` | properties with current values and functions with parameters, own class first then parents | `target=<full name from find>` or a class name |
 | `call` | call a UFunction with numbers, strings, bools, `{"obj": "<path>"}` | `object_path=<car> function=K2_GetActorLocation args_json=[]` |
-| `watch` | records ProcessEvent calls whose function name contains the filter (`a|b` or a list), with the calling object, for N seconds | `filter=Character seconds=5` while another `eval` acts |
+| `watch` | records ProcessEvent calls whose function name contains the filter (`a|b` or a list), with the calling object, for N seconds | `filter=Character:Jump seconds=5` while another `eval` acts. The filter matches the whole function path, so a bare `Character` also catches `/Game/Characters/...` animation functions: include the class or function. Only calls through ProcessEvent are seen (Blueprint-to-Blueprint calls inside the script VM are not) and no argument values are recorded |
 | `screenshot` | `HighResShot` in a non-headless session, returns the PNG path | open it with an image reader |
 | `logs` | tail of the copy's `UE4SS.log` (`game_log=true`: `PenDriverPro.log`), regex filter | `pattern="PT\|" tail=50` |
 | `xref` | `local/atlas/xref.py` callers / callees / class / find | `command=callers name=SaveGame` |
