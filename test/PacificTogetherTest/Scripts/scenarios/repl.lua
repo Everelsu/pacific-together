@@ -5,6 +5,12 @@ return function(T)
     local mapPath = os.getenv("PT_MAP") or T.GARAGE
     local mapName = mapPath:match("([^/]+)$")
     local hold = { check = "repl_session_stopped", timeout = 86400, cond = T.replStopped }
+    local fixture = (os.getenv("PT_FIXTURE") or ""):match("[^,]+") -- first of a comma list
+    if T.ROLE == "host" and fixture and fixture ~= "" then -- load the fixture save, stay standalone (no listen: a map reload would drop the loaded state)
+        local steps = T.loadFixture(fixture)
+        steps[#steps + 1] = hold
+        return steps
+    end
     if T.ROLE == "host" then
         return {
             T.onMap("RB_MainMenu", 90),

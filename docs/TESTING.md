@@ -109,3 +109,31 @@ Several agents or developers can test at once, each in their own lane:
 
 The console also runs during every other scenario, so a failing test can be inspected while it runs. It exists only
 in the test mod. Once a question is answered, turn the answer into a scenario check: the console explores, scenarios prove.
+
+## Fixture saves
+
+Real saves that put a test straight into a game state instead of the main menu. They live in `local\fixtures\<name>\`
+(git-ignored, game data): the `.sav` file and a `fixture.txt` with state, slot and how it was made. Each uses its own slot,
+so several can sit in one SaveGames folder.
+
+| Name | Slot | Map | State |
+|---|---|---|---|
+| `garage` | 7 | `RB_Garage` | story mode, car and character, stocked by the game's debug events (biggest container 457 items, anchor juice +5 each); no missions done |
+| `zone` | 8 | `Rural_Forest_Radio_Scylla_02` | a real run map (started by the game's own `TravelToNextLeg`), car and character, ARC charge about 4 |
+| `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0; that a gateway can then be summoned is not proven |
+
+- `run-test.ps1 -Fixture garage[,zone,gateway]` moves the host copy's `Saved\SaveGames` aside, copies the fixtures' `.sav`
+  files in, sets `PT_FIXTURE`, and puts the original folder back after the run (a leftover `.ptbak` from a killed run is
+  restored at the next start). What the game saved during the run is kept in the results folder as `fixture-saves-after`.
+  `-FixturesDir` overrides `<repo>\local\fixtures` (worktrees do not have it).
+- In a scenario: `T.loadFixture(name[, fromMenu])` returns steps that call the game's `UserLoadGame(slot, STORY, 0)` and pass
+  `fixture_<name>_map` once the map, the character and the car are there. Chain several with `fromMenu=false` (the game loads
+  from any map). `T.arcCharge()` and `T.maxContainerItems()` read the state the fixtures were made with.
+- `-Scenario repl -Fixture <name>` opens the console already in that state (standalone, no listen server: a reload would drop it).
+- `-Scenario fixtureload -Fixture garage,zone,gateway -Clients 1`: loads all three and checks map, stock, run map and ARC
+  charge. Mutations: `nofixture` (nothing loaded), `wrongfixture` (the gateway step loads the zone save).
+- Load times (headless, warm cache): menu to garage 8 s, garage to zone 18 s (first load of that map), zone to zone about 6-18 s.
+  No other automatic way to a zone with a car exists (the intro would need a bot to play it).
+- Remake (build or game update): start `-Scenario repl` (no `-Fixture`), follow each `fixture.txt` through `tools\repl.ps1`,
+  copy `odsaveN.sav` from `<root>\client1\PenDriverPro\Saved\SaveGames` into `local\fixtures\<name>\`. Never copy saves from
+  the real install. `UserNewGame(slot, CHALLENGE)` (expedition) hangs and then crashes the game, do not use it.

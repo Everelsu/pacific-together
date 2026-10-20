@@ -11,12 +11,15 @@ param(
     # parallel lanes must not share a port: a guest would join another lane's host
     [int]$Port = 7777,
     # lanes run from worktrees that get deleted, so they point this at the main repo's local\test-results
-    [string]$ResultsDir = ""
+    [string]$ResultsDir = "",
+    # copy local/fixtures/<name>/*.sav into the host copy's Saved/SaveGames for the run (its own saves are restored after) and set PT_FIXTURE
+    [string]$Fixture = "",
+    [string]$FixturesDir = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300) }
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
 $d = if ($Defaults.ContainsKey($Scenario)) { $Defaults[$Scenario] } else { @(2, 300) }
@@ -102,9 +105,23 @@ foreach ($s in $sides) {
     }
 }
 
+# fixture saves: the host copy's SaveGames is moved aside and restored in the end (a leftover .ptbak from a killed run is restored first)
+$saveDir = Join-Path $sides[0].Dir "PenDriverPro\Saved\SaveGames"
+if (Test-Path "$saveDir.ptbak") { Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue; Rename-Item "$saveDir.ptbak" (Split-Path $saveDir -Leaf) }
+if ($Fixture) {
+    if (-not $FixturesDir) { $FixturesDir = Join-Path $Repo "local\fixtures" }
+    # a comma list loads several fixtures (each uses its own slot)
+    $fxDirs = @($Fixture -split "," | ForEach-Object { Join-Path $FixturesDir $_.Trim() })
+    foreach ($fx in $fxDirs) { if (-not (Get-ChildItem $fx -Filter *.sav -ErrorAction SilentlyContinue)) { throw "no fixture saves in $fx" } }
+    if (Test-Path $saveDir) { Rename-Item $saveDir "$(Split-Path $saveDir -Leaf).ptbak" }
+    New-Item -ItemType Directory $saveDir | Out-Null
+    foreach ($fx in $fxDirs) { Copy-Item "$fx\*.sav" $saveDir }
+    Write-Host "fixture $Fixture -> $saveDir"
+}
+
 $started = Get-Date
 $procs = @()
-$env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate
+$env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
 try {
     foreach ($s in $sides) {
         if ($procs) { Start-Sleep 8 }
@@ -116,7 +133,7 @@ try {
         Write-Host "started $($s.Role) PID $($procs[-1].Id)"
     }
 } finally {
-    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE -ErrorAction SilentlyContinue
+    Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE -ErrorAction SilentlyContinue
 }
 
 function Get-NewCrashes {
@@ -152,6 +169,11 @@ Update-Snapshots
 foreach ($s in $sides) {
     if ($s.Snaps.Count) { $s.Snaps["end"] = @(Get-Snapshot $s) }
     if ($null -ne $s.IniBackup) { [IO.File]::WriteAllBytes($s.Ini, $s.IniBackup) }
+}
+if ($Fixture) {
+    $fixtureSaves = Join-Path $results "fixture-saves-after"
+    if (Test-Path $saveDir) { Copy-Item $saveDir $fixtureSaves -Recurse; Remove-Item $saveDir -Recurse -Force }
+    if (Test-Path "$saveDir.ptbak") { Rename-Item "$saveDir.ptbak" (Split-Path $saveDir -Leaf) }
 }
 # a crashed game opens CrashReportClient a moment later; close it without sending anything
 Start-Sleep 3
