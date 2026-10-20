@@ -28,7 +28,8 @@ local JOIN = joinAddress()
 local guestActive = JOIN ~= nil
 
 local function world() return UEHelpers.GetWorld() end
-local function valid(o) return o ~= nil and o:IsValid() end
+-- destroyed actors stay findable (and IsValid) until garbage collection; calling into them can crash the game
+local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 local function fullName(o) return valid(o) and o:GetFullName() or "none" end
 local function same(a, b) return valid(a) and valid(b) and a:GetFullName() == b:GetFullName() end
 local function mapOf(w) return valid(w) and UEHelpers.GetGameplayStatics():GetCurrentLevelName(w, true):ToString() or "none" end
@@ -37,7 +38,8 @@ local function console(cmd)
     UEHelpers.GetKismetSystemLibrary():ExecuteConsoleCommand(world(), cmd, UEHelpers.GetPlayerController())
 end
 local function listening(w)
-    local d = valid(w) and w.NetDriver
+    if not valid(w) then return false end
+    local d = w.NetDriver
     return valid(d) and not d.ServerConnection:IsValid()
 end
 local function localPC(w)
@@ -46,34 +48,37 @@ local function localPC(w)
     end
 end
 local function charManager()
-    for _, m in ipairs(FindAllOf("BP_MainCharacterManager_C") or {}) do if m:IsValid() then return m end end
+    for _, m in ipairs(FindAllOf("BP_MainCharacterManager_C") or {}) do if valid(m) then return m end end
 end
 
 local function gameVersion()
     return StaticFindObject("/Script/EngineSettings.Default__GeneralProjectSettings").ProjectVersion:ToString()
 end
 local function gameBuild() return PTNative_GameBuild and PTNative_GameBuild() or 0 end
--- S4 hello, guest -> host over the stock reliable ServerChangeName RPC; the host turns it back into the player's name
-local function hello(name)
-    return string.format("PT|hello mod=%s protocol=%d game=%s build=%d name=%s", common.MOD_VERSION, common.PROTOCOL_VERSION,
-        gameVersion(), gameBuild(), name)
+-- S4 hello, guest -> host over the stock reliable ServerChangeName RPC; the host puts the login name back afterwards.
+-- Never rewrite the hooked RPC's string parameter: that corrupted the host's heap (docs/spikes/M2-session.md).
+local function hello()
+    return string.format("PT|hello mod=%s protocol=%d game=%s build=%d", common.MOD_VERSION, common.PROTOCOL_VERSION,
+        gameVersion(), gameBuild())
 end
 local function parseHello(s)
     if not s:find("^PT|hello ") then return nil end
     local h = {}
     for k, v in s:gmatch("(%w+)=(%S*)") do h[k] = v end
-    h.name = s:match(" name=(.*)$") or ""
     return h
 end
 
--- X13: every character is drawn with an invisible material (first-person game). Give the other player's body the
--- mesh's own (ALS mannequin) materials, falling back to the engine grid; never touch our own.
-local GRID = "/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial"
+-- X13: every character is drawn with an invisible material (first-person game), its mesh's own materials too. Give
+-- the other player's body a cooked cloth material, falling back to the engine grid; never touch our own.
+local BODY = { "/Game/Env/Generic/Props/Cloth/MI_GenManMade_Cloth_01.MI_GenManMade_Cloth_01",
+               "/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial" }
 local changed = {} -- character full name -> original materials
-local function visibleMaterial(mesh, i)
-    local ok, m = pcall(function() return mesh.SkeletalMesh.Materials[i + 1].MaterialInterface end)
-    if ok and valid(m) and not m:GetFullName():find("Invist", 1, true) then return m end
-    return StaticFindObject(GRID)
+local function visibleMaterial()
+    for _, path in ipairs(BODY) do
+        local m = StaticFindObject(path)
+        if not valid(m) then m = LoadAsset(path) end
+        if valid(m) then return m end
+    end
 end
 local function setBody(c, visible)
     local mesh, key = c.Mesh, c:GetFullName()
@@ -82,7 +87,7 @@ local function setBody(c, visible)
         local orig = {}
         for i = 0, mesh:GetNumMaterials() - 1 do
             orig[i] = mesh:GetMaterial(i)
-            mesh:SetMaterial(i, visibleMaterial(mesh, i))
+            mesh:SetMaterial(i, visibleMaterial())
         end
         changed[key] = orig
     else
@@ -145,10 +150,10 @@ end
 local function onHello(pc, s)
     local h = parseHello(s:get():ToString())
     if not h then return end
-    -- the PlayerState gets the real name, not the hello
-    s:set(h.name ~= "" and h.name or "Guest")
     local key = pc:GetFullName()
     if greeted[key] then return end
+    -- the login name, before the engine applies the hello as the new name
+    local name = valid(pc.PlayerState) and pc.PlayerState:GetPlayerName():ToString() or "Guest"
     local mine = { mod = common.MOD_VERSION, protocol = tostring(common.PROTOCOL_VERSION), game = gameVersion(), build = tostring(gameBuild()) }
     log("PT|session hello from %s mod=%s protocol=%s game=%s build=%s", key, tostring(h.mod), tostring(h.protocol), tostring(h.game), tostring(h.build))
     for _, k in ipairs({ "mod", "protocol", "game", "build" }) do
@@ -158,7 +163,15 @@ local function onHello(pc, s)
         end
     end
     greeted[key] = true
-    spawnFor(pc)
+    -- outside the RPC's hook, so the spawn's own hooks and Blueprint events do not run nested in it
+    ExecuteInGameThreadWithDelay(100, function()
+        local ok, err = pcall(function()
+            if not valid(pc) or not greeted[key] then return end
+            UEHelpers.GetGameModeBase():ChangeName(pc, name, false)
+            spawnFor(pc)
+        end)
+        if not ok then log("PT|error session spawn %s", tostring(err)) end
+    end)
 end
 
 local function onLogin(pc)
@@ -216,7 +229,8 @@ local hooked = false
 local function hookAll()
     if hooked then return end
     hooked = true
-    hook("/Script/Engine.GameModeBase:K2_PostLogin", function(gm, pc) onLogin(pc:get()) end)
+    -- PostLogin's native event for every joining player (K2_PostLogin never fires: no Blueprint implements it)
+    hook("/Script/Engine.GameModeBase:HandleStartingNewPlayer", function(gm, pc) onLogin(pc:get()) end)
     hook("/Script/Engine.PlayerController:ServerChangeName", function(self, s)
         local pc = self:get()
         if pc:HasAuthority() and not pc:IsLocalController() then onHello(pc, s) end
@@ -225,8 +239,7 @@ local function hookAll()
     hook("/Script/Engine.PlayerController:ClientSetHUD", function(self)
         local pc = self:get()
         if JOIN and guestActive and common.netMode() == "client" and pc:IsLocalController() then
-            local ps = pc.PlayerState
-            pc:ServerChangeName(hello(valid(ps) and ps:GetPlayerName():ToString() or "Guest"))
+            pc:ServerChangeName(hello())
             log("PT|session hello sent")
         end
     end)

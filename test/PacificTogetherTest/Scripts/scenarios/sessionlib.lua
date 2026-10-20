@@ -18,8 +18,13 @@ return function(T)
     end
     function L.guestChar()
         for _, pc in ipairs(L.remotePCs()) do
-            if pc.Pawn:IsValid() and T.cls(pc.Pawn) == T.CHAR then return pc.Pawn end
+            if T.inWorld(pc.Pawn) and T.cls(pc.Pawn) == T.CHAR then return pc.Pawn end
         end
+    end
+    function L.guestName()
+        local pc = L.remotePCs()[1]
+        local ps = pc and pc.PlayerState
+        return (ps and ps:IsValid()) and ps:GetPlayerName():ToString() or ""
     end
     function L.manager() return T.first("BP_MainCharacterManager_C") end
     -- our own character: the pawn, or the manager's character while we drive (the intro starts in the car)

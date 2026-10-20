@@ -32,7 +32,7 @@ local function pcs()
     if not w:IsValid() then return 0 end
     local wn = w:GetFullName()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-        if pc:IsValid() and pc:GetWorld():IsValid() and pc:GetWorld():GetFullName() == wn then n = n + 1 end
+        if pc:IsValid() and not pc:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) and pc:GetWorld():IsValid() and pc:GetWorld():GetFullName() == wn then n = n + 1 end
     end
     return n
 end
@@ -208,7 +208,9 @@ end
 
 -- X13: remote player body
 local CHAR = "PDP_MainCharacter_C"
-local function inWorld(o) return o:IsValid() and o:GetWorld():IsValid() and o:GetWorld():GetFullName() == world():GetFullName() end
+-- destroyed actors stay findable (and IsValid) until garbage collection
+local function gone(o) return not o:IsValid() or o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+local function inWorld(o) return not gone(o) and o:GetWorld():IsValid() and o:GetWorld():GetFullName() == world():GetFullName() end
 local function localPC()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do if inWorld(pc) and pc:IsLocalController() then return pc end end
 end

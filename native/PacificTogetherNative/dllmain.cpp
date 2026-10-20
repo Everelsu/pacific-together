@@ -6,9 +6,6 @@
 #include <Unreal/FWorldContext.hpp>
 #include <Unreal/World.hpp>
 #include <Unreal/FURL.hpp>
-#include <Unreal/AActor.hpp>
-#include <Unreal/UObjectGlobals.hpp>
-#include <Unreal/UFunction.hpp>
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -70,51 +67,6 @@ static auto patch_load_map(UEngine* engine) -> void
                                     reinterpret_cast<void*>(g_load_map), UEngine::LoadMapInternal.get_function_address());
 }
 
-// S5: when a guest's connection closes, APlayerController::Destroyed destroys the guest's character while it is still
-// possessed, and the host crashes. Unpossess first (the order the Lua cleanup uses before travel), then destroy.
-using DestroyedFn = void (*)(UObject*);
-static DestroyedFn g_pc_destroyed{};
-
-static auto call(UObject* obj, const TCHAR* fn) -> void
-{
-    if (auto f = obj->GetFunctionByNameInChain(fn)) obj->ProcessEvent(f, nullptr);
-}
-
-static auto guarded_pc_destroyed(UObject* pc) -> void
-{
-    auto pawn = pc->GetValuePtrByPropertyNameInChain<UObject*>(STR("Pawn"));
-    auto player = pc->GetValuePtrByPropertyNameInChain<UObject*>(STR("Player"));
-    auto role = pc->GetValuePtrByPropertyNameInChain<uint8_t>(STR("Role"));
-    // ROLE_Authority with no UPlayer = a remote player leaving the server
-    if (pawn && *pawn && player && !*player && role && *role == 3)
-    {
-        auto p = *pawn;
-        Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native leaving player {} unpossess {}\n"), pc->GetFullName(), p->GetFullName());
-        call(pc, STR("UnPossess"));
-        call(p, STR("K2_DestroyActor"));
-    }
-    g_pc_destroyed(pc);
-}
-
-// BP controllers use the vtable of their native parent, so the CDO's vtable is every instance's
-static auto patch_pc_destroyed() -> void
-{
-    auto cdo = UObjectGlobals::StaticFindObject<UObject*>(nullptr, nullptr, STR("/Script/PenDriverPro.Default__BasePlayerController"));
-    if (!cdo)
-    {
-        Output::send<LogLevel::Error>(STR("[PacificTogether] PT|error native no BasePlayerController CDO\n"));
-        return;
-    }
-    auto offset = AActor::VTableLayoutMap.at(STR("Destroyed"));
-    auto slot = reinterpret_cast<void**>(*reinterpret_cast<uint8_t**>(cdo) + offset);
-    DWORD old{};
-    if (!VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old)) return;
-    g_pc_destroyed = reinterpret_cast<DestroyedFn>(*slot);
-    *slot = reinterpret_cast<void*>(&guarded_pc_destroyed);
-    VirtualProtect(slot, sizeof(void*), old, &old);
-    Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native controller destroyed patched slot=0x{:x}\n"), offset);
-}
-
 // S4: the Steam build id of the running game, through the game's own steam_api64.dll; 0 when Steam is not up
 static auto game_build() -> int
 {
@@ -143,7 +95,6 @@ class PacificTogetherNative : public CppUserModBase
         // the first LoadMap (boot -> menu) hands us the live engine; patch its vtable then
         Hook::RegisterLoadMapPreCallback([](auto&, UEngine* engine, FWorldContext&, FURL, UPendingNetGame*, FString&) {
             if (!g_load_map) patch_load_map(engine);
-            if (!g_pc_destroyed) patch_pc_destroyed();
         }, {true, true, STR("PacificTogether"), STR("PatchLoadMap")});
     }
 
