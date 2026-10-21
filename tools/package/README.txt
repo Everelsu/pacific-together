@@ -33,6 +33,9 @@ What works in this build
   costs the guest items the same way it costs the host.
 - Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
   radio and voice lines with subtitles. Only the host's actions move the story on.
+- An overlay at the top right shows the mod version and, during a session, who is connected and the ping, plus a short
+  feed of what the other player does (joined, got in the car, took items from the trunk, ...). Lines fade after a few
+  seconds.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
@@ -50,6 +53,8 @@ Not done yet (expect oddities)
   the guest's own.
 - Car paint and cosmetics, tutorials and expedition progress are the guest's own, not the host's. A map screen that is
   already open may need reopening to show the host's route.
+- The overlay uses the engine's plain font, stays visible over the pause menu, and is English only. A host map change
+  shows the guest as leaving and rejoining.
 - The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)
