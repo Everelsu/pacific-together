@@ -19,6 +19,7 @@ What works in this build
   item picked up from the ground disappears for both; whoever took it has it in their own backpack.
 - The run: the guest sees the same time of day, weather, instability, storm and gateway as the host, and the host's
   anomalies in the same places (updated a few times a second).
+- Anomaly hits on the guest (explosions, shocks) hurt the guest, not the host.
 - Health: each player sees the other's health under their name tag. The guest takes damage and radiation and heals
   normally. When the guest dies, the screen goes black for a few seconds and they come back at the car with full
   health; the host's run goes on. When the host dies, the run fails for both, as in the normal game.
@@ -37,7 +38,8 @@ Not done yet (expect oddities)
 - Only the host drives. The guest's speedometer and engine sound stay idle. Wipers, horn, radio and flat-tyre status
   aren't synced.
 - Moved items lose their tints and upgrades (durability, fuel and battery are kept).
-- Anomalies act on the guest only partly (grabbing, shocks and stealing may look off). Some rare ones aren't synced.
+- Anomalies that grab, steal or open things don't act on the guest yet, and Leech and BombRock aren't shown to the guest.
+  Tourists should stop when the guest looks at them, but that is not proven yet.
 - Items in the guest's death crate lose their grid layout, and the other player's copy of them loses durability.
 - Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Scrapping and siphoning are untested
   with real hands on the tools.
