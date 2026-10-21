@@ -37,11 +37,14 @@ Not done yet (expect oddities)
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.
-2. Double-click launcher.cmd. Check the game folder (Browse... if your game is on another drive). Enter the host's IP
-   if you are the guest, or leave it empty if you are the host. Press Play.
-   The launcher installs the mod, then starts Pacific Drive through Steam. It remembers both fields for next time.
+2. Double-click PacificTogether.exe. If Windows SmartScreen says "unknown publisher", press More info, then Run anyway
+   (the app is not code-signed yet). Check the game folder (Browse... if your game is on another drive), choose
+   "I am the host" or "I am the guest" and type the host's address, then press Install & play.
+   The app installs the mod, then starts Pacific Drive through Steam. It remembers your choices for next time.
    The first install of each build backs up your saves to Documents\PacificDrive-saves-backup-<date>.zip.
-Without the launcher: install.cmd (host) or install.cmd -Join <host IP> (guest), then start the game from Steam.
+   The app also has tabs for what's new, the known limitations (the lists above) and a playtester guide, and buttons to
+   uninstall, open the log folder and collect your logs into a zip on the Desktop.
+Without the app: install.cmd (host) or install.cmd -Join <host IP> (guest), then start the game from Steam.
 Starting from Steam directly also works after an install; it uses the last IP you set.
 
 Play

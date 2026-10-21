@@ -26,7 +26,8 @@ Copy-Item "$mod\enabled.txt", "$mod\Scripts" $dst -Recurse
 $ndst = New-Item -ItemType Directory -Force "$game\ue4ss\Mods\PacificTogetherNative"
 Copy-Item "$native\enabled.txt", "$native\dlls" $ndst -Recurse
 Set-Content "$dst\version.txt" $name -Encoding ascii  # install.ps1 skips the copy and backup when this matches
-Copy-Item "$PSScriptRoot\install.ps1", "$PSScriptRoot\install.cmd", "$PSScriptRoot\launcher.ps1", "$PSScriptRoot\launcher.cmd", "$PSScriptRoot\README.txt" $stage
+Copy-Item "$PSScriptRoot\install.ps1", "$PSScriptRoot\install.cmd", "$PSScriptRoot\README.txt", "$PSScriptRoot\GUIDE.md", "$Repo\CHANGELOG.md" $stage
+& "$PSScriptRoot\build-app.ps1" -Out "$stage\PacificTogether.exe"  # the launcher app; it reads README.txt, GUIDE.md and CHANGELOG.md next to it
 
 $zip = "$stage.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
