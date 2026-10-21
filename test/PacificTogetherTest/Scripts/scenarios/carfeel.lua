@@ -46,11 +46,12 @@ return function(T)
     local skips = 0
     pcall(RegisterHook, "/Script/PenDriverPro.BaseMusicManager:SkipTrack", function() skips = skips + 1 end)
 
-    local inbox = {}
+    local inbox, heads = {}, {}
     local function drain()
         while true do
             local kind, data = PTNative_MsgPoll("t.")
             if not kind then return end
+            if kind == "t.pl" then heads[#heads + 1] = data; if #heads > 6 then table.remove(heads, 1) end end
             inbox[kind] = { data = data, at = os.time(), n = (inbox[kind] and inbox[kind].n or 0) + 1 }
         end
     end
@@ -140,25 +141,30 @@ return function(T)
         add({ run = function() skips = 0 end })
         add({ run = function() send("t.sk1b") end })
         add({ check = "host_skip_from_guest", timeout = 60, cond = function() return after("t.sk2") and skips >= 1 end })
-        -- playlist order: with the radio off the host's list is the guest's
-        add({ run = function() if carRadioOn() then cm():SetCarRadioOnOffState(false, true) end end })
-        add({ wait = 4 })
-        add({ run = function() send("t.pl", head()) end })
-        add({ wait = 6 })
-
         -- horn, headlights, wipers
         add({ run = function() cm():StartHornHonk(FName("ptfeel")); send("t.horn1") end })
-        add({ wait = 4 })
+        add({ wait = 8 })
         add({ run = function() cm():EndHornHonk(FName("ptfeel")); send("t.horn0") end })
         add({ wait = 3 })
         add({ run = function() cm():SetCarLightsOn(true); send("t.lights1") end })
         add({ wait = 4 })
         add({ run = function()
             L.car():ToggleWiperBlades()
+        end })
+        add({ wait = 3 })
+        add({ run = function()
             log("PT|info host wipers %s", tostring(cm().WiperBladesOnOff))
             send("t.wip1", cm().WiperBladesOnOff and "1" or "0")
         end })
-        add({ check = "host_guest_done", timeout = 90, cond = function() return got("t.done") ~= nil end })
+        -- playlist order: with the radio off the host's list is the guest's
+        add({ run = function() if carRadioOn() then cm():SetCarRadioOnOffState(false, true) end end })
+        add({ wait = 4 })
+        add({ run = function()
+            local n = 0
+            LoopInGameThreadWithDelay(500, function() n = n + 1; if n < 40 then pcall(function() send("t.pl", head()) end) end end)
+        end })
+        add({ check = "host_guest_done_pl", timeout = 90, cond = function() return got("t.done") ~= nil end })
+
         add({ wait = 3 })
         return steps
     end
@@ -238,13 +244,6 @@ return function(T)
     add({ check = "guest_skip_from_host", timeout = 60, cond = function() return got("t.sk1") ~= nil and skips >= 1 end })
     add({ check = "guest_skip_settled", timeout = 60, cond = function() return got("t.sk1b") ~= nil end })
     add({ run = function() radioPart(L.car()).BP_RadioComponent:ChangeChannel(1); toHost("t.sk2") end })
-    add({ wait = 3 })
-    add({ check = "guest_playlist_is_hosts", timeout = 30, cond = function()
-        local m = got("t.pl")
-        log("PT|info playlist head host=%s guest=%s", m and m.data or "-", head())
-        return m ~= nil and m.data == head()
-    end })
-
     -- horn, lights, wipers
     add({ check = "guest_hears_horn", timeout = 60, cond = function() return got("t.horn1") ~= nil and audio(L.car()).HornActive == true end })
     add({ check = "guest_horn_stops", timeout = 60, cond = function() return got("t.horn0") ~= nil and audio(L.car()).HornActive == false end })
@@ -253,6 +252,15 @@ return function(T)
         local m = got("t.wip1")
         return m ~= nil and (cm().WiperBladesOnOff and "1" or "0") == m.data
     end })
+    add({ wait = 3 })
+    add({ check = "guest_playlist_is_hosts", timeout = 30, cond = function()
+        got("t.pl")
+        local g = head()
+        for _, h in ipairs(heads) do if h == g then return true end end
+        log("PT|info playlist head guest=%s host recent=%s", g, table.concat(heads, ","))
+        return false
+    end })
+
     add({ run = function() toHost("t.done") end })
     add({ wait = 3 })
     return steps

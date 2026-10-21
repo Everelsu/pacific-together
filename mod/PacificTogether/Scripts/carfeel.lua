@@ -261,7 +261,12 @@ LoopInGameThreadWithDelay(100, function()
 end)
 -- the guest's controller is off, so its throttle input (the engine load and wheel spin sounds) is the host's
 LoopInGameThreadWithDelay(16, function()
-    if feel and valid(gcar) and fresh() then pcall(function() gcar.VehicleController.ThrottleInput = feel.load end) end
+    if feel and valid(gcar) and fresh() then
+        pcall(function()
+            gcar.VehicleController.ThrottleInput = feel.load
+            if valid(gaudio) and math.abs(gaudio.ThrottleAccumCurrent - feel.acc) > 0.3 then gaudio.ThrottleAccumCurrent = feel.acc end
+        end)
+    end
 end)
 LoopInGameThreadWithDelay(200, function()
     if mode() == "standalone" or mode() == "none" then last, plSent, lastGuests, feel = {}, nil, 0, nil; return end
