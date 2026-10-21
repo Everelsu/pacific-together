@@ -170,7 +170,8 @@ return function(T)
             return math.abs(wrap(r.Yaw - want)) < 5 and s
         end },
         { run = function()
-            RegisterHook(MINE .. ":CreepCheck", function(self, could)
+            -- mutation "mod": no hook of ours, the shipping mod's anomalies module (ShouldCreep flag) must do the freezing
+            if M ~= "mod" then RegisterHook(MINE .. ":CreepCheck", function(self, could)
                 hook.calls = hook.calls + 1
                 if M == "nohook" or not could:get() then return end
                 local m = self:get()
@@ -180,7 +181,7 @@ return function(T)
                         could:set(false); hook.overrides = hook.overrides + 1; return
                     end
                 end
-            end)
+            end) end
             T.log("PT|info CreepCheck hook installed; Lua-called CreepCheck now -> %s (calls=%d)", tostring(couldCreep(mine)), hook.calls)
             start = mine:K2_GetActorLocation()
             mine.Creep = true
@@ -191,7 +192,7 @@ return function(T)
         -- host looks away, the guest looks at it: the game's 0.2 s timer runs CreepCheck, our hook says "seen"
         { check = "tourist_frozen_while_guest_looks", timeout = 14, cond = function()
             if moved() > 20 then frozenSince = math.huge end
-            return os.time() - frozenSince >= 8 and hook.calls >= 10
+            return os.time() - frozenSince >= 8 and (hook.calls >= 10 or M == "mod")
         end, tick = function(t) T.log("PT|info frozen t=%d moved=%.0f calls=%d overrides=%d", t, moved(), hook.calls, hook.overrides) end },
         { run = function() turnGuest(wrap(want + 180)) end },
         -- control: nobody looks, so it must creep (shows the frozen check could fail)

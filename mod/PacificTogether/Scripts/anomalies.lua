@@ -1,0 +1,145 @@
+-- Anomalies act on both players (W6, W7, D19). The host runs every hazard (world.lua replicates them, the guest's copies are
+-- inert), and the hazards' logic targets "the player" through single-reference managers, so the host's own process decides.
+--   damage   hazards hurt by dispatching MSG_Damage_* messages to pawns in a sphere. The guest's pawn exists on the host too and
+--            its AC_PlayerHealthReceiverHelper adjusts the HOST's PlayerHealth: the host was hurt for the guest's hit. The host
+--            takes the damage off that message (Damage = 0) and sends it as "g.anom.msg"; the guest dispatches the same message
+--            class to its own pawn, so its own health, magic HP, feedback and death run as for any hit (health.lua handles death).
+--   tourists a Tourist creeps only when camera 0 (the host's) does not see it; a post-hook on CreepCheck also asks the guest's
+--            camera as the host sees it (ServerUpdateCamera), docs/research/tourists.md.
+-- Everything is inert outside a session (Q7).
+local UEHelpers = require("UEHelpers")
+local common = require("common")
+local net = require("net")
+local safety = require("safety")
+local log = common.log
+
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom", debug = os.getenv("PT_ANOM_DEBUG") ~= nil } -- the test mutation switches the module off
+local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+local function try(what, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then log("PT|error anomalies %s %s", what, tostring(err)) end
+end
+-- Blueprint classes load with their map: a hook is retried until its class exists, then kept
+local pending = {}
+local function hook(path, pre, post)
+    pending[#pending + 1] = { path = path, pre = pre or function() end, post = post }
+end
+LoopInGameThreadWithDelay(2000, function()
+    for i = #pending, 1, -1 do
+        local h = pending[i]
+        if pcall(RegisterHook, h.path, h.pre, h.post) then table.remove(pending, i) end
+    end
+end)
+
+-- ---------------------------------------------------------------- damage
+
+local RECEIVER = "/Game/Characters/Player/Components/AC_PlayerHealthReceiverHelper.AC_PlayerHealthReceiverHelper_C:"
+local BINDS = { "MessageBind_MSG_Damage_Physical_C", "MessageBind_MSG_Base_Heal_C", "MessageBind_MSG_Damage_Acid_C", "MessageBind_MSG_Damage_Radiation_C",
+    "MessageBind_MSG_Damage_Electrical_C", "MessageBind_MSG_Damage_FallDamage_C", "MessageBind_MSG_Heal_Generic_C", "MessageBind_MSG_Base_Damage_C" }
+M.forwarded, M.applied = 0, 0 -- counters for the scenario
+
+-- host: is this receiver on the pawn of a remote player?
+local function isGuestPawn(receiver)
+    local owner = receiver:GetOwner()
+    if not valid(owner) then return false end
+    local c = owner.Controller
+    return valid(c) and not c:IsLocalController()
+end
+
+-- The receiver's handler cannot be cancelled (a nulled or zeroed payload, playerProtected: the host was hurt all the same, and
+-- GameResource:Adjust is called from Blueprint, out of reach of a hook), and the host's health is already changed when the first
+-- bind event of the message runs (post-hooks of the bind events never fire). So the host's health is sampled every frame, and a
+-- moment after a bind on the guest's pawn the host gets back what it lost since the sample (at most what the message could have
+-- done). One message reaches two binds (MSG_Base_Damage and its own class): sent once per payload.
+local lastHp, lastPayload, lastAt = nil, nil, 0
+
+local function hostHealth()
+    local rm = FindFirstOf("BP_ResourceManager_C")
+    return valid(rm) and valid(rm.PlayerHealth) and rm or nil
+end
+
+LoopInGameThreadWithDelay(16, function()
+    if not (M.enabled and safety.active() and not safety.guest()) then lastHp = nil return end
+    local rm = hostHealth()
+    lastHp = rm and rm.PlayerHealth.Current or nil
+end)
+
+local function pre(self, payload)
+    if not (M.enabled and safety.active() and not safety.guest()) then return end
+    local rec, p = self:get(), payload:get()
+    if not (valid(rec) and valid(p) and isGuestPawn(rec)) then return end
+    local dmg = p.Damage
+    local key, now = p:GetAddress(), os.clock()
+    if key == lastPayload and now - lastAt < 0.5 then return end
+    lastPayload, lastAt = key, now
+    if dmg == 0 then return end
+    local sample, cap = lastHp, math.abs(dmg) * 1.5 + 1
+    if sample then
+        ExecuteInGameThreadWithDelay(40, function() try("put back", function()
+            local rm = hostHealth()
+            if not rm then return end
+            local d = math.max(-cap, math.min(cap, sample - rm.PlayerHealth.Current))
+            if math.abs(d) > 0.05 then rm.PlayerHealth:Adjust(rm, d); M.undone = (M.undone or 0) + d; log("PT|anom host health put back %.1f", d) end
+        end) end)
+    end
+    local cls = p:GetClass():GetFullName():gsub("^%S+ ", "")
+    local msg = string.format("%s\t%.3f\t%d\t%d\t%.3f\t%d", cls, dmg, p.Spillover and 1 or 0, p.IsDamageOverTime and 1 or 0, p.FeedbackStrength, p.DistributeMode)
+    M.forwarded = M.forwarded + 1
+    net.toGuest(rec:GetOwner().Controller, "g.anom.msg", msg)
+    log("PT|anom damage for guest %s", msg)
+end
+
+for _, fn in ipairs(BINDS) do
+    hook(RECEIVER .. fn, function(self, payload) try("forward", pre, self, payload) end)
+end
+
+net.on("g.anom.msg", function(_, data)
+    if not (M.enabled and safety.guest()) then return end
+    try("apply", function()
+        local cls, dmg, sp, dot, fb, dm = data:match("^([^\t]+)\t([^\t]+)\t(%d)\t(%d)\t([^\t]+)\t(%d)$")
+        if not cls then return end
+        local c = StaticFindObject(cls)
+        if not valid(c) then pcall(LoadAsset, cls); c = StaticFindObject(cls) end
+        local pc, ms = UEHelpers.GetPlayerController(), FindFirstOf("MessageSystem")
+        if not (valid(c) and valid(pc) and valid(pc.Pawn) and valid(ms)) then return end
+        local m = StaticConstructObject(c, ms)
+        m.Damage, m.Spillover, m.IsDamageOverTime, m.FeedbackStrength, m.DistributeMode = tonumber(dmg), sp == "1", dot == "1", tonumber(fb), tonumber(dm)
+        ms:DispatchMessage(m, pc.Pawn)
+        M.applied = M.applied + 1
+        log("PT|anom damage applied %s", data)
+    end)
+end)
+
+-- ---------------------------------------------------------------- tourists (D19, W7)
+
+-- the game's own test in CreepCheck: within 2000 uu of the camera and dot(camera -> mine, camera forward) > 0.3 = seen
+local function sees(loc, rot, t)
+    local d = { X = t.X - loc.X, Y = t.Y - loc.Y, Z = t.Z - loc.Z }
+    local len = math.sqrt(d.X ^ 2 + d.Y ^ 2 + d.Z ^ 2)
+    if len > 2000 or len < 1 then return false end
+    local p, y = math.rad(rot.Pitch), math.rad(rot.Yaw)
+    local f = { X = math.cos(p) * math.cos(y), Y = math.cos(p) * math.sin(y), Z = math.sin(p) }
+    return (d.X * f.X + d.Y * f.Y + d.Z * f.Z) / len > 0.3
+end
+
+-- CreepCheck's out value cannot be overridden from here (a pre-hook sees it empty, post-hooks never fire on Blueprint functions).
+-- ShouldCreep, the game's 0.2 s timer, returns at once while CreepedToCamera is set, and only the host's camera clears it: so while a
+-- guest looks at the Tourist the flag is set (and cleared again when no guest looks, if the flag is ours): it does not creep.
+local forced = {} -- Tourist address -> true while the flag is ours
+hook("/Game/Gameplay/Hazards/Landmine/BP_Hazard_Landmine.BP_Hazard_Landmine_C:ShouldCreep", function(self)
+    if not (M.enabled and safety.active() and not safety.guest()) then return end
+    try("creep", function()
+        local m = self:get()
+        local at, key, seen = m.Body:K2_GetComponentLocation(), m:GetAddress(), false
+        for _, pc in ipairs(net.guests()) do
+            -- the guest's camera as the host knows it (the stock ServerUpdateCamera feeds its PlayerCameraManager here)
+            local cam = pc.PlayerCameraManager
+            if valid(cam) and sees(cam:GetCameraLocation(), cam:GetCameraRotation(), at) then seen = true break end
+        end
+        if M.debug then log("PT|anom dbg shouldcreep seen=%s flag=%s forced=%s", tostring(seen), tostring(m.CreepedToCamera), tostring(forced[key])) end
+        if seen and not m.CreepedToCamera then m.CreepedToCamera, forced[key] = true, true; M.frozen = (M.frozen or 0) + 1
+        elseif not seen and forced[key] then m.CreepedToCamera, forced[key] = false, nil end
+    end)
+end)
+
+return M
