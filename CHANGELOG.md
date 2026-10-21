@@ -25,9 +25,29 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
   crate that either player can loot.
 
+- The guest's tools work on car parts and abandoned cars: Scrapper and Electric Scrapper, Hammer and Magnetic Hammer,
+  Prybar, Explosive Cutter, Blowtorch and putty. The part breaks or heals for both players and its scrap drops once.
+- The guest can take parts off the car, install parts, refuel and use the car's storage; the host's car takes the change.
+- The garage stereo and the car radio are shared: either player switches them, changes the volume or skips a track.
+- Riding along feels alive: the guest hears the engine follow the host's driving and sees the speedometer, horn,
+  headlights and wipers.
+- The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
+  doors open and close for both players, from either player's button press.
+
 ### Fixed
-- The host's game crashed when the host opened the pause menu with a guest connected, and the guest couldn't open the
-  pause menu at all. Pausing now works: the host's pause menu pauses the game for both players.
+- The host's game crashed when the host pressed Esc with a guest connected (with "Pause game while in menus" on or off).
+  The real cause was the guest's controller on the host having no input object; fixed. The host's pause menu pauses
+  the game for both players.
+- The garage doors never opened in co-op, so the car couldn't leave the garage.
+- A guest who was stuck "dead" after a car door or the game's own kill lost their materials and got no death crate.
+  Every guest death now ends in the death crate with crafted items intact, and the guest comes back.
+- An item the guest dropped existed twice (one for each player to pick up).
+- Loot in abandoned cars' trunks and truck beds wasn't shared.
+- Dropped items floated in the air on the guest's screen.
+- The guest's repairs and scrapping on car parts snapped back and left ghost items on the guest's side.
+- Pressing X to leave the car left the guest stuck inside on their own screen.
+- The ARC device between the seats blocked the starter key and some panels; it now sits behind the front seats.
+- The overlay moved higher; it overlapped the game's HUD at the bottom right.
 - The guest "died" a few seconds after every map change, dropping their backpack as a crate. Fixed.
 - A failed run's item loss for the guest could be undone when they rejoined. Fixed.
 - An anomaly hitting the guest took the host's health instead of the guest's. It now hurts the guest.

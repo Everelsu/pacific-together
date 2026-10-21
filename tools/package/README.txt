@@ -29,28 +29,32 @@ What works in this build
   hand over keep their durability, fuel and battery charge. Opened and emptied containers look that way for both.
 - The guest's backpack is kept by the host next to the host's save and comes back when the guest rejoins the same save
   under the same player name. When the guest dies, their items drop as a crate where they fell; either player can loot it.
-- The guest can work on the car and the ARC: repair parts with repair putty, charge the battery, refuel from a fuel can,
-  deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
+- The guest can work on the car and the ARC: all tools (Scrapper, Electric Scrapper, Hammer, Magnetic Hammer, Prybar,
+  Explosive Cutter, Blowtorch, putty) on car parts and abandoned cars, take off and install parts, charge the battery,
+  refuel, deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
+- Garage: the doors open for both players from either player's button; the guest sees the host's garage stations.
+  The garage stereo and the car radio are shared both ways.
+- Riding along: the guest hears the engine follow the host's driving and sees the speedometer, horn, lights and wipers.
+- The ARC device sits behind the front seats: the driver reaches the starter key, the passenger turns round to use the ARC.
 - Progress: while joined, the guest's game shows the host's garage upgrades, research, route and logbook. A failed run
   costs the guest items the same way it costs the host.
 - Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
   radio and voice lines with subtitles. Only the host's actions move the story on.
 - An overlay at the bottom right shows the mod version and, during a session, who is connected and the ping, plus a short
-  feed of what the other player does (joined, got in the car, took items from the trunk, ...). Lines fade after a few
-  seconds.
+  feed of what the other player does (joined, got in the car, took items from the trunk, ...).
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - The Chrono Dilator doesn't slow time while a guest is connected. When the host opens the pause menu, the game pauses
   for both players.
 
 Not done yet (expect oddities)
-- Only the host drives. The guest's speedometer and engine sound stay idle. Wipers, horn, radio and flat-tyre status
-  aren't synced.
+- Only the host drives. Flat-tyre status isn't synced. Engine and radio sound for the guest have not been listened to by
+  a person yet; tell us if the engine pitch doesn't follow the host or a skipped track plays a different song.
 - Moved items lose their tints and upgrades (durability, fuel and battery are kept).
 - A Physics Grabber only makes the guest drift towards it (not a real grab), and a blast that catches both players can
   hide part of the host's own damage.
 - Items in the guest's death crate lose their grid layout, and the other player's copy of them loses durability.
-- Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Scrapping and siphoning are untested
-  with real hands on the tools.
+- Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Smashing map props with a hammer or
+  prybar as the guest is the guest's own; the cure effects of repair tools (dirt, seal, bulb, electronics) too.
 - The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
 - Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
   the guest's own.
@@ -62,7 +66,7 @@ Not done yet (expect oddities)
 - Not tried with a real mouse and keyboard yet (please check tonight): the X key to leave the car, opening the trunk as
   the guest, using repair putty or a fuel can on the car as the guest, the guest's gateway choice on the ARC screen,
   and the host abandoning a run from the pause menu with the guest connected.
-- The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
+- The guest can't use the garage stations or plan the route yet.
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.
