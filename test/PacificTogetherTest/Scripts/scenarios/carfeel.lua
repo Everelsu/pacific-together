@@ -180,7 +180,8 @@ return function(T)
         met.loadMax = math.max(met.loadMax, car.VehicleController.ThrottleInput)
         if hcs > 0.05 then
             met.n = met.n + 1
-            if near(gcs, hcs, 0.15) and near(gacc, hacc, 0.6) then met.ok = met.ok + 1 end
+            if near(gcs, hcs, 0.15) and near(gacc, hacc, 0.6) then met.ok = met.ok + 1
+            elseif met.n - met.ok < 12 then log("PT|info revs miss host cs=%.3f acc=%.2f guest cs=%.3f acc=%.2f age=%d", hcs, hacc, gcs, gacc, os.time() - m.at) end
         end
         if sp and math.abs(harm) > 5 then
             met.armN = met.armN + 1
