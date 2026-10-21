@@ -89,7 +89,7 @@ return function(T)
             local gs, have = FindFirstOf("BaseGenericGraphState"), {}
             gs.UnlockedNodes:ForEach(function(n) have[n:get():GetFullName()] = true end)
             local pick
-            gs.UnlockGraph.Nodes:ForEach(function(n)
+            StaticFindObject("/Game/Gameplay/Inventory/Items/RecipeResearchGraph.RecipeResearchGraph").Nodes:ForEach(function(_, n)
                 local o = n:get()
                 if not pick and not have[o:GetFullName()] then pick = o end
             end)
