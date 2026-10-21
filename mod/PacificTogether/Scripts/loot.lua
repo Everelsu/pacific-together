@@ -30,7 +30,25 @@ local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
 local gotAny, tickN = false, 0
 
-local function say(line) out[#out + 1] = line end
+-- a big container (a garage's storage can hold hundreds of stacks) does not fit one message (32 KB): its state goes as numbered pieces
+-- "P|id|i|n|keys", put together again on the other side
+local PIECE = 5000
+local function say(line)
+    if #line > PIECE * 1.5 and line:sub(1, 2) == "S|" then
+        local id, s = line:match("^S|([^|]*)|(.*)$")
+        local pieces, cur, size = {}, {}, 0
+        for k in s:gmatch("[^,]+") do
+            if size > PIECE then pieces[#pieces + 1] = table.concat(cur, ","); cur, size = {}, 0 end
+            cur[#cur + 1] = k
+            size = size + #k + 1
+        end
+        pieces[#pieces + 1] = table.concat(cur, ",")
+        for i, p in ipairs(pieces) do out[#out + 1] = string.format("P|%s|%d|%d|%s", id, i, #pieces, p) end
+        return
+    end
+    out[#out + 1] = line
+end
+local partial = {} -- id -> { piece index -> text } (guest and host)
 local function flush()
     if #out == 0 then return end
     local buf, size = {}, 0
@@ -104,6 +122,15 @@ end
 local function register(id, kind, actor, invName)
     local e = { id = id, kind = kind, actor = actor, name = actor and actor:GetFullName() }
     if kind == "L" then e.get = function() return alive(e.actor) and e.actor.InventoryContainer or nil end
+    elseif kind == "I" and invName:find("^Stations%.") then
+        -- garage storage and lockers: the manager's tag map
+        e.get = function()
+            if alive(e.cache) then return e.cache end
+            local m = inventoryManager()
+            if not m then return nil end
+            pcall(function() m.Inventories_Garage:ForEach(function(k, v) if k:get().TagName:ToString() == invName then e.cache = v:get() end end) end)
+            return alive(e.cache) and e.cache or nil
+        end
     elseif kind == "I" then e.get = function() local m = inventoryManager(); return m and m[invName] or nil end
     else e.get = function() return nil end end
     e.rolled = flagsOf(e)
@@ -169,12 +196,27 @@ local function scanHost()
             say(line(e))
         end
     end
-    for _, p in ipairs(INV) do
+    local names = { table.unpack(INV) }
+    local m = inventoryManager()
+    if m then
+        pcall(function()
+            m.Inventories_Garage:ForEach(function(k)
+                local tag = k:get().TagName:ToString()
+                -- the Toolbox locker is a lootable's container (synced as that lootable); the guest has no container under its tag
+                if tag:find("^Stations%.Install%.Inventory%.") and not tag:find("Toolbox", 1, true) then names[#names + 1] = tag end
+            end)
+        end)
+    end
+    for _, p in ipairs(names) do
         local id = "I:" .. p
         if not ents[id] then
             local e = register(id, "I", nil, p)
             local c = e.get()
-            if alive(c) then e.last, e.n = stateOf(e), c:GetNumItems(); say("S|" .. id .. "|" .. e.last) else ents[id] = nil end
+            if alive(c) then
+                e.last, e.n = stateOf(e), c:GetNumItems()
+                log("PT|loot container %s items=%d state=%d bytes", id, e.n, #e.last)
+                say("S|" .. id .. "|" .. e.last)
+            else ents[id] = nil end
         end
     end
     for id, e in pairs(ents) do
@@ -363,7 +405,21 @@ local function handle(pc, data)
         local f = {}
         for p in (l .. "|"):gmatch("([^|]*)|") do f[#f + 1] = p end
         local op, id = f[1], f[2]
-        if op == "H" and not guest then
+        if op == "P" then
+            local buf = partial[id] or {}
+            partial[id] = buf
+            buf[tonumber(f[3])] = f[5] or ""
+            local n = 0
+            for _ in pairs(buf) do n = n + 1 end
+            if n < tonumber(f[4]) then op = nil
+            else
+                partial[id] = nil
+                local s = table.concat(buf, ",")
+                op, f, l = "S", { "S", id, s }, "S|" .. id .. "|" .. s
+            end
+        end
+        if op == nil then
+        elseif op == "H" and not guest then
             sendAll()
         elseif guest and op == "A" then
             gotAny = true
@@ -380,6 +436,7 @@ local function handle(pc, data)
             gotAny = true
             -- a container of the game's that the guest has not registered yet
             local name = id:match("^I:(.+)$")
+            log("PT|loot got new container %s (%d bytes)", id, #f[3])
             if name then applyState(register(id, "I", nil, name), f[3]) end
         elseif op == "D" and guest and ents[id] then
             local e = ents[id]
@@ -414,7 +471,7 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
-    ents, byName, claimed, reported, out, gotAny = {}, {}, {}, {}, {}, false
+    ents, byName, claimed, reported, out, gotAny, partial = {}, {}, {}, {}, {}, false, {}
 end)
 
 LoopInGameThreadWithDelay(500, function()

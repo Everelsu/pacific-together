@@ -114,6 +114,7 @@ function M.apply(container, want)
     for k, n in pairs(want) do
         for _ = 1, n - (have[k] and #have[k] or 0) do missing[#missing + 1] = k end
     end
+    local create = {}
     for _, k in ipairs(missing) do
         local p = k:match("^[^:]+")
         local reuse
@@ -122,14 +123,19 @@ function M.apply(container, want)
             setProps(extra[reuse].inst, p, k)
             table.remove(extra, reuse)
         else
-            local a = archetype(p)
-            if a then
-                local inst = lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
-                if container:AddItem(inst, true) then setProps(inst, p, k) end
-            end
+            create[#create + 1] = k
         end
     end
+    -- remove before adding: a full container has no room for the new ones
     for _, e in ipairs(extra) do container:RemoveItem(e.inst) end
+    for _, k in ipairs(create) do
+        local p = k:match("^[^:]+")
+        local a = archetype(p)
+        if a then
+            local inst = lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+            if container:AddItem(inst, true) then setProps(inst, p, k) end
+        end
+    end
 end
 
 function M.path2(o) return o:GetFullName():match("^%S+ (.+)$") end

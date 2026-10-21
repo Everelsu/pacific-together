@@ -1,9 +1,9 @@
-﻿-- M4 shared items, second pass, zone fixture, host and guest in one session:
+-- M4 shared items, second pass, zone fixture, host and guest in one session:
 --   1. item details: an item put in the car trunk keeps its durability (host -> guest), one with fuel keeps it (guest -> host)
 --   2. wrecks: the host's abandoned-car parts exist on the guest (same class, spot, item state); a part the guest scraps is gone on
 --      the host; a part the host removes is gone on the guest; a part's item state (siphoned fuel) set on the guest reaches the host
 --   3. lootable visuals: a container the host opened and emptied looks opened and empty on the guest
---   4. garage storage: an item the host puts in Inventory_Garage is in the guest's
+--   4. garage storage: an item the host puts in the garage storage (Inventories_Garage by tag) is in the guest's
 -- Run: tools/run-test.ps1 -Scenario lootsync2 -Fixture zone -Headless
 -- Mutation nolootsync2: item state, wreck parts and lootable visuals are not synced (loot.lua / ids.lua): the checks FAIL.
 return function(T)
@@ -34,6 +34,20 @@ return function(T)
         return it
     end
     local GARAGE = os.getenv("PT_FIXTURE") == "garage"
+    local STORE = "Stations.Install.Inventory.BackRoom"
+    local base
+    local function count(c, path)
+        local items, n = {}, 0
+        if not c then return 0 end
+        c:GetAllItems(items)
+        for _, it in ipairs(items) do if p2(it:get().Archetype):find((path:match("[^/]+$"):gsub("%.[^.]+$", "")), 1, true) then n = n + 1 end end
+        return n
+    end
+    local function garage(tag)
+        local r
+        im().Inventories_Garage:ForEach(function(k, v) if k:get().TagName:ToString() == tag then r = v:get() end end)
+        return r
+    end
     local function setDur(a, it, d) lib():SetItemProperty(propAsset(a, "IP_Durability"), it, FName("Durability"), d) end
     local function setFuel(a, it, f) lib():SetItemProperty(propAsset(a, "IP_Fuelable"), it, FName("Fuel"), bits(f)) end
     local function durOf(it) local o = { {}, {}, {}, {}, {} }; bfl():GetDurability(it, T.world(), o[1], o[2], o[3], o[4], o[5]); return o[3].Durability end
@@ -169,7 +183,7 @@ return function(T)
         zstep({ check = "host_guest_lootable_empty", timeout = 30, cond = function() return has("t.emptyok") end })
         -- 4. garage storage
         gstep({ run = function()
-            local c = im().Inventory_Garage
+            local c = garage(STORE)
             addItem(c, STEEL)
             sendGuest("t.garage", tostring(c:GetNumItems()))
         end })
@@ -183,6 +197,12 @@ return function(T)
     local function zstep(s) if not GARAGE then step(s) end end
     local function gstep(s) if GARAGE then step(s) end end
     step({ check = "client_in", timeout = 240, cond = function() return T.netMode() == "client" and T.cls(T.myPawn()) == T.CHAR end })
+    step({ run = function()
+        local n, tags = 0, {}
+        pcall(function() im().Inventories_Garage:ForEach(function(k, v) n = n + 1; if v:get():GetNumItems() > 0 then tags[#tags + 1] = k:get().TagName:ToString() .. "=" .. v:get():GetNumItems() end end) end)
+        T.log("PT|info %s garage containers=%d filled: %s trunk=%s", T.ROLE, n, table.concat(tags, ","), tostring(alive(im().Inventory_Trunk)))
+    end })
+    gstep({ run = function() base = { count(garage(STORE), STEEL) } end })
     zstep({ check = "guest_got_parts", timeout = 120, cond = function() return has("t.parts") end })
     local why, whyT = "", 0
     zstep({ check = "guest_parts_match_host", timeout = 120, cond = function()
@@ -239,7 +259,9 @@ return function(T)
     end })
     zstep({ run = function() sendHost("t.emptyok") end })
     gstep({ check = "guest_garage_has_host_item", timeout = 60, cond = function()
-        return has("t.garage") and find(im().Inventory_Garage, STEEL) ~= nil
+        if not has("t.garage") then return false end
+        local s = count(garage(STORE), STEEL)
+        return s > base[1]
     end })
     gstep({ run = function() sendHost("t.garageok") end })
     step({ wait = 5 })
