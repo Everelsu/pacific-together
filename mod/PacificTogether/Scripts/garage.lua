@@ -1,9 +1,8 @@
--- PT1 garage: doors and garage upgrades for both players (docs/spikes/PT1-garage.md).
---   doors     the garage doors' Logic Driver state machines are configured "Client" only: in a listen/client session the host never
---             ticks them and no door ever moves. Both sides set them to client-and-server. The guest's own directors would decide the
---             door switches from the guest's fresh game, so they are stopped there and the host's three switches ("g.garage.sw") drive it.
+-- PT1 garage: doors for both players (docs/spikes/PT1-garage.md).
+--   The garage doors' Logic Driver state machines never leave Closed in a listen/client session (playtest 1: no door ever moved),
+--   so in a session the door position is driven here from the door's global switch. The guest's own directors would decide the
+--   switches from the guest's fresh game, so they are stopped there and the host's three switches ("g.garage.sw") are applied.
 -- Inert in single player (Q7): only runs as a listening host or a guest.
-local UEHelpers = require("UEHelpers")
 local common = require("common")
 local safety = require("safety")
 local net = require("net")
@@ -28,20 +27,26 @@ local function gi() local g = FindFirstOf("DrivingGameInstance"); return live(g)
 
 local function netted() local m = common.netMode(); return m == "listen" or m == "client" end
 
-local fixed, seen = {}, {} -- door full name -> configured / first seen (a map load makes new doors; touching one during the load crashed)
-local function fixDoors()
+-- MoveDoorPosition is the call the state machine makes every tick; here it runs over MoveDuration seconds.
+-- shortcut: no obstruction check (the machine reverses a rear door that hits something); add one if players get crushed.
+local lastDrive = os.clock()
+local function driveDoors()
+    local now = os.clock()
+    local dt = math.min(now - lastDrive, 0.25)
+    lastDrive = now
+    local g = gi()
+    if not g then return end
     for _, d in ipairs(FindAllOf("BP_GarageDoor_C") or {}) do
-        local n = live(d) and d:GetFullName()
-        if n and not n:find("/Engine/Transient", 1, true) and not fixed[n] then seen[n] = seen[n] or os.clock() end
-        if n and seen[n] and not fixed[n] and os.clock() - seen[n] > 4 then
-            local c = d.DoorStateMachine
-            c.NetworkTickConfiguration = 2
-            c.NetworkTransitionConfiguration = 2
-            -- the switch's position at load, which the stalled machine missed (ForceDoorToCompletion crashed the game here)
-            local g, a = gi(), asset(d.IsFrontGarageDoor and SW[1][1] or SW[2][1])
-            if g and a:IsValid() and g:GetGlobalSwitch(a) then pcall(function() d["DbgActEvt_Force Open Door_Execute"](d) end) end
-            fixed[n] = true
-            log("PT|garage door %s fixed", d:GetFName():ToString())
+        if live(d) and not d:GetFullName():find("/Engine/Transient", 1, true) then
+            local a = asset(d.IsFrontGarageDoor and SW[1][1] or SW[2][1])
+            if a:IsValid() then
+                local target = g:GetGlobalSwitch(a) and 1 or 0
+                local pos = d.CurrentDoorPosition
+                if math.abs(target - pos) > 0.001 then
+                    local step = math.min(dt / math.max(d.MoveDuration, 0.5), math.abs(target - pos))
+                    d:MoveDoorPosition(target > pos and step or -step)
+                end
+            end
         end
     end
 end
@@ -87,8 +92,12 @@ end
 
 LoopInGameThreadWithDelay(500, function()
     if not M.enabled or not netted() then last, want = nil, nil return end
-    try("doors", fixDoors)
     if safety.guest() then try("guest", guestTick) elseif safety.active() then try("host", hostTick) end
+end)
+
+LoopInGameThreadWithDelay(50, function()
+    if not M.enabled or not netted() then return end
+    try("drive", driveDoors)
 end)
 
 M.readSwitches = readSwitches
