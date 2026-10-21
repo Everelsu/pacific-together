@@ -62,7 +62,7 @@ local function build()
     -- bottom right, above the game's own key hints there (the top right holds the quest list)
     slot:SetAnchors({ Minimum = { X = 1, Y = 1 }, Maximum = { X = 1, Y = 1 } })
     slot:SetAlignment({ X = 1, Y = 1 })
-    slot:SetPosition({ X = -18, Y = -90 })
+    slot:SetPosition({ X = -18, Y = -240 }) -- playtest: -90 still overlapped the HUD there
     slot:SetAutoSize(true)
     local n = { widget = w, cache = {}, lines = {} }
     local function add(t) box:AddChildToVerticalBox(t):SetHorizontalAlignment(3) end -- right

@@ -9,6 +9,9 @@ Background: `coop-anything/playbook/multi-agent-workflows.md`, `methods.md` sect
 - Each feature gets **one** scenario that proves it works, plus its mutation. After each merge, run the smoke set:
   `session`, `travel`, `body`, `sessionrejoin`, `zonejoin`, `safety`, about 10 minutes. The full suite runs only before a
   build goes to friends or a release.
+- **No full suites inside lanes (owner, 2026-10-21):** all scenarios together take more than 30 minutes. A lane runs
+  only its own proving scenario and its mutation. The lead runs the full suite **once**, on main after all lanes merged;
+  each failing scenario goes back to an agent, who fixes it and reruns **only the failing scenarios**, not the suite.
 - Don't hunt edge cases (rare crashes, odd disconnect timings, rarely used save paths) and don't polish tests or
   over-engineer. Write a found edge case into `NOTES.md` as a known gap and move on, unless it breaks normal play.
 
