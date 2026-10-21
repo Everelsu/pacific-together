@@ -128,7 +128,15 @@ return function(T)
     add({ check = "guest_took_stack", timeout = 10, cond = function() return moved > 0 and carried() > base.carried end })
     add({ check = "guest_told_took", timeout = to(120), cond = function() return has("t.took") ~= nil end })
     add({ run = function()
-        im().Inventory_PlayerHand:GetSlot(0):TransferStackIntoContainer(trunk(), {})
+        -- the hand's stack back into the trunk (a transfer out of the hand slot is refused for a car part, so the item itself moves)
+        local hs = im().Inventory_PlayerHand:GetSlot(0)
+        local items = {}
+        im().Inventory_PlayerHand:GetAllItems(items)
+        for _, it in ipairs(items) do
+            local inst = it:get()
+            im().Inventory_PlayerHand:RemoveItem(inst)
+            log("PT|info guest put back %s", tostring(trunk():AddItem(inst, true)))
+        end
     end })
     add({ check = "guest_trunk_back", timeout = 20, cond = function() return trunkCount() == base.trunk end })
     add({ wait = 8 })
