@@ -128,7 +128,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | G2 | Fabrication, Tinker, Detailing stations: host-only in v1.0; guest use with the host performing each action on the shared resources is v1.1 (D21, D24) | P0 (guest use P1) |
 | G3 | Story missions, radio transmissions, cutscenes play on the host; guest is a bystander and nothing breaks | P0 |
 | G4 | Story audio and cutscenes for the guest | P1 |
-| G5 | Co-op forces "Pause Game While in Menus" off and disables the Chrono Dilator | P0 |
+| G5 | Co-op disables the Chrono Dilator. Pausing is allowed: blocking it crashed the host's pause menu and broke the guest's (owner's playtest 2026-10-21); the host's menu pauses both | P0 |
 | G6 | Saving, Suspend and manual saves: host only | P0 |
 
 ### Quality, install, ops

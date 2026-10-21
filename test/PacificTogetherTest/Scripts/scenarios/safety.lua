@@ -1,7 +1,7 @@
 -- S7 + G5 with the shipping safety module: a guest who played their own save (slot 6) joins the host's garage and runs
 -- every save writer the game has; the runner checks their Saved\SaveGames + Saved\Config after each (PT|snap), the
 -- scenario checks Content\Bookmarks (MakeBookmark).
--- The host, with the guest connected, pauses through the game's UI path and starts a Chrono Dilator.
+-- The host, with the guest connected, starts a Chrono Dilator (pausing is allowed since the 2026-10-21 playtest).
 -- -Mutate nosession: the guest never joins, so it is single player and every check must FAIL (writes happen, pause and
 -- dilation work). -Mutate nofileguard: native file guard off after joining; the writers without a slot then write.
 return function(T)
@@ -16,9 +16,6 @@ return function(T)
             { check = "host_listen_garage", timeout = 120, cond = function() return T.netMode() == "listen" and T.map() == "RB_Garage" end },
             alone and { wait = 20 } or { check = "host_two_pcs", timeout = 400, cond = function() return T.pcs() == 2 end },
             { wait = 10 },
-            { run = function() L.pause(T, true) end },
-            { check = "host_pause_blocked", timeout = 2, cond = function() return not L.paused(T) end },
-            { run = function() L.pause(T, false) end },
             { run = function() warper = L.startWarper(T) end },
             { wait = 4 },
             { check = "host_dilator_blocked", timeout = 1, cond = function()

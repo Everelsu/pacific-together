@@ -1,4 +1,4 @@
--- S7 guest saves blocked, G5 no pause and no Chrono Dilator in co-op, Q7 inert outside a session, Q9 no crash upload.
+-- S7 guest saves blocked, G5 no Chrono Dilator in co-op (pause allowed, see below), Q7 inert outside a session, Q9 no crash upload.
 -- Nothing here changes a setting in place: GameUserSettings.ini is rewritten on every map load and would keep it.
 local UEHelpers = require("UEHelpers")
 local common = require("common")
@@ -42,10 +42,9 @@ RegisterLoadMapPreHook(function(engine, world, url, pending)
 end)
 RegisterLoadMapPostHook(function() guard(M.guest()) end)
 
--- G5: a paused listen server freezes both players, so nothing pauses the world during a session
-hook("/Script/Engine.GameplayStatics:SetGamePaused", function(self, ctx, paused)
-    if paused:get() and M.active() then paused:set(false) end
-end)
+-- G5 pause: not blocked any more. Rewriting the pause to false let the host's pause menu run over an unpaused world, which
+-- crashed the host (AV PenDriverPro+0x3160a56 reading 0x178, playtest 2026-10-21) and kept the guest's menu from opening.
+-- The host's menu now pauses both players; a guest's pause cannot pause the host's world.
 
 -- G5: the Chrono Dilator (BP_Attach_Util_Ability_TimeWarper_C) ramps global time dilation to 0.35 for everyone
 hook("/Script/Engine.GameplayStatics:SetGlobalTimeDilation", function(self, ctx, dilation)

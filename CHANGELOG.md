@@ -26,6 +26,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   crate that either player can loot.
 
 ### Fixed
+- The host's game crashed when the host opened the pause menu with a guest connected, and the guest couldn't open the
+  pause menu at all. Pausing now works: the host's pause menu pauses the game for both players.
 - The guest "died" a few seconds after every map change, dropping their backpack as a crate. Fixed.
 - A failed run's item loss for the guest could be undone when they rejoined. Fixed.
 - An anomaly hitting the guest took the host's health instead of the guest's. It now hurts the guest.

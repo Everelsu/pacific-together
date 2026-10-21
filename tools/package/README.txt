@@ -39,7 +39,8 @@ What works in this build
   feed of what the other player does (joined, got in the car, took items from the trunk, ...). Lines fade after a few
   seconds.
 - The guest's own saves are never written while joined. Only the host's save game is used.
-- Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
+- The Chrono Dilator doesn't slow time while a guest is connected. When the host opens the pause menu, the game pauses
+  for both players.
 
 Not done yet (expect oddities)
 - Only the host drives. The guest's speedometer and engine sound stay idle. Wipers, horn, radio and flat-tyre status
