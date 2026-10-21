@@ -93,7 +93,7 @@ end)
 local penaltyHooked = false
 local function hookPenalty()
     penaltyHooked = pcall(RegisterHook, "/Game/Systems/Managers/BP_ProgressionManager.BP_ProgressionManager_C:RemoveItemsPenalty", function(self, mode)
-        if #net.guests() == 0 then return end
+        if safety.guest() or #net.guests() == 0 then return end -- host only: on the guest the local game's own penalty must not be broadcast
         local x = mode:get()
         if x == -1 then
             local st = FindFirstOf("DrivingGameUserSettings")
