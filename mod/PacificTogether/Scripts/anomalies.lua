@@ -125,23 +125,18 @@ local function sees(loc, rot, t)
     return (d.X * f.X + d.Y * f.Y + d.Z * f.Z) / len > 0.3
 end
 
--- CreepCheck's out value cannot be overridden from here (a pre-hook sees it empty, post-hooks never fire on Blueprint functions).
--- ShouldCreep, the game's 0.2 s timer, returns at once while CreepedToCamera is set, and only the host's camera clears it: so while a
--- guest looks at the Tourist the flag is set (and cleared again when no guest looks, if the flag is ours): it does not creep.
-local forced = {} -- Tourist address -> true while the flag is ours
-hook("/Game/Gameplay/Hazards/Landmine/BP_Hazard_Landmine.BP_Hazard_Landmine_C:ShouldCreep", function(self)
-    if not (M.enabled and safety.active() and not safety.guest()) then return end
+-- CreepCheck (the game's own test, camera 0 only) is what lets a Tourist step. A hook given as a single callback runs after the
+-- Blueprint body (see Observations) and may change the out value: when it says "could creep" and a guest's camera sees the Tourist,
+-- it says no. (The earlier ShouldCreep flag trick ran too late for the first step after the host's own view reset the Tourist.)
+hook("/Game/Gameplay/Hazards/Landmine/BP_Hazard_Landmine.BP_Hazard_Landmine_C:CreepCheck", function(self, could)
+    if not (M.enabled and safety.active() and not safety.guest()) or not could:get() then return end
     try("creep", function()
-        local m = self:get()
-        local at, key, seen = m.Body:K2_GetComponentLocation(), m:GetAddress(), false
+        local at = self:get().Body:K2_GetComponentLocation()
         for _, pc in ipairs(net.guests()) do
             -- the guest's camera as the host knows it (the stock ServerUpdateCamera feeds its PlayerCameraManager here)
             local cam = pc.PlayerCameraManager
-            if valid(cam) and sees(cam:GetCameraLocation(), cam:GetCameraRotation(), at) then seen = true break end
+            if valid(cam) and sees(cam:GetCameraLocation(), cam:GetCameraRotation(), at) then could:set(false); M.frozen = (M.frozen or 0) + 1; return end
         end
-        if M.debug then log("PT|anom dbg shouldcreep seen=%s flag=%s forced=%s", tostring(seen), tostring(m.CreepedToCamera), tostring(forced[key])) end
-        if seen and not m.CreepedToCamera then m.CreepedToCamera, forced[key] = true, true; M.frozen = (M.frozen or 0) + 1
-        elseif not seen and forced[key] then m.CreepedToCamera, forced[key] = false, nil end
     end)
 end)
 

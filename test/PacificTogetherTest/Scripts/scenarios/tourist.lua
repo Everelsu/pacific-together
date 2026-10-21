@@ -106,7 +106,8 @@ return function(T)
     local function mineLoc() return mine.Body:K2_GetComponentLocation() end
     local function moved() local l = mine:K2_GetActorLocation(); return math.sqrt((l.X - start.X) ^ 2 + (l.Y - start.Y) ^ 2) end
 
-    local frozenSince
+    local frozenSince, settled, home
+    local function rearm() mine:K2_SetActorLocation(home, false, {}, true); mine.CreepedToCamera = false; start = mine:K2_GetActorLocation() end
     return {
         T.onMap("RB_MainMenu", 90),
         { wait = 5 },
@@ -142,6 +143,7 @@ return function(T)
             local gs = UEHelpers.GetGameplayStatics()
             mine = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(T.world(), cls, xf, 2, nil), xf)
             T.log("PT|info tourist %s at %.0f,%.0f,%.0f host %.0f,%.0f,%.0f guest d=%.0f", T.name(mine), xf.Translation.X, xf.Translation.Y, xf.Translation.Z, l.X, l.Y, l.Z, T.dist(guest, mine))
+            home = xf.Translation
             return mine:IsValid()
         end },
         { wait = 3 },
@@ -171,7 +173,7 @@ return function(T)
         end },
         { run = function()
             -- mutation "mod": no hook of ours, the shipping mod's anomalies module (ShouldCreep flag) must do the freezing
-            if M ~= "mod" then RegisterHook(MINE .. ":CreepCheck", function(self, could)
+            if M ~= "mod" and M ~= "noanom" then RegisterHook(MINE .. ":CreepCheck", function(self, could)
                 hook.calls = hook.calls + 1
                 if M == "nohook" or not could:get() then return end
                 local m = self:get()
@@ -191,13 +193,15 @@ return function(T)
         end },
         -- host looks away, the guest looks at it: the game's 0.2 s timer runs CreepCheck, our hook says "seen"
         { check = "tourist_frozen_while_guest_looks", timeout = 14, cond = function()
+            -- StartCreepTimer makes one step at once (before any guest check can run) and sets CreepedToCamera: after it the flag is cleared, as the host looking at it would, so only the guest's view can keep it still
+            if not settled then if os.time() - frozenSince >= 1 then settled = true; rearm(); frozenSince = os.time() end return false end
             if moved() > 20 then frozenSince = math.huge end
-            return os.time() - frozenSince >= 8 and (hook.calls >= 10 or M == "mod")
-        end, tick = function(t) T.log("PT|info frozen t=%d moved=%.0f calls=%d overrides=%d", t, moved(), hook.calls, hook.overrides) end },
-        { run = function() turnGuest(wrap(want + 180)) end },
+            return os.time() - frozenSince >= 8 and (hook.calls >= 10 or M == "mod" or M == "noanom")
+        end, tick = function(t) T.log("PT|info frozen t=%d moved=%.0f calls=%d overrides=%d creep=%s could=%s flag=%s", t, moved(), hook.calls, hook.overrides, tostring(mine.Creep), tostring(couldCreep(mine)), tostring(mine.CreepedToCamera)) end },
+        { run = function() turnGuest(wrap(want + 180)); rearm() end },
         -- control: nobody looks, so it must creep (shows the frozen check could fail)
         { check = "tourist_creeps_when_nobody_looks", timeout = 20, cond = function() return moved() > 20 end,
-          tick = function(t) T.log("PT|info unseen t=%d moved=%.0f calls=%d overrides=%d", t, moved(), hook.calls, hook.overrides) end },
+          tick = function(t) T.log("PT|info unseen t=%d moved=%.0f creep=%s could=%s flag=%s", t, moved(), tostring(mine.Creep), tostring(couldCreep(mine)), tostring(mine.CreepedToCamera)) end },
         markerStep,
         { wait = 5 },
     }
