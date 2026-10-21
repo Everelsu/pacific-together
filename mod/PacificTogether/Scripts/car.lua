@@ -264,7 +264,10 @@ net.on("g.car.exit", function(pc)
     -- beside the driver's door, a little up so the capsule clears the sill
     local p = car:K2_GetActorLocation()
     local r = car:GetActorRightVector()
-    char:K2_SetActorLocation(vec(p.X - r.X * 250, p.Y - r.Y * 250, p.Z + 80), false, {}, true)
+    local out = vec(p.X - r.X * 250, p.Y - r.Y * 250, p.Z + 80)
+    char:K2_SetActorLocation(out, false, {}, true)
+    -- the guest's own pawn is autonomous: the host's move is not replicated to it, so it places itself
+    net.toGuest(pc, "g.car.out", string.format("%.2f|%.2f|%.2f", out.X, out.Y, out.Z))
     char:SetActorEnableCollision(true)
     pcall(function() char.CharacterMovement:SetMovementMode(1, 0) end)
     log("PT|car guest left the car")
@@ -378,6 +381,20 @@ local function stopRide(char)
         pcall(function() char.CharacterMovement:SetComponentTickEnabled(true); char.CharacterMovement:SetMovementMode(1, 0) end)
     end
 end
+net.on("g.car.out", function(_, data)
+    if common.netMode() ~= "client" or os.getenv("PT_MUTATE") == "noexitfix" then return end
+    local me = localPC() and localPC().Pawn
+    local x, y, z = data:match("^([^|]*)|([^|]*)|(.*)$")
+    if not valid(me) or not x then return end
+    pcall(function() me:K2_DetachFromActor(1, 1, 1) end)
+    stopRide(me)
+    me:K2_SetActorLocation(vec(tonumber(x), tonumber(y), tonumber(z)), false, {}, true)
+    local pc = localPC()
+    local ign = pcall(function() return pc:IsMoveInputIgnored() end) and pc:IsMoveInputIgnored()
+    pcall(function() pc:ResetIgnoreInputFlags() end)
+    log("PT|car guest placed outside at %s,%s,%s (move input was ignored=%s)", x, y, z, tostring(ign))
+end)
+
 local function ride(char, car)
     local cm = char.CharacterMovement
     pcall(function() cm:StopMovementImmediately(); cm:DisableMovement(); cm:SetComponentTickEnabled(false) end)
