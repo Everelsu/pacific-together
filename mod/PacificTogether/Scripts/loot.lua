@@ -23,6 +23,9 @@ local NO2 = os.getenv("PT_MUTATE") == "nolootsync2"
 -- tests only: a template part's own container (a wreck's trunk contents, a box truck's cargo) is not carried
 local NOCAR = os.getenv("PT_MUTATE") == "nocarloot"
 
+-- tests only: the host sends no positions of moving world items
+local NOFALL = os.getenv("PT_MUTATE") == "nofall"
+
 local INV = { "Inventory_Trunk", "Inventory_LargeTrunk", "Inventory_Garage", "Inventory_GarageLarge", "Inventory_GarageExpansion1",
               "Inventory_GarageExpansion1_Large", "Inventory_Garage_BackRoom" }
 local DROP = 500 -- uu: an unknown pickup this close to the guest is its own drop
@@ -394,6 +397,24 @@ local function scanGuest()
     end
 end
 
+-- host: a world item that moved since we told the guest (a drop falling, rolling) sends its new spot; the guest does not simulate it
+local function scanMoves()
+    if NOFALL then return end
+    for id, e in pairs(ents) do
+        if e.kind == "W" and alive(e.actor) then
+            local l = e.actor:K2_GetActorLocation()
+            local p = e.pos
+            if not p then
+                e.pos = { l.X, l.Y, l.Z }
+            elseif (l.X - p[1]) ^ 2 + (l.Y - p[2]) ^ 2 + (l.Z - p[3]) ^ 2 > 9 then
+                e.pos = { l.X, l.Y, l.Z }
+                local r = e.actor:K2_GetActorRotation()
+                say(string.format("M|%s|%.1f|%.1f|%.1f|%.0f", id, l.X, l.Y, l.Z, r.Yaw))
+            end
+        end
+    end
+end
+
 -- both: contents changed here since we last looked (the game moved items in or out)
 local function scanChanges()
     for id, e in pairs(ents) do
@@ -483,6 +504,10 @@ local function handle(pc, data)
             ents[id] = nil
             if alive(e.actor) then e.actor:K2_DestroyActor() end
             if e.kind == "W" and ov.settled() then ov.post(ov.other() .. " picked up an item", "info", "pick") end
+        elseif op == "M" and guest and ents[id] and alive(ents[id].actor) then
+            pcall(function()
+                ents[id].actor:K2_SetActorLocationAndRotation({ X = tonumber(f[3]), Y = tonumber(f[4]), Z = tonumber(f[5]) }, { Pitch = 0, Yaw = tonumber(f[6]), Roll = 0 }, false, {}, true)
+            end)
         elseif op == "N" and not guest then
             spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
         elseif op == "T" and not guest and ents[id] then
@@ -502,6 +527,7 @@ local function tick()
     if mode == "listen" then
         if #net.guests() == 0 then return end
         scanHost()
+        scanMoves()
     elseif mode == "client" then
         if not ids.alive(UEHelpers.GetPlayerController()) then return end
         scanGuest()
