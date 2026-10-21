@@ -429,6 +429,7 @@ local function applyState(data)
         local slot = e:get()
         local name = slotName(slot)
         local want, it = parts[name], itemOf(slot)
+        if M.holdSlot and M.holdSlot(name) then return end -- the guest just swapped this part itself (guestswap.lua)
         if not want then
             if it then slot:RemoveAllItems({}); changed = changed + 1; log("PT|car part removed %s", name); if ov.settled() then ov.post("%d car part{s} changed by the host", "info", "carpart") end end
             return
