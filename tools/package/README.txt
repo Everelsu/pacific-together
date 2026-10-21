@@ -22,22 +22,28 @@ What works in this build
 - Health: each player sees the other's health under their name tag. The guest takes damage and radiation and heals
   normally. When the guest dies, the screen goes black for a few seconds and they come back at the car with full
   health; the host's run goes on. When the host dies, the run fails for both, as in the normal game.
+- Abandoned cars and their parts are there for both players; scrapping a part or siphoning fuel is shared. Items you
+  hand over keep their durability, fuel and battery charge. Opened and emptied containers look that way for both.
 - The guest's backpack is kept by the host next to the host's save and comes back when the guest rejoins the same save
   under the same player name. When the guest dies, their items drop as a crate where they fell; either player can loot it.
 - The guest can work on the car and the ARC: repair parts with repair putty, charge the battery, refuel from a fuel can,
   deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
-- Story: missions, radio and cutscenes play for the host only; the guest is a bystander.
+- Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
+  radio and voice lines with subtitles. Only the host's actions move the story on.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
 Not done yet (expect oddities)
 - Only the host drives. The guest's speedometer and engine sound stay idle. Wipers, horn, radio and flat-tyre status
   aren't synced.
-- Items are rebuilt on the other side as new: durability, upgrades and colours of moved items aren't kept.
+- Moved items lose their tints and upgrades (durability, fuel and battery are kept).
 - Anomalies act on the guest only partly (grabbing, shocks and stealing may look off). Some rare ones aren't synced.
 - Items in the guest's death crate lose their grid layout, and the other player's copy of them loses durability.
-- Scrapping wrecks and the abandoned cars' parts aren't synced yet.
+- Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Scrapping and siphoning are untested
+  with real hands on the tools.
 - The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
+- Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
+  the guest's own.
 - The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)

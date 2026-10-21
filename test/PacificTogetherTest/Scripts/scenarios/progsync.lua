@@ -18,7 +18,7 @@ return function(T)
         local wb = {}
         pm().GlobalWhiteboard.Entries:ForEach(function(k, v)
             local t = k:get().TagName:ToString()
-            if t:find("^WB%.GarageUpgrades%.") or t:find("^WB%.Quests%.") or t:find("^WB%.Missions%.") then wb[#wb + 1] = string.format("%s=%.2f", t, v:get()) end
+            if t:find("^WB%.GarageUpgrades%.") then wb[#wb + 1] = string.format("%s=%.2f", t, v:get()) end
         end)
         table.sort(wb)
         local gs, un, pu = FindFirstOf("BaseGenericGraphState"), 0, 0

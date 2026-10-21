@@ -9,8 +9,13 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
 - The launcher shows the build in this download and the build installed in your game.
+- The story is shared: the guest sees the host's mission and objectives on the HUD and in the journal, and hears the
+  host's radio transmissions and voice lines with subtitles.
 - The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
   gateway at the ARC.
+- Abandoned cars and their parts are shared; scrapping and siphoning fuel happen once for both. Handed-over items keep
+  their durability, fuel and battery. Opened and emptied containers look that way for both players, and garage storage
+  is really shared now.
 - The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
   crate that either player can loot.
 

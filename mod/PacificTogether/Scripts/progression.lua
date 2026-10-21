@@ -14,7 +14,7 @@ local M = {}
 if os.getenv("PT_MUTATE") == "noprog" then return M end
 
 local CHUNK = 28000
-local SKIP = { ["WB.WorldState.TimeOfDay"] = true, ["WB.Statistics.Fuel.Spent"] = true } -- change every frame while driving; world.lua owns time and weather
+local SKIP = { ["WB.WorldState.TimeOfDay"] = true, ["WB.Statistics.Fuel.Spent"] = true } -- change every frame while driving; world.lua owns time and weather; WB.Quests/Missions belong to story.lua
 
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 local function pm() local m = FindFirstOf("BP_ProgressionManager_C"); return valid(m) and m or nil end
@@ -31,7 +31,7 @@ local function snapshot()
     if not m then return s end
     m.GlobalWhiteboard.Entries:ForEach(function(k, v)
         local tag = k:get().TagName:ToString()
-        if not SKIP[tag] then s.wb[#s.wb + 1] = string.format("%s=%.4f", tag, v:get()) end
+        if not SKIP[tag] and not tag:find("^WB%.Quests%.") and not tag:find("^WB%.Missions%.") then s.wb[#s.wb + 1] = string.format("%s=%.4f", tag, v:get()) end
     end)
     local g = gstate()
     if g then
@@ -125,7 +125,7 @@ local function applyWb(data)
     for _, e in ipairs(split(data)) do
         local tag, v = e:match("^([%w_%.]+)=(%-?[%d%.]+)$")
         v = tonumber(v)
-        if tag and v and not SKIP[tag] and (have[tag] == nil or math.abs(have[tag] - v) > 0.001) then
+        if tag and v and not SKIP[tag] and not tag:find("^WB%.Quests%.") and not tag:find("^WB%.Missions%.") and (have[tag] == nil or math.abs(have[tag] - v) > 0.001) then
             w:SetTagFloat({ TagName = FName(tag) }, v)
             n = n + 1
             if n <= 3 then log("PT|prog guest tag %s %s -> %.2f", tag, tostring(have[tag]), v) end
