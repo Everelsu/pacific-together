@@ -213,8 +213,23 @@ local function confirm(kind, actor)
     noted = keep
 end
 
+-- the real repair putty spawns a paste actor that heals its target over time (HealthComp.HealDamage); PatchPart is not on that path
+local function pasteHeal(comp, amount)
+    for _, p in ipairs(FindAllOf("BP_ToolSpawn_PatchKitPaste_C") or {}) do
+        if valid(p) and same(p.HealthComp, comp) then
+            local slot = carSlotOf(comp)
+            if slot and amount and amount > 0.005 then
+                log("PT|act send heal %s %.3f (paste)", slot, amount)
+                net.toHost("g.act.heal", slot .. "\t" .. amount)
+            end
+            return true
+        end
+    end
+end
 local function healNote(self, _, _, healed)
-    if guest() then note("heal", self:get(), healed:get()) end
+    if not guest() then return end
+    local comp, amount = self:get(), healed:get()
+    if os.getenv("PT_MUTATE") == "noguestparts" or not pasteHeal(comp, amount) then note("heal", comp, amount) end
 end
 local function chargeNote(self, _, charged)
     if guest() then note("bat", self:get(), charged:get()) end
@@ -299,4 +314,5 @@ LoopInGameThreadWithDelay(1000, function()
     if hostCar() then try("arc", arcHost) end
 end)
 
+M.slotOf = slotOf
 return M
