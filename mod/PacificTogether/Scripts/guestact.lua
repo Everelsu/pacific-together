@@ -280,10 +280,13 @@ local function hookAll()
     end
 end
 
-LoopInGameThreadWithDelay(250, function()
+-- slow on purpose: every call here walks the object array, and the guest's camera in a moving car notices a hitch
+local beat = 0
+LoopInGameThreadWithDelay(1000, function()
     if not guest() then noted = {}; return end
-    try("hook", hookAll)
+    beat = beat + 1
     try("gate", holdGate)
+    if beat % 2 == 0 then try("hook", hookAll) end
 end)
 
 LoopInGameThreadWithDelay(1000, function()
