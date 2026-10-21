@@ -62,18 +62,95 @@ local function readSwitches()
     return table.concat(t)
 end
 
-local last, lastSent = nil, 0
-local function hostTick()
-    local s = readSwitches()
-    if not s then return end
-    if s ~= last or os.clock() - lastSent > 3 then
-        last, lastSent = s, os.clock()
-        net.toGuests("g.garage.sw", s)
+-- Garage stations (Unmaker, fax, doors' keypads, storage ...): each level-placed BP_GarageInstallation_Spawner has an upgrade item in
+-- its slot (a status effect of an ItemUpgrade class). The guest never loaded the host's save, so its slots are empty; the host lists
+-- "spawner name -> installed upgrade classes" and the guest installs the missing ones with the spawner's own InstallSpecificUpgrade.
+local function spawners()
+    local r = {}
+    for _, s in ipairs(FindAllOf("BP_GarageInstallation_Spawner_C") or {}) do
+        if live(s) and not s:GetFullName():find("/Engine/Transient", 1, true) then r[#r + 1] = s end
+    end
+    return r
+end
+local function installed(s, im, sm)
+    local a, t, r = {}, {}, {}
+    s:GetUpgradeArchetype(a)
+    s:GetInstallTag(t)
+    if not (a.Archetype and a.Archetype:IsValid()) then return r end
+    local item = im:FindOrCreateGarageUpgradeSlot(a.Archetype, t.Station):GetItem(0)
+    if not (item and item:IsValid()) then return r end
+    local list = sm:GetStatusEffects(item)
+    for i = 1, #list do
+        local e = list[i]:get()
+        if e and e:IsValid() then r[#r + 1] = (e:GetClass():GetFullName():gsub("^%S+ ", "")) end
+    end
+    return r
+end
+local function managers()
+    local im, sm = FindFirstOf("BP_InventoryManager_C"), FindFirstOf("BP_StatusEffectManager_C")
+    if live(im) and live(sm) then return im, sm end
+end
+local function upgradeLines()
+    local im, sm = managers()
+    if not im then return nil end
+    local L = {}
+    for _, s in ipairs(spawners()) do
+        local ok, r = pcall(installed, s, im, sm)
+        if ok and #r > 0 then L[#L + 1] = s:GetFName():ToString() .. "\t" .. table.concat(r, ",") end
+    end
+    table.sort(L)
+    return table.concat(L, "\n")
+end
+
+local done = {} -- guest: spawner full name .. class -> true once installed here
+local function applyUpgrades(data)
+    local im, sm = managers()
+    if not im then return end
+    local byName = {}
+    for _, s in ipairs(spawners()) do byName[s:GetFName():ToString()] = s end
+    for line in data:gmatch("[^\n]+") do
+        local n, classes = line:match("^([^\t]+)\t(.*)$")
+        local s = n and byName[n]
+        if s then
+            local have
+            for c in classes:gmatch("[^,]+") do
+                local key = s:GetFullName() .. c
+                if not done[key] then
+                    have = have or installed(s, im, sm)
+                    local present = false
+                    for _, h in ipairs(have) do if h == c then present = true end end
+                    local cls = StaticFindObject(c)
+                    if not (cls and cls:IsValid()) then cls = LoadAsset(c) end
+                    if not present and cls and cls:IsValid() then
+                        s:InstallSpecificUpgrade(cls, true)
+                        log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
+                    end
+                    if present or (cls and cls:IsValid()) then done[key] = true end
+                end
+            end
+        end
     end
 end
 
-local want
+local last, lastSent, lastUp, lastUpSent, lastUpCheck = nil, 0, nil, 0, 0
+local function hostTick()
+    local s = readSwitches()
+    if s and (s ~= last or os.clock() - lastSent > 3) then
+        last, lastSent = s, os.clock()
+        net.toGuests("g.garage.sw", s)
+    end
+    if os.clock() - lastUpCheck < 2 then return end
+    lastUpCheck = os.clock()
+    local u = upgradeLines()
+    if u and (u ~= lastUp or os.clock() - lastUpSent > 4) then
+        lastUp, lastUpSent = u, os.clock()
+        net.toGuests("g.garage.up", u)
+    end
+end
+
+local want, wantUp
 net.on("g.garage.sw", function(_, data) want = data end)
+net.on("g.garage.up", function(_, data) wantUp = data end)
 
 local function guestTick()
     for _, s in ipairs(SW) do
@@ -81,6 +158,7 @@ local function guestTick()
             for _, d in ipairs(FindAllOf(s[3]) or {}) do if live(d) and d:IsTickEnabled() then d:SetTickEnabled(false) end end
         end
     end
+    if wantUp then try("upgrades", applyUpgrades, wantUp) end
     local g = gi()
     if not (g and want) then return end
     for i, s in ipairs(SW) do
@@ -89,6 +167,8 @@ local function guestTick()
         if a:IsValid() and (g:GetGlobalSwitch(a) and true or false) ~= on then g:SetGlobalSwitch(a, FName(s[2]), on and 1 or 2) end
     end
 end
+
+RegisterLoadMapPostHook(function() done = {} end)
 
 LoopInGameThreadWithDelay(500, function()
     if not M.enabled or not netted() then last, want = nil, nil return end

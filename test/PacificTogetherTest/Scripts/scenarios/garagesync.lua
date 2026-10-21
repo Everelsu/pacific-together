@@ -10,6 +10,27 @@ return function(T)
         end
     end
     local function pos() local d = rear(); return d and d.CurrentDoorPosition or -1 end
+    local FAX = "/Game/Gameplay/CarGarage/Stations/FaxMachine/UP_Garage_FaxMachine_Install.UP_Garage_FaxMachine_Install_C"
+    local function faxSpawner()
+        for _, s in ipairs(FindAllOf("BP_GarageInstallation_Spawner_C") or {}) do
+            if alive(s) and s:GetFName():ToString() == "BP_GarageStation_Fax" and not s:GetFullName():find("/Engine/Transient", 1, true) then return s end
+        end
+    end
+    -- does the fax station's upgrade slot hold the fax upgrade on this side?
+    local function hasFax()
+        local s, im, sm = faxSpawner(), T.first("BP_InventoryManager_C"), T.first("BP_StatusEffectManager_C")
+        if not (s and im and sm) then return false end
+        local a, t = {}, {}
+        s:GetUpgradeArchetype(a)
+        s:GetInstallTag(t)
+        local item = im:FindOrCreateGarageUpgradeSlot(a.Archetype, t.Station):GetItem(0)
+        if not (item and item:IsValid()) then return false end
+        local list = sm:GetStatusEffects(item)
+        for i = 1, #list do
+            if list[i]:get():GetClass():GetFName():ToString() == "UP_Garage_FaxMachine_Install_C" then return true end
+        end
+        return false
+    end
 
     local got = {}
     local function has(kind)
@@ -41,6 +62,11 @@ return function(T)
         add({ run = press })
         add({ check = "host_rear_door_reopens", timeout = 30, cond = function() return pos() > 0.99 end })
         add({ check = "guest_rear_door_reopens", timeout = 30, cond = function() return guestPos() > 0.99 end })
+        -- garage parts: the host's save has the fax machine; the guest's fresh game does not until the host's state arrives
+        add({ check = "guest_has_no_fax_yet", timeout = 10, cond = function() has("t.fax"); return got["t.fax"] == "0" end })
+        add({ run = function() faxSpawner():InstallSpecificUpgrade(StaticFindObject(FAX), true) end })
+        add({ check = "host_has_fax", timeout = 10, cond = hasFax })
+        add({ check = "guest_gets_fax", timeout = 40, cond = function() has("t.fax"); return got["t.fax"] == "1" end })
         add({ run = function() PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.done", "") end })
         add({ wait = 3 })
         return steps
@@ -51,6 +77,7 @@ return function(T)
     add({ check = "client_in_garage", timeout = 400, cond = function() return T.netMode() == "client" and T.map() == "RB_Garage" and T.cls(T.myPawn()) == T.CHAR end })
     add({ check = "guest_reports_door", timeout = 600, cond = function()
         PTNative_MsgToHost(T.localPC():GetAddress(), "t.rear", string.format("%.3f", pos()))
+        PTNative_MsgToHost(T.localPC():GetAddress(), "t.fax", hasFax() and "1" or "0")
         return got["t.done"] ~= nil or has("t.done")
     end })
     return steps
