@@ -7,9 +7,11 @@ the loot menu's own transfers, and the host abandons through the pause menu's ow
 `test/PacificTogetherTest/Scripts/scenarios/playpath.lua` (fixtures `garage` and `zone`), actions `door_press` and `use_tool` in
 `mcp_actions.lua`.
 
-Runs (all headless, two clients): `20261021-165016-input-playpath` garage 24/24; `20261021-165825-input-playpath` zone 39/39.
-Mutations: `nocarsync` garage 19/24 (`20261021-170231-input-playpath-nocarsync`), `nointent` zone 27/39
-(`20261021-170947-input-playpath-nointent`). Before the two fixes below the zone run was 34/38 and, by the log, path 7 was
+Runs (all headless, two clients): `20261021-173129-input-playpath` garage 28/28; `20261021-165825-input-playpath` zone 39/39.
+Mutations: `nocarsync` garage 19/24 (`20261021-170231-input-playpath-nocarsync`, before the trunk steps), `nointent` garage
+27/28 (`20261021-173801-input-playpath-nointent`, the trunk check fails), `nointent` zone 27/39 (`20261021-170947-input-playpath-nointent`).
+Regressions with the two fixes: `session` 40/40 (`20261021-172558-input-session`), `playerhealth` zone 26/26
+(`20261021-172807-input-playerhealth`), `backpacksync` zone 32/32 (`20261021-172253-input-backpacksync`). Before the two fixes below the zone run was 34/38 and, by the log, path 7 was
 broken even though its old check passed (`20261021-165423-input-playpath`).
 
 ## Per path
@@ -18,7 +20,7 @@ broken even though its old check passed (`20261021-165423-input-playpath`).
 |---|---|---|
 | 1 | guest walks to the driver's door, presses its handle -> seated; exit -> out | works (door), exit key unverified, see below |
 | 2 | guest opens a container with interact, moves a stack to its backpack, closes the menu -> host container lost it | works (move is the menu's own `TransferStackIntoContainer`, not the mouse) |
-| 3 | trunk the way a player does | still broken / not drivable headless, see below |
+| 3 | trunk the way a player does | works through the highlight component's own interact (aim not drivable), see below |
 | 4 | repair putty / fuel can from the hand, aimed at part / gas cap, use key | not drivable headless, see below |
 | 5 | ARC screen: hover and press the gateway | not driven (see below) |
 | 6 | guest picks up a world item with interact -> gone on the host | works |
@@ -50,10 +52,12 @@ Not done: a real mouse click / drag (needs a window), the `Try Pickup Slot` / `M
 called without a real hovered slot.
 
 ### 3 trunk
-The trunk door and its storage have no highlight collision entry (`BP_Storage_Trunk_Base_C.Highlight.HighlightCollision` has 0
-entries); the trunk door's handle takes `InteractPressed` on both host and guest but the door state stays closed and no menu opens
-(host and guest alike), so this harness cannot tell a guest bug from a headless limit. Still open: the owner opens the trunk as a guest
-and says what happens.
+The trunk's storage (`BP_Storage_Trunk_Base`) has a highlight with NO collision entry, so no aim can hit it headless (the trunk
+DOOR's handle takes the press but the door stays closed and no menu opens, on host and guest alike). The trunk's own
+`OnHighlightInteract` runs `InventoryManager:OpenCarInventories`; the check calls the highlight component's
+`InteractPressed/Released(pawn)` (what `Command Interact` calls on the current highlight): the menu opens with the trunk as the
+transfer container, a backpack stack moved with the menu's own `TransferStackIntoContainer`, menu closed -> the host's trunk
+gained the item. What a human does to get that highlight (open the lid first? stand where?) is not known: the owner checks.
 
 ### 4 tools
 `BP_BaseToolHoldUntilComplete_Manifestation.TrySpinUp` re-reads `GetHighlightedActor` (the highlight manager), so the tool's target
@@ -68,7 +72,12 @@ is native-only and cannot be called from Lua.
 The screen takes `InteractPressed` from the seated guest (`ScreenHighlight` is allowed). The gateway choice is hover (cursor box select
 over the map icons each tick, `UMG_Gobbler_Cursor.TickSelection`) then a HOLD on the select action (`UseSelectedWidget` ->
 `BP_LevelTransition_ExitPortal:StartPress` ... `PressComplete` -> `ExitUseComplete` -> `OnExitUseComplete`, the guestact hook). Not driven
-in this lane: needs the cursor moved over an icon on a rendered map.
+in this lane: needs the cursor moved over an icon on a rendered map. Seen on the guest in the `gateway` fixture: the screen takes
+the press, `UMG_GobblerScreen` exists with the cursor visible and 4 portal icons, `Charged` stays false and the guest's
+`AbleToChooseExit` stays false (`guestact.holdGate` pins it on purpose; the BP's `OnExitUseComplete` is guarded by it, the hook
+still sends the intent). `Charged` on the guest is copied from the HOST's widget, which does not exist or is not updated until
+the host itself looks at the ARC screen: if the host charges the ARC and the guest opens the screen first, its exits may not
+show. Unknown, worth one look tonight (host looks at the ARC screen once after charging it).
 
 ### 6 world item
 `interact` with the highlight's own hold (0.88 s) on the guest's copy: the item is in the guest's backpack and gone on the host.
@@ -94,5 +103,5 @@ After the fixes: no death crate, the guest's backpack is the penalized one (`bp 
 - shared: `tools/run-test.ps1` (`playpath` in `$Defaults` and `$AutoJoin`).
 
 ## Observations / Derived / Guesses / Unknowns
-Unknowns: the X key; trunk; tool aim and use key; ARC hover and hold; the real mouse in the loot menu; Abandon button popup in a
+Unknowns: the X key; how a human aims at the trunk; tool aim and use key; ARC hover and hold; the real mouse in the loot menu; Abandon button popup in a
 windowed game; two guests.
