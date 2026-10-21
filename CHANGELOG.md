@@ -11,6 +11,9 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - The launcher shows the build in this download and the build installed in your game.
 - The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
   gateway at the ARC.
+- Abandoned cars and their parts are shared; scrapping and siphoning fuel happen once for both. Handed-over items keep
+  their durability, fuel and battery. Opened and emptied containers look that way for both players, and garage storage
+  is really shared now.
 - The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
   crate that either player can loot.
 
