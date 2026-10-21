@@ -465,7 +465,7 @@ return function(T)
     T.action_event = actionEvent
 
     -- use_tool: the tool in the hand, used like a player: aim at the target until the game's highlight manager has it, press the
-    -- tool's own use key (ToolPrimaryUse = left mouse button) through the input stack, hold, release. opts: actor, key, hold.
+    -- tool's own use input event (ToolPrimaryUse = left mouse button), hold, release. opts: actor, key, hold, tool (class: forces the target, headless).
     function ACT.use_tool(o, job)
         local c = char()
         local a = resolve(o)

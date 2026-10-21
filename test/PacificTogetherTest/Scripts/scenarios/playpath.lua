@@ -123,6 +123,10 @@ return function(T)
             add({ check = "p1_guest_stays_seated", timeout = 20, cond = L.holds(5, function() local g = L.guestChar(); return g ~= nil and attached(g) end) })
             add({ run = function() sendGuest("t.p1x") end })
             add({ check = "p1_guest_out_after_exit", timeout = 60, cond = function() local g = L.guestChar(); return g ~= nil and not attached(g) end })
+            -- 3. the trunk
+            local trunk0
+            add({ run = function() trunk0 = im().Inventory_Trunk:GetNumItems(); sendGuest("t.p3") end })
+            add({ check = "p3_host_trunk_has_guest_item", timeout = 90, cond = function() return im().Inventory_Trunk:GetNumItems() > trunk0 end })
             add({ wait = 3 })
             return steps
         end
@@ -139,6 +143,34 @@ return function(T)
         -- the exit: key X is a UE4SS key bind (car.lua), not drivable headless; this is the intent it sends
         add({ run = function() sendHost("g.car.exit") end })
         add({ check = "guest_out", timeout = 60, cond = function() return not attached(T.myPawn()) end })
+        -- 3. the trunk: its highlight has no collision a trace can hit headless, so the press is the highlight component's own
+        -- interact (what the interact key calls on the current highlight); the menu then shows the trunk as the transfer container
+        add({ check = "guest_told_p3", timeout = 120, cond = function() return has("t.p3") end })
+        add({ run = function()
+            local tr
+            for _, a in ipairs(FindAllOf("BP_Storage_Trunk_Base_C") or {}) do if alive(a) and a:GetAttachParentActor():IsValid() then tr = a end end
+            assert(tr, "no trunk on the car")
+            local me = T.myPawn()
+            tr.Highlight:InteractPressed(me)
+            tr.Highlight:InteractReleased(me)
+        end })
+        add({ check = "guest_trunk_menu_open", timeout = 10, cond = menuOpen })
+        add({ run = function()
+            local m = im()
+            local w
+            for _, x in ipairs(FindAllOf("UMG_PlayerMenu_Inventory_C") or {}) do if x.TransferContainer:IsValid() then w = x end end
+            assert(w and w.TransferContainer:GetFullName() == m.Inventory_Trunk:GetFullName(), "the menu's transfer container is not the trunk")
+            m:GiveItemToPlayer(StaticFindObject(STEEL))
+            local s
+            for i = 0, m.Inventory_Player:GetNumSlots() - 1 do
+                local sl = m.Inventory_Player:GetSlot(i)
+                if sl:IsValid() and sl:GetNumItems() > 0 then s = sl; break end
+            end
+            -- the loot menu's own move of a backpack stack into the transfer container
+            s:TransferStackIntoContainer(w.TransferContainer, {})
+            m:RequestPlayerMenuClose()
+        end })
+        add({ check = "guest_trunk_menu_closed", timeout = 10, cond = function() return not menuOpen() end })
         add({ wait = 3 })
         return steps
     end
