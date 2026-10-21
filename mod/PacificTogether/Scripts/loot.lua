@@ -364,6 +364,8 @@ local function scanGuest()
             if p and (l.X - p.X) ^ 2 + (l.Y - p.Y) ^ 2 + (l.Z - p.Z) ^ 2 < DROP ^ 2 then
                 reported[n] = true
                 say(string.format("N|%s|%.0f|%.0f|%.0f|%.0f", ids.path(a.Instance.Archetype), l.X, l.Y, l.Z, a:K2_GetActorRotation().Yaw))
+                -- the host's copy comes back as an "A": keeping this one too left two tools on the guest's ground (a dupe)
+                if os.getenv("PT_MUTATE") ~= "nodropfix" then a:K2_DestroyActor() end
             else
                 a:K2_DestroyActor()
             end

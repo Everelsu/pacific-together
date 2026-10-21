@@ -3,7 +3,7 @@
 -- BFL_InventorySlotUtils."Spawn Item Player Drop"). After that the guest owns none, exactly one tool lies in the world on each side
 -- (60 s, through the backpack sync), the host picks it up, and the guest still owns none and has no copy left on its ground.
 -- Run: tools/run-test.ps1 -Scenario guestcraft -Fixture garage -Headless
--- Mutation nocraftfix: reserved for the fix of whatever this shows.
+-- Mutation nodropfix: loot.lua keeps the guest's own dropped actor next to the host's copy.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local RECIPE = "/Game/Gameplay/Inventory/Items/Tools/FixStatusEffect/FixElectronic/CR_Tool_Target_FixElectronics.CR_Tool_Target_FixElectronics"
@@ -45,12 +45,13 @@ return function(T)
         add({ check = "host_guest_in_garage", timeout = 240, cond = function() return L.guestChar() ~= nil end })
         add({ check = "host_guest_dropped", timeout = 200, cond = function() return has("t.dropped") end })
         add({ check = "host_one_world_tool_for_60s", timeout = 90, cond = L.holds(60, function() return worldTools() == 1 end) })
+        add({ check = "host_guest_stable_60s", timeout = 120, cond = function() return has("t.stable") end })
         add({ check = "host_owns_none", timeout = 2, cond = function() return owned() == 0 end })
         add({ run = function()
             for _, w in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
                 local ok, a = pcall(function() return w.Instance.Archetype:GetFName():ToString() end)
                 if w:IsValid() and ok and a:find("IA_Tool_Target_FixElectronics", 1, true) then
-                    T.log("PT|info host picks up %s ok=%s", T.name(w), tostring(pcall(function() T.myPawn()["Pickup Actor"](T.myPawn(), w, false, {}) end)))
+                    T.log("PT|info host picks up %s ok=%s", T.name(w), tostring(pcall(function() local c = T.first("BP_MainCharacterManager_C").CharacterActor; c["Pickup Actor"](c, w, false) end)))
                     break
                 end
             end
@@ -88,8 +89,17 @@ return function(T)
         PTNative_MsgToHost(T.localPC():GetAddress(), "t.dropped", "")
     end })
     add({ check = "guest_owns_none_after_drop", timeout = 5, cond = function() return owned() == 0 end })
-    add({ check = "guest_owns_none_and_one_world_tool_for_60s", timeout = 90, cond = L.holds(60, function() return owned() == 0 and worldTools() == 1 end) })
+    add({ check = "guest_owns_none_and_one_world_tool_for_60s", timeout = 90, cond = L.holds(60, function()
+        local o, w = owned(), worldTools()
+        if o ~= 0 or w ~= 1 then T.log("PT|info guest owned=%d worldTools=%d", o, w) end
+        return o == 0 and w == 1
+    end) })
+    add({ run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.stable", "") end })
     add({ check = "guest_host_picked", timeout = 120, cond = function() return has("t.picked") end })
-    add({ check = "guest_still_owns_none_and_copy_gone", timeout = 40, cond = L.holds(30, function() return owned() == 0 and worldTools() == 0 end) })
+    add({ check = "guest_still_owns_none_and_copy_gone", timeout = 40, cond = L.holds(30, function()
+        local o, w = owned(), worldTools()
+        if o ~= 0 or w ~= 0 then T.log("PT|info guest after host pickup owned=%d worldTools=%d", o, w) end
+        return o == 0 and w == 0
+    end) })
     return steps
 end
