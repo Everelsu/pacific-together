@@ -25,7 +25,7 @@ Neither candidate as written. (a) replicate the host's actors and (b) sync the s
 
 ## Observations
 
-- Result folders under `local/test-results/`: `20261021-110810-items-lootsync` (33/34, trunk put fail), `20261021-111358-items-lootsync`
+- Result folders under `local/test-results/`: `20261021-110810-items-lootsync` (33/34, trunk put fail); final 20261021-121017-items-lootsync 34/34, mutation nointent 20261021-120157-items-lootsync-nointent 23/34 (fails), session 20261021-120839-items-session 40/40, `20261021-111358-items-lootsync`
   (31/34), `20261021-115407-items-lootsync` (32/34: the guest had 2 own lootables left).
 - Zone fixture, host: 40 `BP_Lootable_Base_C` of 17 classes, 16 `BP_WorldItem_C` (15 plain + a `GasPumpHandle`). Guest: 1 lootable, 0 world items; its
   own spawners add world items and lootables again a few seconds after the join.

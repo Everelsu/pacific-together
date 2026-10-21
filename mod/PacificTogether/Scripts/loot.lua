@@ -96,7 +96,7 @@ end
 
 local function scanHost()
     for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
-        local n = alive(a) and a:GetFullName()
+        local n = alive(a) and alive(a.InventoryContainer) and a:GetFullName()
         if n and not byName[n] then
             local e = register("L" .. nextId, "L", a)
             nextId, byName[n] = nextId + 1, e.id
