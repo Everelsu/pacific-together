@@ -25,6 +25,7 @@ local INV = { "Inventory_Trunk", "Inventory_LargeTrunk", "Inventory_Garage", "In
 local DROP = 500 -- uu: an unknown pickup this close to the guest is its own drop
 local MATCH = 60 -- uu: a local actor this close to the host's, same class, is the same thing
 
+local M = {}
 local ents, byName, nextId = {}, {}, 1 -- id -> entity; actor full name -> id (host)
 local reported = {} -- guest: dropped items already told to the host
 local claimed = {} -- guest: local actors that are some entity's copy
@@ -497,3 +498,14 @@ LoopInGameThreadWithDelay(500, function()
     local ok, err = pcall(tick)
     if not ok then log("PT|error loot %s", tostring(err)) end
 end)
+
+-- for guestparts.lua: the shared id of a wreck part's actor, and the actor of an id
+function M.idOf(a)
+    local n = alive(a) and a:GetFullName()
+    for id, e in pairs(ents) do if e.kind == "P" and alive(e.actor) and e.actor:GetFullName() == n then return id end end
+end
+function M.actorOf(id)
+    local e = ents[id]
+    return e and e.kind == "P" and alive(e.actor) and e.actor or nil
+end
+return M
