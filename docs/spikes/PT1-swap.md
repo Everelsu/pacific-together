@@ -9,7 +9,7 @@ scenario `guestswap` (`tools/run-test.ps1 -Scenario guestswap -Fixture gateway -
   start count and failed, see Unknowns). Scenario reworked afterwards to compare the host's trunk with the guest's count.
 - `20261022-015210-pt1-swap-guestswap-noswap`: mutation 27/33, the part checks FAIL as the playtest did (host door never removed, guest slot refilled by the
   host state with the door also carried, install does not reach the host).
-- Final unmutated run of the reworked scenario: see the report / progress.log (runs queued behind the lead's suite).
+- `20261022-023906-pt1-swap-guestswap`: 33/33 with the reworked scenario (host trunk equals the guest's after the take and after the put).
 
 ## Observations
 
@@ -40,7 +40,7 @@ scenario `guestswap` (`tools/run-test.ps1 -Scenario guestswap -Fixture gateway -
   whether the guest's highlight finds them).
 - Replace (swap with a different part in hand) uses the same hook (slot content after the swap) but only remove and install are in the scenario.
 - A part the host removed/installed at the same moment as the guest: last writer wins.
-- Trunk (loot.lua, not changed): in the gateway fixture the guest took a stack of 10 headlights out of the full trunk (46 items): the host's trunk went 46 -> 35
+- Trunk (loot.lua, not changed; the reworked scenario compares host with guest and passes, so this is a count drift of the full fixture trunk, not a host/guest split in that run): in the gateway fixture the guest took a stack of 10 headlights out of the full trunk (46 items): the host's trunk went 46 -> 35
   (one item more than the guest took), and after the guest put the 10 back the host had 45 while the guest had 46. Likely `ids.apply` rebuilding a stack in a
   full container on the host (spec merge / reuse of an "extra" item); not investigated (lootsync2 area).
 - Fuel/battery by item (jerry can into the car, charger) not repeated here; see `guestact`.
