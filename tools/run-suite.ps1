@@ -7,7 +7,7 @@ $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run 
     session = ""; playpath = "zone"; carsync = "garage"; carenter = "garage"; lootsync = "zone"; lootsync2 = "zone"
     guestact = "gateway"; progsync = "zone"; playerhealth = "zone"; backpacksync = "zone"; garagesync = "garage"; guestparts = "gateway"
     guestcraft = "garage"; guestdeath = "zone"; lootcar = "zone"; dropfall = "zone"; carexit = "garage"; arckey = "garage"
-    carfeel = "garage"; pausemenu = "garage"; runloop = "garage"; worldsync = "gateway"; storysync = "garage"; overlay = "garage"
+    carfeel = "garage"; guestswap = "gateway"; pausemenu = "garage"; runloop = "garage"; worldsync = "gateway"; storysync = "garage"; overlay = "garage"
     anomalies = "zone"; anomalies2 = "zone"; safety = ""; nametag = ""; sessiontravel = "garage"; sessionrejoin = ""
     zonejoin = ""
 }
