@@ -51,6 +51,10 @@ Background: `coop-anything/playbook/multi-agent-workflows.md`, `methods.md` sect
 
 ## Hygiene that keeps lanes mergeable
 
+- **Progress lines (owner, 2026-10-21):** at each milestone (reproduced, cause found, fix written, scenario passes,
+  mutation fails, blocked) a lane appends one line `HH:mm <lane> <under 20 words>` to `local/progress.log`. The owner
+  watches it (`Get-Content local\progress.log -Wait`); it costs no lead tokens.
+
 - One worktree, test pair (`C:\PTLanes\<lane>`) and port per lane; scenarios in their own files under
   `test/PacificTogetherTest/Scripts/scenarios/`; findings in `docs/spikes/<id>.md`; features in their own module
   files in `mod/PacificTogether/Scripts/` and `native/PacificTogetherNative/`.
