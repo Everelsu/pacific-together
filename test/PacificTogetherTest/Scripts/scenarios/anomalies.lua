@@ -1,8 +1,7 @@
 -- W6, W7, D19: anomalies act on both players. Fixture `zone`, the guest joins by itself.
 --   damage    a Landmine (the Tourist class) blows up next to the guest only: the guest's own health drops, the host's does not
 --             (before the mod the guest's pawn on the host hurt the HOST's health and the guest felt nothing).
---   tourists  a Tourist behind the host with the guest looking at it does not creep (the host does not look); the guest turns
---             away and it creeps.
+--   (Tourists: scenario tourist with PT_MUTATE=mod, in the garage where the guest camera reaches the host)
 -- Run: tools/run-test.ps1 -Scenario anomalies -Fixture zone -Headless
 -- Mutation noanom: the shipping mod's anomalies module is off in both processes (the guest takes no damage, the host does, the Tourist creeps).
 return function(T)
@@ -58,36 +57,6 @@ return function(T)
         end })
         add({ check = "guest_hurt_by_mine", timeout = 25, cond = function() poll(); T.log("PT|info guest hp=%.0f host hp=%.0f", guestHp, (health())); return guestHp < guestHp0 - 8 end })
         add({ check = "host_not_hurt_for_guest", timeout = 15, cond = L.holds(8, function() poll(); return health() >= hostHp0 - 0.5 end) })
-        -- W7/D19: a Tourist 800 uu behind the host, nobody close but the guest, who looks at it
-        add({ run = function()
-            -- the guest stands where it joined, next to the host: a Tourist 800 uu behind the host, who faces away from it
-            -- (the Tourist arms by the host's distance, so the host has to be near)
-            local me = T.myPawn() or L.manager().CharacterActor
-            local l = me:K2_GetActorLocation()
-            T.localPC():SetControlRotation({ Pitch = 0, Yaw = 0, Roll = 0 })
-            mine = spawnMine(l.X - 800, l.Y, l.Z - 80)
-            T.log("PT|info tourist %s guest d=%.0f", T.name(mine), T.dist(L.guestChar(), mine))
-        end })
-        add({ wait = 6 })
-        add({ run = function()
-            local g, m = L.guestChar():K2_GetActorLocation(), mine:K2_GetActorLocation()
-            turnGuest(math.deg(math.atan(m.Y - g.Y, m.X - g.X)))
-            start = mine:K2_GetActorLocation()
-            T.log("PT|info tourist start %.0f,%.0f,%.0f guest %.0f,%.0f,%.0f d=%.0f", start.X, start.Y, start.Z, g.X, g.Y, g.Z, T.dist(L.guestChar(), mine))
-            mine.Creep, mine.CreepedToCamera = true, false
-            mine:StartCreepTimer()
-        end })
-        add({ check = "tourist_frozen_while_guest_looks", timeout = 30, cond = L.holds(10, function()
-            local l = mine:K2_GetActorLocation()
-            T.log("PT|info looked at: moved=%.0f valid=%s at %.0f,%.0f,%.0f creep=%s", moved(), tostring(mine:IsValid()), l.X, l.Y, l.Z, tostring(mine.Creep))
-            return moved() < 20
-        end) })
-        -- control: the guest looks away, nobody looks, it creeps
-        add({ run = function()
-            local g, m = L.guestChar():K2_GetActorLocation(), mine:K2_GetActorLocation()
-            turnGuest(math.deg(math.atan(m.Y - g.Y, m.X - g.X)) + 180)
-        end })
-        add({ check = "tourist_creeps_when_nobody_looks", timeout = 30, cond = function() T.log("PT|info unseen: moved=%.0f", moved()); return moved() > 20 end })
         add({ run = function() PTNative_MsgToGuest(gpc:GetAddress(), "t.end", "1") end })
         add({ wait = 3 })
         return steps
