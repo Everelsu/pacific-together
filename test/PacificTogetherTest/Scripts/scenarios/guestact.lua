@@ -162,6 +162,8 @@ return function(T)
         g:AddingAnchorCompleteLogic(lib:CreateItemInstance(g:GetWorld(), a, 0))
     end })
     add({ wait = 4 })
+    -- a nil portal made the screen's OnExitUseComplete crash the guest (suite run 20261022-011955); the portal actors replicate late
+    add({ check = "guest_has_exit_portal", timeout = to(60), cond = function() return portals()[1] ~= nil end })
     add({ run = function()
         local p = portals()[1]
         log("PT|info guest picks gateway %s", T.name(p))
