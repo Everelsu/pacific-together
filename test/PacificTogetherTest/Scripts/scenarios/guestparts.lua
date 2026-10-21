@@ -55,6 +55,14 @@ return function(T)
         end
     end
 
+    -- the tools besides the plain scrapper (checked in 2 and 3): archetype, actor class, damage message and what its tick dispatches
+    local TOOLS = {
+        { name = "electric_scrapper", arch = "IA_Tool_Target_ItemHarvest_Scrapper_T2", cls = "BP_Tool_Target_ItemHarvest_Scrapper_T2_C", msg = "Piercing_Scrapper", dmg = 3.0, ticks = 400 },
+        { name = "hammer", arch = "IA_Tool_Target_Breaker", cls = "BP_Tool_Target_Breaker_C", msg = "Impact_Hammer", dmg = 500.0, ticks = 6, hammer = true },
+        { name = "magnetic_hammer", arch = "IA_Tool_Target_Breaker_T2", cls = "BP_Tool_Target_Breaker_T2_C", msg = "Impact_HammerT2", dmg = 500.0, ticks = 6, hammer = true },
+        { name = "prybar", arch = "IA_Tool_Target_Unlocker_Basic", cls = "BP_Tool_Target_Unlocker_Basic_C", msg = "Prybar", dmg = 500.0, ticks = 6 },
+        { name = "cutter", arch = "IA_Tool_Target_ItemHarvest_Cutter_T1", cls = "BP_Tool_Target_ItemHarvest_Cutter_C", msg = "Explosive_Cutter", dmg = 500.0, ticks = 6 },
+    }
     local got = {}
     local function drain()
         while true do
@@ -108,6 +116,37 @@ return function(T)
         end })
         add({ check = "host_wreck_part_broken_by_guest", timeout = to(120), cond = function() return not alive(P.a) end })
         add({ check = "host_wreck_dropped", timeout = to(30), cond = function() return worldItems() > base.items end })
+        -- 4. every other tool on its own wreck panel (the panels are picked now, before any of them breaks)
+        local picked = {}
+        add({ run = function()
+            local list = panels()
+            for i = 1, #TOOLS do picked[i] = list[3 + i * 2] end
+        end })
+        for i, tl in ipairs(TOOLS) do
+            add({ run = function()
+                local p = picked[i]
+                base.items = worldItems()
+                base.after = nil
+                log("PT|info host %s panel %.0f %.0f %.0f", tl.name, p.x, p.y, p.z)
+                PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.w_" .. tl.name, string.format("%.0f|%.0f|%.0f", p.x, p.y, p.z))
+            end })
+            add({ check = "host_panel_broken_by_guest_" .. tl.name, timeout = to(90), cond = function() return not alive(picked[i].a) end })
+            add({ check = "host_dropped_by_guest_" .. tl.name, timeout = to(30), cond = function() return worldItems() > base.items end })
+            add({ wait = 6 })
+            add({ run = function() base.after = worldItems(); PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.cnt_" .. tl.name, "") end })
+            add({ check = "guest_items_grew_like_host_" .. tl.name, timeout = to(60), cond = function()
+                local g = has("t.cntd_" .. tl.name); if not g then return false end
+                local g0, g1 = g:match("^(%d+)|(%d+)$")
+                log("PT|info %s items host %d -> %d, guest %s -> %s", tl.name, base.items, base.after, g0, g1)
+                return tonumber(g1) - tonumber(g0) == base.after - base.items
+            end })
+        end
+        -- 5. the blowtorch repairs the hurt door
+        add({ run = function()
+            hcOf(manif(SLOT_HEAL)):SetHealth(5.0)
+            PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.torch", "")
+        end })
+        add({ check = "host_door_repaired_by_guest_blowtorch", timeout = to(90), cond = function() return hpOf(SLOT_HEAL) >= 14 end })
         add({ check = "host_guest_finished", timeout = to(120), cond = function() return has("t.done") ~= nil end })
         return steps
     end
@@ -143,6 +182,39 @@ return function(T)
             if not alive(target) or not alive(t) or n > ticks then CancelDelayedAction(loop); return end
             local msg = StaticConstructObject(cls, t)
             msg.Damage, msg.IsDamageOverTime, msg.ToolDispatched = 3.0, true, true
+            ms:DispatchMessage(msg, target)
+        end)
+    end
+
+    local function holdByName(name)
+        local m, a = im(), nil
+        for _, x in ipairs(FindAllOf("ItemArchetype") or {}) do if alive(x) and x:GetFName():ToString() == name then a = x end end
+        m.Inventory_PlayerHand:GetSlot(0):RemoveAllItems({})
+        m:GiveItemToPlayer(a)
+        for i = 0, m.Inventory_Player:GetNumSlots() - 1 do
+            local s = m.Inventory_Player:GetSlot(i)
+            if s:GetNumItems() > 0 and s:GetCurrentArchetype():GetFName():ToString() == name then s:TransferStackIntoContainer(m.Inventory_PlayerHand, {}); return end
+        end
+        error("tool not in the backpack: " .. name)
+    end
+    local function toolOf(cls) for _, x in ipairs(FindAllOf(cls) or {}) do if alive(x) then return x end end end
+    -- the damage message the tool's tick dispatches (scrapper: 3 per 50 ms until the part is gone; the others: one hit, a few times)
+    local function send(t, tl, target)
+        local ms = StaticFindObject("/Script/PenDriverPro.Default__BlueprintGameUtilities"):GetMessageSystem(t)
+        local cls = StaticFindObject("/Game/Systems/Messages/MSG_Damage_Physical_" .. tl.msg .. ".MSG_Damage_Physical_" .. tl.msg .. "_C")
+        local n, loop = 0, nil
+        loop = LoopInGameThreadWithDelay(50, function()
+            n = n + 1
+            if not alive(target) or not alive(t) or n > tl.ticks then CancelDelayedAction(loop); return end
+            local msg = StaticConstructObject(cls, t)
+            msg.Damage, msg.ToolDispatched = tl.dmg, true
+            if tl.msg == "Piercing_Scrapper" then msg.IsDamageOverTime = true end
+            if tl.hammer then
+                local s, ty = {}, {}
+                t.BP_ItemHarvesterComponent:GetHarvesterSettings(s, ty)
+                msg.HarvestSettings = s
+                msg.HarvesterType = ty.HarvesterType
+            end
             ms:DispatchMessage(msg, target)
         end)
     end
@@ -190,6 +262,35 @@ return function(T)
     end })
     add({ run = function() scrape(E.a, 400) end })
     add({ check = "guest_wreck_copy_gone", timeout = to(120), cond = function() return not alive(E.a) end })
+    -- 4. the other tools: the message each one's tick sends, from the real held tool, at a wreck panel
+    for _, tl in ipairs(TOOLS) do
+        local key, tool_, copy = "t.w_" .. tl.name, nil, nil
+        add({ check = "guest_told_" .. tl.name, timeout = to(120), cond = function() return has(key) ~= nil end })
+        add({ check = "guest_copy_for_" .. tl.name, timeout = 60, cond = function()
+            local x, y, z = got[key]:match("^([^|]*)|([^|]*)|([^|]*)")
+            copy = near(panels(), tonumber(x), tonumber(y), tonumber(z))
+            return copy ~= nil
+        end })
+        local g0
+        add({ run = function() g0 = worldItems(); holdByName(tl.arch) end })
+        add({ check = "guest_holds_" .. tl.name, timeout = 20, cond = function() tool_ = toolOf(tl.cls); return tool_ ~= nil end })
+        add({ wait = 2 })
+        add({ run = function() send(tool_, tl, copy.a) end })
+        add({ check = "guest_copy_gone_" .. tl.name, timeout = to(90), cond = function() return not alive(copy.a) end })
+        add({ check = "guest_told_cnt_" .. tl.name, timeout = to(60), cond = function() return has("t.cnt_" .. tl.name) ~= nil end })
+        add({ run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.cntd_" .. tl.name, g0 .. "|" .. worldItems()) end })
+    end
+    -- 5. the blowtorch
+    add({ check = "guest_told_torch", timeout = to(120), cond = function() return has("t.torch") ~= nil end })
+    add({ check = "guest_door_hurt_again", timeout = 30, cond = function() return hpOf(SLOT_HEAL) <= 6 end })
+    add({ run = function() holdByName("IA_Tool_Target_Healer_Basic") end })
+    add({ check = "guest_holds_blowtorch", timeout = 20, cond = function() return toolOf("BP_Tool_Target_Healer_Basic_C") ~= nil end })
+    add({ run = function()
+        local t, m = toolOf("BP_Tool_Target_Healer_Basic_C"), manif(SLOT_HEAL)
+        t.TargetedActor = m
+        t.BP_HealerComponent:DoHeal(hcOf(m), 0.0, {}, {}) -- what the tool's tick does
+    end })
+    add({ check = "guest_door_stays_repaired_by_blowtorch", timeout = to(60), cond = L.holds(8, function() return hpOf(SLOT_HEAL) >= 14 end) })
     add({ run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.done", "1") end })
     add({ wait = 3 })
     return steps
