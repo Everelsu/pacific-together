@@ -11,14 +11,29 @@ What works in this build
   host's save and quit. The guest's screen holds still for a few seconds while the host loads, then it loads the
   same map (no trip through the main menu). If the guest's game drops or crashes, the host keeps going and the guest
   can join again.
-- The host can get in and out of the car; the guest stays where they stand.
+- The car: the host drives; the guest gets in through the passenger door (the game's own door) and rides along,
+  smoothly, and leaves with the X key. The guest's dashboard shows the host's fuel and battery; car parts the host
+  installs or removes, their health, fuel and battery match on both sides.
+- Loot: the guest sees the host's lootable containers and items in the same places with the same contents. Taking
+  from or putting into a container, the car trunk or garage storage changes it for both players within a second. An
+  item picked up from the ground disappears for both; whoever took it has it in their own backpack.
+- The run: the guest sees the same time of day, weather, instability, storm and gateway as the host, and the host's
+  anomalies in the same places (updated a few times a second).
+- Health: each player sees the other's health under their name tag. The guest takes damage and radiation and heals
+  normally. When the guest dies, the screen goes black for a few seconds and they come back at the car with full
+  health; the host's run goes on. When the host dies, the run fails for both, as in the normal game.
+- Story: missions, radio and cutscenes play for the host only; the guest is a bystander.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
 Not done yet (expect oddities)
-- The car: only the host drives, and the guest can't ride along yet.
-- Loot, items, world changes and the run's state aren't synced yet. What the guest picks up or does may not
-  show up for the host.
+- Only the host drives. The guest's speedometer stays at zero. Wipers, horn, radio and flat-tyre status aren't synced.
+- Items are rebuilt on the other side as new: durability, upgrades and colours of moved items aren't kept.
+- Anomalies act on the guest only partly (grabbing, shocks and stealing may look off). Some rare ones aren't synced.
+- When the guest dies, their backpack is not dropped and nothing is lost.
+- Scrapping wrecks and the abandoned cars' parts aren't synced yet.
+- The guest's backpack is not kept between sessions yet.
+- The guest can't use the garage stations, plan the route or summon the gateway yet.
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.

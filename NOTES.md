@@ -476,3 +476,34 @@ Observations
 
 Unknowns
 - Behaviour under packet loss and over the Steam tunnel (reliable RPCs should resend; not run).
+
+## 2026-10-21: playable prototype lanes (car, items, world, player)
+
+Four Sonnet worker lanes, each in its own worktree, pair and port, headless, merged into main in this order: player, world,
+car, items. Details, gaps and result folders are in each lane's spike doc: `docs/spikes/M4-player.md`, `M5-world.md`,
+`M3-car.md`, `M4-loot.md`.
+
+| Lane | Module | Scenario (lane run) | Mutation |
+|---|---|---|---|
+| player (P4, D6) | `health.lua`, name tag shows the other's health | `playerhealth` 26/26 | `nohealth` 20/26 |
+| world (W3, W4, W6, G3) | `world.lua` | `worldsync` 27/27 | `noworldsync` 20/27 |
+| car (C1-C4, C7) | `car.lua` | `carsync` 36/36 | `nocarsync` 27/34 |
+| items (W1, W2, C6, G1) | `ids.lua`, `loot.lua` | `lootsync` 34/34 | `nointent` 23/34 |
+
+Observations
+- Player health is `BP_ResourceManager_C.PlayerHealth`, one per process; damage goes to the process's own manager, so the
+  guest's own sim already hurts and heals the guest. The game's `KillPlayer` would travel the guest's process to the garage:
+  the guest is clamped at 1 and respawned at the host's car by the mod instead.
+- The guest's zone has almost no loot of its own (host 40 lootables + 16 pickups, guest 1): lootables come from the host's
+  save, so seed syncing has nothing to regenerate. The guest gets copies from the host's list (class, position, contents).
+- Hazards, the zone storm and the exit portals need always-relevant as well as replicate on the host: the default
+  15000 uu cull distance hid them from a far guest. The guest's own motion code moved level-placed grabbers back after
+  replication, so the guest turns their tick off and follows the host's positions.
+- Without a pre-hook, a mission started on the guest crashed it (0x80000003).
+- On merged main: `worldsync` failed once (26/27) because its story check wanted the unrooted MissionData to survive GC (fixed
+  in the test). `carsync` failed once (32/36): the guest's car settled about 200 uu from the host's reported stop, and the state
+  check that followed rejected a message older than 4 s. The rerun passed 36/36.
+
+Unknowns
+- None of this has seen a human playtest yet: real door and loot-UI input, the guest's view of anomaly effects, garage
+  container sync and the car across a map change.
