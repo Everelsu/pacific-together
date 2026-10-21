@@ -16,7 +16,7 @@ if os.getenv("PT_MUTATE") == "nooverlay" then
     return M
 end
 
-local LINES, LIFE, FADE, SETTLE = 5, 6, 1.5, 6 -- visible lines, seconds a line lives, fade-out, seconds into a session before loot-style chatter is allowed
+local LINES, LIFE, SETTLE = 5, 6, 6 -- visible lines, seconds a line lives, seconds into a session before loot-style chatter is allowed
 local Z = 10000
 local COLOR = { -- linear RGB: off-white text, a teal accent for the status, muted warn and good
     label = { R = 0.78, G = 0.78, B = 0.74 }, status = { R = 0.25, G = 0.8, B = 0.72 },
@@ -106,8 +106,8 @@ local function render()
                 local c = COLOR[l.kind] or COLOR.info
                 t:SetColorAndOpacity({ SpecifiedColor = { R = c.R, G = c.G, B = c.B, A = 1 }, ColorUseRule = 0 })
             end
-            local a = math.min(1, (LIFE - (now - l.t0)) / FADE)
-            t:SetRenderOpacity(a)
+            -- no fade: the per-tick SetRenderOpacity crashed the host right after a guest joined (playtest 2026-10-21,
+            -- AV in PenDriverPro+0x3160a56 reading 0x178, the same crash as the hands-on bot's)
         end
     end
 end

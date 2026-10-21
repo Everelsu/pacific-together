@@ -55,7 +55,7 @@ Not done yet (expect oddities)
   the guest's own.
 - Car paint and cosmetics, tutorials and expedition progress are the guest's own, not the host's. A map screen that is
   already open may need reopening to show the host's route.
-- The overlay uses the engine's plain font, stays visible over the pause menu, and is English only. A host map change
+- The overlay uses the engine's plain font, stays visible over the pause menu, is English only, and its lines vanish without fading. A host map change
   shows the guest as leaving and rejoining.
 - If the host charges the ARC, the host should look at the ARC screen once so the guest sees the gateway choices.
 - Not tried with a real mouse and keyboard yet (please check tonight): the X key to leave the car, opening the trunk as
