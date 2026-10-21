@@ -5,7 +5,7 @@
 --          mirrored passenger seat and the guest holds the seat (X8); the host's car state (parts, health, fuel, battery,
 --          ignition, gear, lights, doors, handbrake) arrives as a message and is applied to the guest's own car inventory.
 --   host:  seats/unseats the guest on intent and broadcasts the state; the ARC is moved between the seats (D12).
--- Single player: nothing here runs unless this is a client, or a listening host with a guest.
+-- Only the garage/run car BP_PlayerCarNew_C (not the intro car). Single player: nothing here runs unless this is a client, or a listening host with a guest.
 local UEHelpers = require("UEHelpers")
 local common = require("common")
 local safety = require("safety")
@@ -58,7 +58,7 @@ local function gone(c)
 end
 local function cars()
     local r = {}
-    for _, c in ipairs(FindAllOf("BaseNewCar") or {}) do
+    for _, c in ipairs(FindAllOf("BP_PlayerCarNew_C") or {}) do
         if inWorld(c) and not gone(c) then r[#r + 1] = c end
     end
     return r
