@@ -28,7 +28,8 @@ What works in this build
   under the same player name. When the guest dies, their items drop as a crate where they fell; either player can loot it.
 - The guest can work on the car and the ARC: repair parts with repair putty, charge the battery, refuel from a fuel can,
   deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
-- Story: missions, radio and cutscenes play for the host only; the guest is a bystander.
+- Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
+  radio and voice lines with subtitles. Only the host's actions move the story on.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
@@ -41,6 +42,8 @@ Not done yet (expect oddities)
 - Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Scrapping and siphoning are untested
   with real hands on the tools.
 - The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
+- Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
+  the guest's own.
 - The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)
