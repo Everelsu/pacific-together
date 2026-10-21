@@ -8,7 +8,7 @@ $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run 
     guestact = "gateway"; progsync = "zone"; playerhealth = "zone"; backpacksync = "zone"; garagesync = "garage"; guestparts = "gateway"
     guestcraft = "garage"; guestdeath = "zone"; lootcar = "zone"; dropfall = "zone"; carexit = "garage"; arckey = "garage"
     carfeel = "garage"; pausemenu = "garage"; runloop = "garage"; worldsync = "gateway"; storysync = "garage"; overlay = "garage"
-    anomalies = "zone"; anomalies2 = "zone"; safety = ""; nametag = ""; sessiontravel = ""; sessionrejoin = ""
+    anomalies = "zone"; anomalies2 = "zone"; safety = ""; nametag = ""; sessiontravel = "garage"; sessionrejoin = ""
     zonejoin = ""
 }
 $out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss).txt"
