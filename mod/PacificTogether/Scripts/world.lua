@@ -10,6 +10,7 @@ local common = require("common")
 local net = require("net")
 local safety = require("safety")
 local log = common.log
+local ov = require("overlay")
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "noworldsync" } -- the test mutation switches the module off
 
@@ -173,6 +174,7 @@ local function applyStorm(s)
             if short(p) == s.gate then
                 p.IsPickedExit = true
                 sm["Select Exit Portal Actor"](sm, p)
+                ov.post("Gateway summoned", "good")
             end
         end)
     end

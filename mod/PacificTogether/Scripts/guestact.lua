@@ -14,6 +14,7 @@ local safety = require("safety")
 local net = require("net")
 local car = require("car")
 local log = common.log
+local ov = require("overlay")
 
 local M = {}
 if os.getenv("PT_MUTATE") == "noguestact" or not car.theCar then
@@ -79,6 +80,7 @@ net.on("g.act.heal", function(_, data)
     if c and c.h and amount and amount > 0 and amount < 1000 then
         c.h:HealDamage(amount, false, {}, {}, {})
         log("PT|act heal %s %.2f", f[1], amount)
+        ov.post(ov.other() .. " repaired " .. f[1]:match("[^%.]+$"), "good", "act.heal")
     end
 end)
 
@@ -93,6 +95,7 @@ net.on("g.act.fuel", function(_, data)
         if c:GetClass():GetFName():ToString() == f[2] then
             if amount > 0 then c["Give Fuel"](c, amount, {}, {}) else c["Take Fuel"](c, -amount, {}, {}) end
             log("PT|act fuel %s %.2f", f[1], amount)
+            ov.post(ov.other() .. (amount > 0 and " refuelled " or " siphoned fuel from ") .. f[1]:match("[^%.]+$"), "good", "act.fuel")
             return
         end
     end
@@ -110,6 +113,7 @@ net.on("g.act.bat", function(_, data)
         c.b["Set Battery"](c.b, math.min(t[1].BATTERY + amount, t[2]["Battery Capacity"] or math.huge))
         pcall(function() car.carManager():UpdateAggregateBattery() end)
         log("PT|act battery %s %.2f", f[1], amount)
+        ov.post(ov.other() .. " charged " .. f[1]:match("[^%.]+$"), "good", "act.bat")
     end
 end)
 
@@ -125,6 +129,7 @@ net.on("g.act.gate", function(_, data)
         if valid(p) and p:GetFName():ToString() == data then
             sm["Select Exit Portal Actor"](sm, p)
             log("PT|act gate selected %s", data)
+            ov.post(ov.other() .. " summoned the gateway", "good")
             return
         end
     end
@@ -139,6 +144,7 @@ net.on("g.act.anchor", function(_, data)
     if not (gob and valid(arch)) then log("PT|act anchor: no gobbler or archetype %s", data); return end
     gob:AddingAnchorCompleteLogic(arch:CreateInstance(UEHelpers.GetWorldContextObject(), 0))
     log("PT|act anchor %s", data)
+    ov.post(ov.other() .. " deposited an anchor", "good")
 end)
 
 -- ARC energy: the host's charge (Gobbler item properties) and the screen's "charged" flag are mirrored once a second, so the guest's

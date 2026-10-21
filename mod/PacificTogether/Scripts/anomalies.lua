@@ -12,6 +12,7 @@ local common = require("common")
 local net = require("net")
 local safety = require("safety")
 local log = common.log
+local ov = require("overlay")
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom", debug = os.getenv("PT_ANOM_DEBUG") ~= nil } -- the test mutation switches the module off
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
@@ -87,6 +88,7 @@ local function pre(self, payload)
     M.forwarded = M.forwarded + 1
     net.toGuest(rec:GetOwner().Controller, "g.anom.msg", msg)
     log("PT|anom damage for guest %s", msg)
+    ov.post(ov.other() .. " was hit by an anomaly", "warn", "anom")
 end
 
 for _, fn in ipairs(BINDS) do
@@ -107,6 +109,7 @@ net.on("g.anom.msg", function(_, data)
         ms:DispatchMessage(m, pc.Pawn)
         M.applied = M.applied + 1
         log("PT|anom damage applied %s", data)
+        ov.post("Hit by an anomaly", "warn", "anom")
     end)
 end)
 

@@ -9,6 +9,7 @@ local common = require("common")
 local safety = require("safety")
 local net = require("net")
 local log = common.log
+local ov = require("overlay")
 
 local M = {}
 if os.getenv("PT_MUTATE") == "noprog" then return M end
@@ -192,6 +193,7 @@ end
 for sec, fn in pairs({ wb = applyWb, un = applyUn, rt = applyRt, lb = applyLb }) do
     net.on("g.prog." .. sec, function(_, data)
         if not safety.guest() then return end
+        if not got then ov.post("Host progress applied", "good") end
         got = true
         local ok, err = pcall(fn, data)
         if not ok then log("PT|error prog apply %s %s", sec, tostring(err)) end
@@ -214,6 +216,7 @@ net.on("g.prog.pen", function(_, data)
         local before = c:GetNumItems()
         bfl:RemoveRandomItems(c, ret, keep, mode, world, {})
         log("PT|prog guest penalty mode=%d retention=%.2f %d -> %d items", mode, ret, before, c:GetNumItems())
+        ov.post("Failed run: some of your items were lost", "warn", "pen")
     end
     local bp = package.loaded["backpack"]
     if bp and bp.flush then bp.flush() end -- the host keeps the record: tell it now, a travel may follow within the second

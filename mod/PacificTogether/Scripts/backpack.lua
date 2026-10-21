@@ -11,6 +11,7 @@ local common = require("common")
 local safety = require("safety")
 local net = require("net")
 local log = common.log
+local ov = require("overlay")
 
 local M = {}
 -- test mutation: the feature off
@@ -226,6 +227,7 @@ net.on("g.bp.death", function(pc, line)
     for _, e in ipairs(rec.hand) do all[#all + 1] = e end
     writeC(a.InventoryContainer, all, false) -- shortcut: stack grid spots are the game's, durability is kept on the host's bag only
     a.RolledOnOpenItems = true -- no random loot on top of the guest's
+    ov.post(ov.other() .. "'s death crate dropped", "warn")
     log("PT|bp death bag for %s at %.0f,%.0f,%.0f with %d items", id, l.X, l.Y, l.Z, count(rec))
 end)
 
@@ -250,6 +252,7 @@ net.on("g.bp.rec", function(_, line)
         local ok, err = pcall(write, decode(line))
         if not ok then log("PT|error bp restore %s", tostring(err)); return end
         log("PT|bp guest restored %d bytes", #line)
+        ov.post("Backpack restored from the host", "good")
     else
         log("PT|bp guest is new to this host")
     end
@@ -264,6 +267,7 @@ function M.died()
     clear()
     last = nil
     log("PT|bp guest dropped its backpack (%d bytes)", #line)
+    ov.post("Backpack dropped as a death crate", "warn")
 end
 
 -- progression.lua: the guest's backpack changed outside its own tick (run-failure penalty); tell the host now
