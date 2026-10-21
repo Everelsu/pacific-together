@@ -128,7 +128,7 @@ return function(T)
     local function circ(a, b) local d = math.abs(a - b); return math.min(d, 1 - d) end
     local function cmp(f) return function() onRead(); if not host then return false end; local ok, why = f(host, read()); T.log("PT|info %s", tostring(why)); return ok end end
 
-    local mission
+    local mission, before
     return {
         T.onMap("RB_MainMenu", 90),
         { check = "client_in_zone", timeout = 400, cond = function() return T.netMode() == "client" and T.map() == "Rural_Forest_Radio_Scylla_02" and T.cls(T.myPawn()) == T.CHAR end },
@@ -169,7 +169,8 @@ return function(T)
                 pcall(function() LoadAsset("/Game/Gameplay/Quests/Q00_Intro/QD_Q00_Intro_Mission_A.QD_Q00_Intro_Mission_A") end)
                 mission = StaticFindObject("/Game/Gameplay/Quests/Q00_Intro/QD_Q00_Intro_Mission_A.QD_Q00_Intro_Mission_A")
             end
-            T.log("PT|info guest story: mission=%s missions before=%d", T.name(mission), q:GetNumActiveMissions())
+            before = q:GetNumActiveMissions() -- the host's missions, mirrored by story.lua, may already be there
+            T.log("PT|info guest story: mission=%s missions before=%d", T.name(mission), before)
             -- unguarded, the real StartMission crashes the guest (seen in the noworldsync run): not asked under that mutation
             if mission and mission:IsValid() and T.MUTATE ~= "noworldsync" then q:StartMission(mission, true) end
         end },
@@ -179,7 +180,7 @@ return function(T)
             local n = q:GetNumActiveMissions()
             T.log("PT|info guest missions after=%d", n)
             -- the loaded MissionData is not rooted and may be collected by now; it was valid when StartMission ran
-            return mission ~= nil and n == 0
+            return mission ~= nil and n == before
         end },
         { check = "guest_alive_after_host_story", timeout = to(60), cond = L.holds(12, function() return T.netMode() == "client" and T.map() == "Rural_Forest_Radio_Scylla_02" and T.myPawn() ~= nil end) },
         { run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.done", "1") end },
