@@ -9,6 +9,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
 - The launcher shows the build in this download and the build installed in your game.
+- The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
+  gateway at the ARC.
 - The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
   crate that either player can loot.
 
