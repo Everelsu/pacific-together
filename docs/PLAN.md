@@ -67,7 +67,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | Id | Requirement | P |
 |---|---|---|
 | S1 | Loading any save opens a friends-only session automatically (D14), in the garage or mid-run | P0 |
-| S2 | Guest joins via Steam invite or friends list "Join game" | P0 |
+| S2 | Guest joins via Steam invite or friends list "Join game". Player names and the guest backpack key come from Steam then (owner 2026-10-21: no custom nickname before that; today the name is the PC name) | P0 |
 | S3 | Guest joins via direct IP (tests, VPN) | P0 |
 | S4 | Handshake checks game build and mod version (mismatch -> clear message, no join) and reports both players' DLC | P0 |
 | S5 | Guest can leave and rejoin at any time, also mid-run and while the car is moving; host never crashes from it | P0 |
