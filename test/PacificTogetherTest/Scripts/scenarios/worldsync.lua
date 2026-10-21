@@ -170,7 +170,8 @@ return function(T)
                 mission = StaticFindObject("/Game/Gameplay/Quests/Q00_Intro/QD_Q00_Intro_Mission_A.QD_Q00_Intro_Mission_A")
             end
             T.log("PT|info guest story: mission=%s missions before=%d", T.name(mission), q:GetNumActiveMissions())
-            if mission and mission:IsValid() then q:StartMission(mission, true) end
+            -- unguarded, the real StartMission crashes the guest (seen in the noworldsync run): not asked under that mutation
+            if mission and mission:IsValid() and T.MUTATE ~= "noworldsync" then q:StartMission(mission, true) end
         end },
         { wait = 3 },
         { check = "guest_story_bystander", timeout = to(10), cond = function()
