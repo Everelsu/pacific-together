@@ -214,17 +214,31 @@ local function confirm(kind, actor)
 end
 
 -- the real repair putty spawns a paste actor that heals its target over time (HealthComp.HealDamage); PatchPart is not on that path
-local function pasteHeal(comp, amount)
+-- the blowtorch (BP_Tool_Target_Healer_Basic) and the repair tools of the cure family heal their TargetedActor the same way
+local function healsWith(comp)
     for _, p in ipairs(FindAllOf("BP_ToolSpawn_PatchKitPaste_C") or {}) do
-        if valid(p) and same(p.HealthComp, comp) then
-            local slot = carSlotOf(comp)
-            if slot and amount and amount > 0.005 then
-                log("PT|act send heal %s %.3f (paste)", slot, amount)
-                net.toHost("g.act.heal", slot .. "\t" .. amount)
-            end
-            return true
+        if valid(p) and same(p.HealthComp, comp) then return true end
+    end
+    local owner = comp:GetOwner()
+    for _, class in ipairs({ "BP_Tool_Target_Healer_Basic_C", "BP_BaseStatusEffectCureManifestation_C" }) do
+        for _, t in ipairs(FindAllOf(class) or {}) do
+            if valid(t) and same(t.TargetedActor, owner) then return true end
         end
     end
+end
+local function pasteHeal(comp, amount)
+    if not healsWith(comp) then return end
+    if amount and amount > 0.005 then
+        local slot = carSlotOf(comp)
+        if slot then
+            log("PT|act send heal %s %.3f (tool)", slot, amount)
+            net.toHost("g.act.heal", slot .. "\t" .. amount)
+        else
+            local id = require("loot").idOf(comp:GetOwner())
+            if id then log("PT|act send heal wreck %s %.3f", id, amount); net.toHost("g.parts.heal", id .. "\t" .. amount) end
+        end
+    end
+    return true
 end
 local function healNote(self, _, _, healed)
     if not guest() then return end
