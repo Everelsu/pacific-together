@@ -22,26 +22,40 @@ What works in this build
 - Health: each player sees the other's health under their name tag. The guest takes damage and radiation and heals
   normally. When the guest dies, the screen goes black for a few seconds and they come back at the car with full
   health; the host's run goes on. When the host dies, the run fails for both, as in the normal game.
-- Story: missions, radio and cutscenes play for the host only; the guest is a bystander.
+- Abandoned cars and their parts are there for both players; scrapping a part or siphoning fuel is shared. Items you
+  hand over keep their durability, fuel and battery charge. Opened and emptied containers look that way for both.
+- The guest's backpack is kept by the host next to the host's save and comes back when the guest rejoins the same save
+  under the same player name. When the guest dies, their items drop as a crate where they fell; either player can loot it.
+- The guest can work on the car and the ARC: repair parts with repair putty, charge the battery, refuel from a fuel can,
+  deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
+- Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
+  radio and voice lines with subtitles. Only the host's actions move the story on.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - Pausing and the Chrono Dilator don't freeze the game while a guest is connected.
 
 Not done yet (expect oddities)
-- Only the host drives. The guest's speedometer stays at zero. Wipers, horn, radio and flat-tyre status aren't synced.
-- Items are rebuilt on the other side as new: durability, upgrades and colours of moved items aren't kept.
+- Only the host drives. The guest's speedometer and engine sound stay idle. Wipers, horn, radio and flat-tyre status
+  aren't synced.
+- Moved items lose their tints and upgrades (durability, fuel and battery are kept).
 - Anomalies act on the guest only partly (grabbing, shocks and stealing may look off). Some rare ones aren't synced.
-- When the guest dies, their backpack is not dropped and nothing is lost.
-- Scrapping wrecks and the abandoned cars' parts aren't synced yet.
-- The guest's backpack is not kept between sessions yet.
-- The guest can't use the garage stations, plan the route or summon the gateway yet.
+- Items in the guest's death crate lose their grid layout, and the other player's copy of them loses durability.
+- Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Scrapping and siphoning are untested
+  with real hands on the tools.
+- The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
+- Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
+  the guest's own.
+- The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.
-2. Double-click launcher.cmd. Check the game folder (Browse... if your game is on another drive). Enter the host's IP
-   if you are the guest, or leave it empty if you are the host. Press Play.
-   The launcher installs the mod, then starts Pacific Drive through Steam. It remembers both fields for next time.
+2. Double-click PacificTogether.exe. If Windows SmartScreen says "unknown publisher", press More info, then Run anyway
+   (the app is not code-signed yet). Check the game folder (Browse... if your game is on another drive), choose
+   "I am the host" or "I am the guest" and type the host's address, then press Install & play.
+   The app installs the mod, then starts Pacific Drive through Steam. It remembers your choices for next time.
    The first install of each build backs up your saves to Documents\PacificDrive-saves-backup-<date>.zip.
-Without the launcher: install.cmd (host) or install.cmd -Join <host IP> (guest), then start the game from Steam.
+   The app also has tabs for what's new, the known limitations (the lists above) and a playtester guide, and buttons to
+   uninstall, open the log folder and collect your logs into a zip on the Desktop.
+Without the app: install.cmd (host) or install.cmd -Join <host IP> (guest), then start the game from Steam.
 Starting from Steam directly also works after an install; it uses the last IP you set.
 
 Play

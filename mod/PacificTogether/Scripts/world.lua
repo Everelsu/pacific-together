@@ -205,13 +205,7 @@ net.on("g.world.state", function(_, data)
     try("storm", applyStorm, s)
 end)
 
--- G3: the guest's mission manager starts nothing; the host's story is the only one. A pre-hook cannot cancel a call, so the mission is nulled.
-for _, fn in ipairs({ "StartMission", "StartObjective", "AdvanceObjective" }) do
-    local ok, err = pcall(RegisterHook, "/Script/PenDriverPro.BaseMissionManager:" .. fn, function(self, a)
-        if M.enabled and safety.guest() then pcall(function() a:set(nil) end) end
-    end)
-    if not ok then log("PT|error world hook %s %s", fn, tostring(err)) end
-end
+-- G3: the mission-manager pre-hooks that keep the guest from starting a story live in story.lua.
 
 LoopInGameThreadWithDelay(1000, function()
     if not M.enabled or not safety.active() then M.since = nil return end

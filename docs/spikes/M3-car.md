@@ -43,3 +43,10 @@ mutation `nocarsync`). Result folders: `20261021-120234-car-carsync` (36/36 fina
 - Doors opened by SetDoorState on the guest were not checked visually.
 - No reach check on the enter intent; two guests are not handled (one passenger seat).
 - Map change with the guest seated: session.lua removes the guest's character before travel, so it is unseated by that; not tested with the car.
+
+## 2026-10-21 afternoon: the "camera wobble" was the measurement
+
+`guest_camera_rides` compared `PlayerCameraManager:GetCameraLocation()` (the view computed in the previous frame) with the
+car's current transform, so it measured speed x frame time and grew with machine load (21-109 uu). Against the previous
+frame's car transform the camera sits within 6.7 uu of its seat while the current-frame figure was 71.7
+(`20261021-134010-carsync`, 36/36). The check now passes if either figure is under 40.

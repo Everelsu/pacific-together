@@ -1,6 +1,6 @@
--- Item containers as plain data: "archetype path=count,..." strings that both players can compare, send and apply.
--- Items are rebuilt from their archetype, so per-item state (durability, upgrades) does not travel.
--- shortcut: archetype + count only; carry per-item properties when playtests show it matters.
+-- Item containers as plain data: "path:d12:f7.5*count,..." strings (archetype + durability/fuel/battery/health per item)
+-- that both players can compare, send and apply.
+-- shortcut: tints, upgrades and chart data do not travel; add them to PROPS when playtests show it matters.
 local UEHelpers = require("UEHelpers")
 
 local M = {}
@@ -27,47 +27,124 @@ local function system()
     return StaticFindObject("/Script/PenDriverInventory.Default__InventorySystem")
 end
 
+-- per-item state that travels: durability (int), fuel, battery, health (floats). The game's setter takes an int32,
+-- so a float goes in as its bits.
+local PROPS = { -- key, property asset, member name, reader, float?
+    { "d", "IP_Durability", "Durability", function(b, it, w) local o = { {}, {}, {}, {}, {} }; b:GetDurability(it, w, o[1], o[2], o[3], o[4], o[5]); return o[3].Durability end },
+    { "f", "IP_Fuelable", "Fuel", function(b, it, w) local o = { {}, {}, {}, {}, {}, {} }; b:GetFuelableInfo(it, w, o[1], o[2], o[3], o[4], o[5], o[6]); return o[1].Fuel end, true },
+    { "b", "IP_Battery", "Battery", function(b, it, w) local o = { {}, {}, {}, {}, {} }; b:GetBattery(it, w, o[1], o[2], o[3], o[4], o[5]); return o[3].BATTERY end, true },
+    { "h", "IP_Health", "Health", function(b, it, w) local o = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} }; b:GetHealth(it, w, o[1], o[2], o[3], o[4], o[5], o[6], o[7], o[8], o[9], o[10], o[11]); return o[3].Health end, true },
+}
+-- tests only (a mutation without item state); players never set PT_MUTATE
+if os.getenv("PT_MUTATE") == "nolootsync2" then PROPS = {} end
+local propAssets = {} -- archetype path -> { property name -> IP_ struct asset }
+local function assets(a, p)
+    local t = propAssets[p]
+    if not t then
+        t = {}
+        a.Properties:ForEach(function(_, e) local s = e:get(); t[s:GetFName():ToString()] = s end)
+        propAssets[p] = t
+    end
+    return t
+end
+local function bfl() return FindObject("BFL_ItemPropertyUtilityFns_C", "Default__BFL_ItemPropertyUtilityFns_C") end
+local function lib() return StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary") end
+
+-- "path:d12:f7.5" for one item
+local function spec(it, p)
+    local t, w, b = assets(it.Archetype, p), UEHelpers.GetWorld(), bfl()
+    local s = p
+    for _, pr in ipairs(PROPS) do
+        if t[pr[2]] then
+            local ok, v = pcall(pr[4], b, it, w)
+            if ok and type(v) == "number" then s = s .. ":" .. pr[1] .. string.format(pr[5] and "%.5g" or "%d", v) end
+        end
+    end
+    return s
+end
+
+local function setProps(it, p, s)
+    local t = assets(it.Archetype, p)
+    for _, pr in ipairs(PROPS) do
+        local v = tonumber(s:match(":" .. pr[1] .. "(-?[%d%.e+-]+)"))
+        if v and t[pr[2]] then
+            lib():SetItemProperty(t[pr[2]], it, FName(pr[3]), pr[5] and (string.unpack("<i4", string.pack("<f", v))) or math.floor(v))
+        end
+    end
+end
+
+-- spec string -> list of item instances
 function M.count(container)
     local items, have = {}, {}
     container:GetAllItems(items)
     for _, it in ipairs(items) do
-        local a = it:get().Archetype
+        local inst = it:get()
+        local a = inst.Archetype
         local p = path(a)
-        have[p] = (have[p] or 0) + 1
         archs[p] = a
+        local k = spec(inst, p)
+        have[k] = have[k] or {}
+        table.insert(have[k], inst)
     end
     return have
 end
 
 function M.encode(have)
     local keys = {}
-    for p in pairs(have) do keys[#keys + 1] = p end
+    for k in pairs(have) do keys[#keys + 1] = k end
     table.sort(keys)
-    for i, p in ipairs(keys) do keys[i] = p .. "=" .. have[p] end
+    for i, k in ipairs(keys) do keys[i] = k .. "*" .. #have[k] end
     return table.concat(keys, ",")
 end
 
+-- spec string -> count
 function M.decode(s)
     local want = {}
-    for p, n in s:gmatch("([^,=]+)=(%d+)") do want[p] = tonumber(n) end
+    for k, n in s:gmatch("([^,*]+)%*(%d+)") do want[k] = tonumber(n) end
     return want
 end
 
--- make the container hold exactly `want` (path -> count)
+-- make the container hold exactly `want` (spec -> count): an item that differs only in state is changed in place
 function M.apply(container, want)
     local have = M.count(container)
-    for p, n in pairs(have) do
-        local w = want[p] or 0
-        if n > w then container:RemoveItemsOfType(archetype(p), n - w) end
+    local extra, missing = {}, {}
+    for k, list in pairs(have) do
+        for i = (want[k] or 0) + 1, #list do extra[#extra + 1] = { k = k, inst = list[i] } end
     end
-    for p, w in pairs(want) do
+    for k, n in pairs(want) do
+        for _ = 1, n - (have[k] and #have[k] or 0) do missing[#missing + 1] = k end
+    end
+    local create = {}
+    for _, k in ipairs(missing) do
+        local p = k:match("^[^:]+")
+        local reuse
+        for i, e in ipairs(extra) do if e.k:match("^[^:]+") == p then reuse = i; break end end
+        if reuse then
+            setProps(extra[reuse].inst, p, k)
+            table.remove(extra, reuse)
+        else
+            create[#create + 1] = k
+        end
+    end
+    -- remove before adding: a full container has no room for the new ones
+    for _, e in ipairs(extra) do container:RemoveItem(e.inst) end
+    for _, k in ipairs(create) do
+        local p = k:match("^[^:]+")
         local a = archetype(p)
-        for _ = 1, w - (have[p] or 0) do
-            if a then container:AddItem(StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary"):CreateItemInstance(UEHelpers.GetWorld(), a, 0), true) end
+        if a then
+            local inst = lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+            if container:AddItem(inst, true) then setProps(inst, p, k) end
         end
     end
 end
 
 function M.path2(o) return o:GetFullName():match("^%S+ (.+)$") end
 M.path, M.archetype, M.system = path, archetype, system
+function M.spec(it) return spec(it, path(it.Archetype)) end -- "path:d12:f7.5" of one item instance
+function M.setProps(it, s) setProps(it, s:match("^[^:]+"), s) end
+function M.asset(p) -- any asset by full path, loaded on demand
+    local o = StaticFindObject(p)
+    if not o:IsValid() then pcall(LoadAsset, p); o = StaticFindObject(p) end
+    return o:IsValid() and o or nil
+end
 return M

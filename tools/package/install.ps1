@@ -11,6 +11,7 @@ param(
     [switch]$Find
 )
 $ErrorActionPreference = "Stop"
+trap { Write-Host "ERROR: $($_.Exception.Message)"; exit 1 }  # one clean line for the launcher app and install.cmd
 $ExeSha = "568BB63476C6DE5FC2B1878572A655DD631DD25BB44FE304E3D96A51F6B98F7E"  # Steam build 21896301 (v1.15.0)
 
 if (-not $GameDir) {

@@ -4,7 +4,8 @@
 -- per id and removes its own random loot; its own changes go back as intents (S contents, T "I picked this up") and the
 -- host applies them. The guest's backpack stays its own: a pickup lands there through the game's own code.
 -- Messages (net.lua kind g.loot.b): lines "A|id|class-or-archetype|x|y|z|yaw|state", "S|id|state", "D|id", "T|id", "F" (end of
--- the full dump), "H" (guest asks for the full dump). state = "<rolled>;<contents>" (ids.lua).
+-- the full dump), "H" (guest asks for the full dump). state = "<flags>;<contents>" (ids.lua);
+-- flags is one digit: 1 rolled on open, 2 was opened, 4 empty (the two visuals), "-" for non-lootables.
 -- Inert in single player: nothing runs without a listening host with a guest, or a guest.
 local UEHelpers = require("UEHelpers")
 local common = require("common")
@@ -15,6 +16,8 @@ local alive = ids.alive
 
 -- tests only (a mutation that makes this module send and apply nothing); players never set PT_MUTATE
 local DEAF = os.getenv("PT_MUTATE") == "nointent"
+-- tests only: no wreck parts and no lootable visuals (item state: ids.lua)
+local NO2 = os.getenv("PT_MUTATE") == "nolootsync2"
 
 local INV = { "Inventory_Trunk", "Inventory_LargeTrunk", "Inventory_Garage", "Inventory_GarageLarge", "Inventory_GarageExpansion1",
               "Inventory_GarageExpansion1_Large", "Inventory_Garage_BackRoom" }
@@ -27,7 +30,25 @@ local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
 local gotAny, tickN = false, 0
 
-local function say(line) out[#out + 1] = line end
+-- a big container (a garage's storage can hold hundreds of stacks) does not fit one message (32 KB): its state goes as numbered pieces
+-- "P|id|i|n|keys", put together again on the other side
+local PIECE = 5000
+local function say(line)
+    if #line > PIECE * 1.5 and line:sub(1, 2) == "S|" then
+        local id, s = line:match("^S|([^|]*)|(.*)$")
+        local pieces, cur, size = {}, {}, 0
+        for k in s:gmatch("[^,]+") do
+            if size > PIECE then pieces[#pieces + 1] = table.concat(cur, ","); cur, size = {}, 0 end
+            cur[#cur + 1] = k
+            size = size + #k + 1
+        end
+        pieces[#pieces + 1] = table.concat(cur, ",")
+        for i, p in ipairs(pieces) do out[#out + 1] = string.format("P|%s|%d|%d|%s", id, i, #pieces, p) end
+        return
+    end
+    out[#out + 1] = line
+end
+local partial = {} -- id -> { piece index -> text } (guest and host)
 local function flush()
     if #out == 0 then return end
     local buf, size = {}, 0
@@ -51,45 +72,90 @@ local function inventoryManager()
     return alive(m) and m or nil
 end
 
+local function flagsOf(e)
+    local a = e.actor
+    if e.kind ~= "L" or not alive(a) then return nil end
+    if NO2 then return a.RolledOnOpenItems and 1 or 0 end
+    return (a.RolledOnOpenItems and 1 or 0) + (a.DataBlock_WasOpened and 2 or 0) + (a.Empty and 4 or 0)
+end
+
 local function stateOf(e)
     local c = e.get()
     if not alive(c) then return nil end
-    local rolled = "-"
-    if e.kind == "L" then rolled = e.actor.RolledOnOpenItems and "1" or "0" end
-    return rolled .. ";" .. ids.encode(ids.count(c))
+    return (flagsOf(e) or "-") .. ";" .. ids.encode(ids.count(c))
+end
+
+-- opened and emptied look: the game's own visual switches
+local function applyFlags(a, f)
+    a.RolledOnOpenItems = f & 1 ~= 0
+    if f & 2 ~= 0 and not a.DataBlock_WasOpened then
+        a.DataBlock_WasOpened = true
+        pcall(function() a:SwitchToOpenedVisuals() end)
+    end
+    if f & 4 ~= 0 and not a.Empty then
+        a.Empty = true
+        pcall(function() a:UpdateVisualsForEmpty() end)
+    end
+end
+
+-- a template part (abandoned-car door, wheel, gas cap): "pitch,roll,item spec,mesh"
+local function partState(a)
+    local r = a:K2_GetActorRotation()
+    return string.format("%.1f,%.1f,%s,%s", r.Pitch, r.Roll, ids.spec(a.ItemInstance), alive(a.RequestedMesh) and ids.path2(a.RequestedMesh) or "-")
 end
 
 local function applyState(e, s)
+    if e.kind == "P" then
+        local spec = s:match("^[^,]*,[^,]*,([^,]*),")
+        if alive(e.actor) and alive(e.actor.ItemInstance) and spec then ids.setProps(e.actor.ItemInstance, spec); e.last = ids.spec(e.actor.ItemInstance) end
+        return
+    end
     local c = e.get()
     if not alive(c) then e.pending = s; return end
     e.pending = nil
-    local rolled, body = s:match("^(.);(.*)$")
-    if e.kind == "L" and rolled ~= "-" then e.actor.RolledOnOpenItems = rolled == "1" end
+    local flags, body = s:match("^(.);(.*)$")
     ids.apply(c, ids.decode(body))
-    e.last, e.n = stateOf(e), c:GetNumItems()
-    e.rolled = e.kind == "L" and e.actor.RolledOnOpenItems
+    if e.kind == "L" and flags ~= "-" then applyFlags(e.actor, tonumber(flags)) end
+    e.last, e.n, e.rolled = stateOf(e), c:GetNumItems(), flagsOf(e)
 end
 
 local function register(id, kind, actor, invName)
     local e = { id = id, kind = kind, actor = actor, name = actor and actor:GetFullName() }
     if kind == "L" then e.get = function() return alive(e.actor) and e.actor.InventoryContainer or nil end
+    elseif kind == "I" and invName:find("^Stations%.") then
+        -- garage storage and lockers: the manager's tag map
+        e.get = function()
+            if alive(e.cache) then return e.cache end
+            local m = inventoryManager()
+            if not m then return nil end
+            pcall(function() m.Inventories_Garage:ForEach(function(k, v) if k:get().TagName:ToString() == invName then e.cache = v:get() end end) end)
+            return alive(e.cache) and e.cache or nil
+        end
     elseif kind == "I" then e.get = function() local m = inventoryManager(); return m and m[invName] or nil end
     else e.get = function() return nil end end
-    e.rolled = kind == "L" and actor.RolledOnOpenItems
+    e.rolled = flagsOf(e)
     ents[id] = e
     return e
 end
 
-local function xform(x, y, z, yaw)
-    local h = math.rad(yaw) / 2
-    return { Rotation = { X = 0, Y = 0, Z = math.sin(h), W = math.cos(h) }, Translation = { X = x, Y = y, Z = z }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+-- UE's FRotator -> quaternion
+local function xform(x, y, z, yaw, pitch, roll)
+    local sp, cp = math.sin(math.rad(pitch or 0) / 2), math.cos(math.rad(pitch or 0) / 2)
+    local sy, cy = math.sin(math.rad(yaw) / 2), math.cos(math.rad(yaw) / 2)
+    local sr, cr = math.sin(math.rad(roll or 0) / 2), math.cos(math.rad(roll or 0) / 2)
+    return { Rotation = { X = cr * sp * sy - sr * cp * cy, Y = -cr * sp * cy - sr * cp * sy, Z = cr * cp * sy - sr * sp * cy, W = cr * cp * cy + sr * sp * sy },
+             Translation = { X = x, Y = y, Z = z }, Scale3D = { X = 1, Y = 1, Z = 1 } }
 end
 
 local function line(e)
     local a = e.actor
     local l, r = a:K2_GetActorLocation(), a:K2_GetActorRotation()
-    local what = e.kind == "L" and ids.path2(a:GetClass()) or ids.path(a.Instance.Archetype)
-    return string.format("A|%s|%s|%.0f|%.0f|%.0f|%.0f|%s", e.id, what, l.X, l.Y, l.Z, r.Yaw, e.kind == "L" and stateOf(e) or "-;")
+    local what, state
+    if e.kind == "L" then what, state = ids.path2(a:GetClass()), stateOf(e)
+    elseif e.kind == "B" then what, state = ids.path2(a:GetClass()), "-"
+    elseif e.kind == "P" then what, state = ids.path2(a:GetClass()), partState(a)
+    else what, state = ids.path(a.Instance.Archetype), "-;" end
+    return string.format("A|%s|%s|%.0f|%.0f|%.0f|%.0f|%s", e.id, what, l.X, l.Y, l.Z, r.Yaw, state)
 end
 
 -- host ------------------------------------------------------------------------------------------------------------
@@ -112,12 +178,45 @@ local function scanHost()
             say(line(e))
         end
     end
-    for _, p in ipairs(INV) do
+    -- abandoned cars: the body (B) and each part still on it (P); the guest has neither
+    for _, a in ipairs(not NO2 and FindAllOf("LootableTemplate") or {}) do
+        local n = alive(a) and a:GetFullName()
+        if n and not n:find("/Engine/Transient", 1, true) and not byName[n] then
+            local e = register("B" .. nextId, "B", a)
+            nextId, byName[n] = nextId + 1, e.id
+            say(line(e))
+        end
+    end
+    for _, a in ipairs(not NO2 and FindAllOf("LootableTemplatePart") or {}) do
+        local n = alive(a) and alive(a.ItemInstance) and a:GetFullName()
+        if n and not n:find("/Engine/Transient", 1, true) and not byName[n] then
+            local e = register("P" .. nextId, "P", a)
+            nextId, byName[n] = nextId + 1, e.id
+            e.last = ids.spec(a.ItemInstance)
+            say(line(e))
+        end
+    end
+    local names = { table.unpack(INV) }
+    local m = inventoryManager()
+    if m then
+        pcall(function()
+            m.Inventories_Garage:ForEach(function(k)
+                local tag = k:get().TagName:ToString()
+                -- the Toolbox locker is a lootable's container (synced as that lootable); the guest has no container under its tag
+                if tag:find("^Stations%.Install%.Inventory%.") and not tag:find("Toolbox", 1, true) then names[#names + 1] = tag end
+            end)
+        end)
+    end
+    for _, p in ipairs(names) do
         local id = "I:" .. p
         if not ents[id] then
             local e = register(id, "I", nil, p)
             local c = e.get()
-            if alive(c) then e.last, e.n = stateOf(e), c:GetNumItems(); say("S|" .. id .. "|" .. e.last) else ents[id] = nil end
+            if alive(c) then
+                e.last, e.n = stateOf(e), c:GetNumItems()
+                log("PT|loot container %s items=%d state=%d bytes", id, e.n, #e.last)
+                say("S|" .. id .. "|" .. e.last)
+            else ents[id] = nil end
         end
     end
     for id, e in pairs(ents) do
@@ -162,6 +261,23 @@ local function spawnLootable(class, x, y, z, yaw)
     return alive(a) and a or nil
 end
 
+local function spawnPart(class, x, y, z, yaw, state)
+    local pitch, roll, spec, mesh = state:match("^([^,]*),([^,]*),([^,]*),(.*)$")
+    local cls, arch = ids.asset(class), spec and ids.archetype(spec:match("^[^:]+"))
+    if not cls or not arch then log("PT|loot no part class/archetype %s %s", class, tostring(spec)); return nil end
+    local inst = ids.system() and StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary"):CreateItemInstance(UEHelpers.GetWorld(), arch, 0)
+    ids.setProps(inst, spec)
+    local gs = UEHelpers.GetGameplayStatics()
+    local xf = xform(x, y, z, yaw, tonumber(pitch), tonumber(roll))
+    local a = gs:BeginDeferredActorSpawnFromClass(UEHelpers.GetWorld(), cls, xf, 1, nil)
+    a.ItemInstance = inst
+    local m = mesh ~= "-" and ids.asset(mesh)
+    if m then a.RequestedMesh = m end
+    a = gs:FinishSpawningActor(a, xf)
+    if alive(a) then claimed[a:GetFullName()] = true end
+    return alive(a) and a or nil
+end
+
 local function spawnItem(arch, x, y, z, yaw)
     local a = ids.archetype(arch)
     if not a then log("PT|loot no archetype %s", arch); return nil end
@@ -178,11 +294,18 @@ local function onAdd(id, what, x, y, z, yaw, state)
     if kind == "L" then
         a = claim("BP_Lootable_Base_C", function(o) return ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
             or spawnLootable(what, x, y, z, yaw)
+    elseif kind == "B" then
+        a = claim("LootableTemplate", function(o) return ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
+            or spawnLootable(what, x, y, z, yaw)
+    elseif kind == "P" then
+        a = claim("LootableTemplatePart", function(o) return alive(o.ItemInstance) and ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
+            or spawnPart(what, x, y, z, yaw, state)
+        if a then local e = register(id, kind, a); applyState(e, state); e.last = ids.spec(a.ItemInstance); return end
     else
         a = claim("BP_WorldItem_C", function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what and near(o, x, y, z) end)
             or spawnItem(what, x, y, z, yaw)
     end
-    if not a then return end
+    if not a then log("PT|loot could not make %s %s", id, what); return end
     e = register(id, kind, a)
     if kind == "L" then applyState(e, state) end
 end
@@ -196,6 +319,11 @@ local function purge()
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
         if alive(a) and not claimed[a:GetFullName()] and not a:GetAttachParentActor():IsValid() then a:K2_DestroyActor(); n = n + 1 end
     end
+    for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
+        for _, a in ipairs(FindAllOf(c) or {}) do
+            if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor(); n = n + 1 end
+        end
+    end
     log("PT|loot guest purged %d own actors, %d host actors", n, (function() local c = 0; for _ in pairs(ents) do c = c + 1 end; return c end)())
 end
 
@@ -205,6 +333,10 @@ local function scanGuest()
             -- picked up here (the item sits in a slot now): tell the host once
             local ok, slot = pcall(function() return e.actor.Instance:GetOuterSlot() end)
             if ok and slot and slot:IsValid() then say("T|" .. id) end
+            ents[id] = nil
+        elseif e.kind == "P" and not alive(e.actor) then
+            -- scrapped or taken here: the host removes its part
+            say("T|" .. id)
             ents[id] = nil
         elseif e.pending then applyState(e, e.pending) end
     end
@@ -218,6 +350,11 @@ local function scanGuest()
     -- its own random lootables keep appearing for a while after the join
     for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
         if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
+    end
+    for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
+        for _, a in ipairs(FindAllOf(c) or {}) do
+            if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
+        end
     end
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
         local n = alive(a) and alive(a.Instance) and not claimed[a:GetFullName()] and not a:GetAttachParentActor():IsValid() and a:GetFullName()
@@ -236,9 +373,16 @@ end
 -- both: contents changed here since we last looked (the game moved items in or out)
 local function scanChanges()
     for id, e in pairs(ents) do
-        local c = e.kind ~= "W" and e.get()
-        if alive(c) then
-            local r = e.kind == "L" and alive(e.actor) and e.actor.RolledOnOpenItems
+        local c = e.get()
+        if e.kind == "P" and alive(e.actor) and alive(e.actor.ItemInstance) then
+            -- siphoned fuel, worn durability: the part's item state
+            local s = ids.spec(e.actor.ItemInstance)
+            if s ~= e.last then
+                e.last = s
+                say("S|" .. id .. "|" .. partState(e.actor))
+            end
+        elseif alive(c) then
+            local r = flagsOf(e)
             if c:GetNumItems() ~= e.n or r ~= e.rolled then
                 e.n, e.rolled = c:GetNumItems(), r
                 local s = stateOf(e)
@@ -261,7 +405,21 @@ local function handle(pc, data)
         local f = {}
         for p in (l .. "|"):gmatch("([^|]*)|") do f[#f + 1] = p end
         local op, id = f[1], f[2]
-        if op == "H" and not guest then
+        if op == "P" then
+            local buf = partial[id] or {}
+            partial[id] = buf
+            buf[tonumber(f[3])] = f[5] or ""
+            local n = 0
+            for _ in pairs(buf) do n = n + 1 end
+            if n < tonumber(f[4]) then op = nil
+            else
+                partial[id] = nil
+                local s = table.concat(buf, ",")
+                op, f, l = "S", { "S", id, s }, "S|" .. id .. "|" .. s
+            end
+        end
+        if op == nil then
+        elseif op == "H" and not guest then
             sendAll()
         elseif guest and op == "A" then
             gotAny = true
@@ -278,6 +436,7 @@ local function handle(pc, data)
             gotAny = true
             -- a container of the game's that the guest has not registered yet
             local name = id:match("^I:(.+)$")
+            log("PT|loot got new container %s (%d bytes)", id, #f[3])
             if name then applyState(register(id, "I", nil, name), f[3]) end
         elseif op == "D" and guest and ents[id] then
             local e = ents[id]
@@ -312,7 +471,7 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
-    ents, byName, claimed, reported, out, gotAny = {}, {}, {}, {}, {}, false
+    ents, byName, claimed, reported, out, gotAny, partial = {}, {}, {}, {}, {}, false, {}
 end)
 
 LoopInGameThreadWithDelay(500, function()
