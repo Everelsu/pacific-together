@@ -186,6 +186,7 @@ return function(T)
     -- guest ----------------------------------------------------------------------------------------------------------------
     local steps = { T.onMap("RB_MainMenu", 90) }
     local function add(s) steps[#steps + 1] = s end
+    local KML = StaticFindObject("/Script/Engine.Default__KismetMathLibrary")
     local met = { frames = 0, stalls = 0, maxJump = 0, dist = 0, camMax = 0 }
     local function toHost(kind, data) PTNative_MsgToHost(T.localPC():GetAddress(), kind, data or "") end
     local function measure()
@@ -198,6 +199,10 @@ return function(T)
         local cam = T.localPC().PlayerCameraManager:GetCameraLocation()
         local cl = L.toLocal(car, cam)
         if not met.cam0 then met.cam0 = cl end
+        -- the camera manager's location is the last frame's view: compare it with the car where it was then, too
+        local xf = car:GetTransform()
+        if met.prevXf then met.camPrevMax = math.max(met.camPrevMax or 0, L.d(KML:InverseTransformLocation(met.prevXf, cam), met.cam0)) end
+        met.prevXf = xf
         if met.last then
             local dt = t - met.t
             local d = L.d(p, met.last)
@@ -257,8 +262,8 @@ return function(T)
         return met.dist > 3000 and met.maxJump < 200 and met.stalls <= met.frames * 0.03
     end })
     add({ check = "guest_camera_rides", timeout = 1, cond = function()
-        log("PT|info camera deviation in the car %.1f uu", met.camMax)
-        return met.frames > 100 and met.camMax < 40
+        log("PT|info camera deviation in the car %.1f uu (against the previous frame's car %.1f uu)", met.camMax, met.camPrevMax or -1)
+        return met.frames > 100 and math.min(met.camMax, met.camPrevMax or math.huge) < 40
     end })
     add({ check = "guest_car_settled", timeout = 20, cond = function()
         local m = got("t.settled")
