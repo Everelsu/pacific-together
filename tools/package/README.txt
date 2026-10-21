@@ -29,6 +29,8 @@ What works in this build
   under the same player name. When the guest dies, their items drop as a crate where they fell; either player can loot it.
 - The guest can work on the car and the ARC: repair parts with repair putty, charge the battery, refuel from a fuel can,
   deposit anchors and pick the gateway at the ARC screen. The host's car and ARC take the change within about a second.
+- Progress: while joined, the guest's game shows the host's garage upgrades, research, route and logbook. A failed run
+  costs the guest items the same way it costs the host.
 - Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
   radio and voice lines with subtitles. Only the host's actions move the story on.
 - The guest's own saves are never written while joined. Only the host's save game is used.
@@ -46,6 +48,8 @@ Not done yet (expect oddities)
 - The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
 - Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
   the guest's own.
+- Car paint and cosmetics, tutorials and expedition progress are the guest's own, not the host's. A map screen that is
+  already open may need reopening to show the host's route.
 - The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)
