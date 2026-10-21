@@ -3,6 +3,7 @@
 local UEHelpers = require("UEHelpers")
 local common = require("common")
 local safety = require("safety")
+local health = require("health")
 local log = common.log
 
 local M = { NEAR = 1500, FAR = 5000 } -- uu: full strength up to NEAR, gone at FAR
@@ -69,8 +70,11 @@ local function update()
             local tag = tags[key]
             if not (tag and tag.actor:IsValid()) then tag = spawnTag(c); tags[key] = tag end
             seen[key] = true
+            -- P4: the other player's health under the name (health.lua), once they have reported it
             local n = playerName(c)
-            if n ~= tag.name then tag.name = n; tag.text:SetText(n) end
+            local hp = health.label()
+            local label = hp and (n .. "\n" .. hp) or n
+            if label ~= tag.name then tag.name = label; tag.text:SetText(label) end
             local p = tag.text:K2_GetComponentLocation()
             local dx, dy, dz = cam.X - p.X, cam.Y - p.Y, cam.Z - p.Z
             local d = math.sqrt(dx * dx + dy * dy + dz * dz)
