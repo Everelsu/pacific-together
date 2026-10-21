@@ -1,6 +1,6 @@
 -- W6: run-shaping anomalies act on both players, third pass. Fixture `zone`, the guest joins by itself.
 --   spark tower (Tesla)        spawned next to the guest on the host: the guest sees it and takes its discharge
---   pickpocket (Part Stealer)  spawned at the car: the guest sees it and the part it takes leaves the guest's car too
+--   pickpocket (Part Stealer)  spawned near the guest: the guest sees it and loses a backpack item to it (the host holds it in the stealer's grab)
 --   bunny (Loot Creature)      the guest sees it; its push hurts the guest, not the host
 -- Run: tools/run-test.ps1 -Scenario anomalies3 -Fixture zone -Headless
 -- Mutation noanom3: the anomalies3 module is off in both processes.
@@ -31,13 +31,14 @@ return function(T)
     if T.ROLE == "host" then
         local steps = {}
         local function add(s) steps[#steps + 1] = s end
-        local guestHp, guestSpd, maxSpd, hostHp0, guestHp0, guestParts, partsBefore = -1, 0, 0, 0, 0, 0, 0
+        local guestHp, guestSpd, maxSpd, hostHp0, guestHp0, guestParts, partsBefore, guestBag, bagBefore = -1, 0, 0, 0, 0, 0, 0, 0, 0
         local gpc, haz = nil, {}
         local function poll()
             while true do
                 local kind, data = PTNative_MsgPoll("t.")
                 if not kind then return end
                 if kind == "t.parts" then guestParts = tonumber(data) or guestParts end
+                if kind == "t.bag" then guestBag = tonumber(data) or guestBag end
                 if kind == "t.hp" then guestHp, guestSpd = data:match("^(%-?[%d%.]+)	([%d%.]+)$"); guestHp, guestSpd = tonumber(guestHp) or guestHp, tonumber(guestSpd) or 0 end
                 if kind == "t.haz" then
                     haz = {}
@@ -65,7 +66,7 @@ return function(T)
         add({ run = function()
             poll(); guestHp0, hostHp0 = guestHp, health()
             tesla = spawn(CLS.tesla, nearGuest(700, 0))
-            T.log("PT|info spawned tesla %s guestHp=%.0f hostHp=%.0f", T.name(tesla), guestHp0, hostHp0)
+            T.log("PT|info spawned tesla %s guestHp=%.0f hostHp=%.0f remoteRole=%s replicates=%s", T.name(tesla), guestHp0, hostHp0, tostring(tesla.RemoteRole), tostring(tesla.bReplicates))
         end })
         sees("tesla")
         add({ check = "guest_hurt_by_tesla", timeout = 90, cond = function()
@@ -75,24 +76,28 @@ return function(T)
         end })
         add({ run = function() if tesla and tesla:IsValid() then tesla:K2_DestroyActor() end end })
 
-        -- pickpocket: a Part Stealer at the car takes a part, the guest's car loses it too
+        -- pickpocket: a Part Stealer within reach of the guest takes a backpack item (the game only reaches for the host's character)
         local stealer
-        add({ check = "guest_car_has_parts", timeout = 60, cond = function() poll(); return guestParts >= 3 end })
+        add({ check = "guest_has_items", timeout = 30, cond = function() poll(); return guestBag >= 1 end })
         add({ run = function()
-            poll(); partsBefore = guestParts
-            local car = T.first("BaseNewCar")
-            local l = car:K2_GetActorLocation()
-            stealer = spawn(CLS.stealer, l.X + 250, l.Y, l.Z + 250)
-            T.log("PT|info spawned stealer %s at the car, guest parts=%d", T.name(stealer), partsBefore)
+            poll(); bagBefore, guestHp0 = guestBag, guestHp
+            local x, y, z = nearGuest(0, 600)
+            stealer = spawn(CLS.stealer, x, y, z + 200)
+            T.log("PT|info spawned stealer %s near the guest, guest bag=%d hp=%.0f", T.name(stealer), bagBefore, guestHp0)
         end })
         sees("stealer")
-        add({ check = "guest_car_lost_part_to_stealer", timeout = 120, cond = function()
+        add({ check = "guest_item_stolen", timeout = 60, cond = function()
             poll()
-            T.log("PT|info stealer state=%s guest parts=%d (was %d)", tostring(stealer:IsValid() and stealer.State), guestParts, partsBefore)
-            return guestParts < partsBefore
+            T.log("PT|info stealer state=%s guest bag=%d (was %d) hp=%.0f", tostring(stealer:IsValid() and stealer.State), guestBag, bagBefore, guestHp)
+            return guestBag < bagBefore
+        end })
+        add({ check = "pickpocket_hurt_guest", timeout = 10, cond = function() poll(); return guestHp < guestHp0 - 1 end })
+        add({ check = "stealer_holds_item", timeout = 15, cond = function()
+            local ok, g = pcall(function() return stealer.GrabbedMesh end)
+            T.log("PT|info stealer GrabbedMesh=%s", tostring(ok and g and g:IsValid() and g:GetFullName()))
+            return ok and g and g:IsValid()
         end })
         add({ run = function() if stealer and stealer:IsValid() then stealer:K2_DestroyActor() end end })
-
         -- bunny: the guest sees it and its push hurts the guest
         local bunny
         add({ run = function()
@@ -102,7 +107,7 @@ return function(T)
         end })
         sees("bunny")
         add({ run = function()
-            poll(); guestHp0, hostHp0 = guestHp, health()
+            poll(); guestHp0, hostHp0, maxSpd = guestHp, health(), 0
             pcall(function() bunny:PushFx() end) -- the game's push step (damage 0.1 intensity, radial force) as a touch starts it
             pcall(function() bunny.PlayerPusher:FireImpulse() end)
             T.log("PT|info bunny push sent")
@@ -112,6 +117,7 @@ return function(T)
             T.log("PT|info bunny: guest hp=%.0f (was %.0f) host hp=%.0f", guestHp, guestHp0, health())
             return guestHp < guestHp0 - 0.5
         end })
+        add({ check = "guest_pushed_by_bunny", timeout = 10, cond = function() poll(); maxSpd = math.max(maxSpd, guestSpd); return maxSpd > 100 end })
         add({ check = "host_not_hurt_by_bunny_on_guest", timeout = 5, cond = L.holds(3, function() return health() >= hostHp0 - 0.5 end) })
         add({ run = function() PTNative_MsgToGuest(gpc:GetAddress(), "t.end", "1") end })
         add({ wait = 3 })
@@ -144,6 +150,9 @@ return function(T)
                 if c and c:IsValid() then c.Slots:ForEach(function(_, e) e:get().Items:ForEach(function() n = n + 1 end) end) end
             end
             PTNative_MsgToHost(T.localPC():GetAddress(), "t.parts", tostring(n))
+            local bag = 0
+            if im then pcall(function() bag = im.Inventory_Player:GetNumItems() end) end
+            PTNative_MsgToHost(T.localPC():GetAddress(), "t.bag", tostring(bag))
             local v = me and me:IsValid() and me:GetVelocity() or { X = 0, Y = 0, Z = 0 }
             PTNative_MsgToHost(T.localPC():GetAddress(), "t.hp", string.format("%.0f	%.0f", health(), math.sqrt(v.X ^ 2 + v.Y ^ 2)))
             while true do
