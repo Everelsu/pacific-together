@@ -21,6 +21,7 @@ Scenario `runloop` (`test/PacificTogetherTest/Scripts/scenarios/runloop.lua`, fi
 
 ## Guesses / Unknowns
 
+- Mutation nokeep (keep-listen off): 22/49, run `20261022-004358-pt1-runloop-runloop-nokeep`.
 - Not driven: the portal's car-in-range trigger (TravelToGarage is called directly), the ARC screen's own press (the
   summon is the call the screen makes), route planning on the route map (TravelToNextLeg uses the fixture's chosen leg),
   the real emergency-protocol trigger (car critical) and the widget click (the widget's calls are made directly).
