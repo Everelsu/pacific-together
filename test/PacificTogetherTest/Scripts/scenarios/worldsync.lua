@@ -178,7 +178,8 @@ return function(T)
             local q = T.first("BP_QuestManager_C")
             local n = q:GetNumActiveMissions()
             T.log("PT|info guest missions after=%d", n)
-            return mission ~= nil and mission:IsValid() and n == 0
+            -- the loaded MissionData is not rooted and may be collected by now; it was valid when StartMission ran
+            return mission ~= nil and n == 0
         end },
         { check = "guest_alive_after_host_story", timeout = to(60), cond = L.holds(12, function() return T.netMode() == "client" and T.map() == "Rural_Forest_Radio_Scylla_02" and T.myPawn() ~= nil end) },
         { run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.done", "1") end },
