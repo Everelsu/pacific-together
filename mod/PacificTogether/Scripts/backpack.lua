@@ -266,6 +266,13 @@ function M.died()
     log("PT|bp guest dropped its backpack (%d bytes)", #line)
 end
 
+-- progression.lua: the guest's backpack changed outside its own tick (run-failure penalty); tell the host now
+function M.flush()
+    if not (safety.guest() and synced) then return end
+    last = encode(read())
+    net.toHost("g.bp.save", last)
+end
+
 local function tick()
     if not safety.guest() then synced, last = false, nil; return end
     local pc = UEHelpers.GetPlayerController()
