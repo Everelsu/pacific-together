@@ -385,7 +385,7 @@ return function(T)
         -- target, so where we stand matters: stay if close enough, then try spots on a ring around it (teleport, aim, ~8 frames each)
         local camDist = dist3(v3(me.X, me.Y, me.Z + 75), p)
         local cands = {}
-        if camDist <= 115 then cands[1] = false end
+        if camDist <= (o.approach == false and 160 or 115) then cands[1] = false end
         if o.approach ~= false then
             local base = math.atan(me.Y - p.Y, me.X - p.X)
             for _, r in ipairs({ tonumber(o.offset) or 75, 105 }) do
@@ -451,6 +451,71 @@ return function(T)
         end, 12, function() return "timeout while interacting (state " .. state .. ")" end)
     end
 
+    -- the engine delivers a bound action to its actor as a call of the InpActEvt_<Action> function with the key; this does the same
+    -- (PlayerController:InputKey is native-only and cannot be called from Lua). press=true: Pressed event, false: Released event
+    local function actionEvent(x, action, press, key)
+        local cls, n = x:GetClass(), nil
+        for _, i in ipairs(action == "ToolPrimaryUse" and { press and 2 or 3, press and 3 or 2 } or { press and 0 or 1 }) do
+            local fn = "InpActEvt_" .. action .. "_K2Node_InputActionEvent_" .. i
+            if x[fn] then n = fn; break end
+        end
+        assert(n, "no input event function for " .. action)
+        x[n](x, { KeyName = FName(key) })
+    end
+    T.action_event = actionEvent
+
+    -- use_tool: the tool in the hand, used like a player: aim at the target until the game's highlight manager has it, press the
+    -- tool's own use input event (ToolPrimaryUse = left mouse button), hold, release. opts: actor, key, hold, tool (class: forces the target, headless).
+    function ACT.use_tool(o, job)
+        local c = char()
+        local a = resolve(o)
+        assert(a, "use_tool needs an actor")
+        local comps = highlightsOf(a)
+        local comp = comps[1]
+        local key, holdS = o.key or "LeftMouseButton", tonumber(o.hold) or 3
+        local state, k, pressedEl = "aim", 0, nil
+        local before = sample(a)
+        local seen
+        frames(job, function(el)
+            if o.tool and state ~= "aim" then
+                -- headless aim: the car parts' highlight collisions are not reachable by a trace here (gas cap: null collision), so the
+                -- tool's target is set by hand every frame while the key is down; everything after the press is the game's own
+                for _, x in ipairs(FindAllOf(o.tool) or {}) do if alive(x) then pcall(function() x.TargetedActor = a; x.HighlightedActor = a end) end end
+            end
+            if state == "aim" then
+                aimAt(comp and centerOf(a, comp) or a:K2_GetActorLocation())
+                local h = highlighted()
+                if o.tool or (h and h:GetOwner():GetFullName() == a:GetFullName()) then
+                    seen = h and h:GetFName():ToString() or "forced"
+                    state, pressedEl = "press", el
+                    local tools = {}
+                    for _, x in ipairs(FindAllOf(o.tool or "BP_BaseToolManifestation") or {}) do if alive(x) then tools[#tools + 1] = x end end
+                    assert(#tools > 0, "no tool actor in the hand")
+                    for _, x in ipairs(tools) do actionEvent(x, "ToolPrimaryUse", true, key) end
+                    local t0 = GS:GetTimeSeconds(T.world())
+                    job.rel = function()
+                        if GS:GetTimeSeconds(T.world()) - t0 >= holdS then
+                            for _, x in ipairs(tools) do pcall(actionEvent, x, "ToolPrimaryUse", false, key) end
+                            job.rel = nil
+                            state = "after"
+                        end
+                    end
+                else
+                    k = k + 1
+                    if k > 90 then return "path: tool use key (" .. key .. ") not pressed\nresult: the game never highlighted " .. T.cls(a) .. " " .. a:GetFName():ToString() .. " from here (aim error, out of reach or not highlightable now)\nbefore: " .. before end
+                end
+            elseif state == "press" then
+                aimAt(comp and centerOf(a, comp) or a:K2_GetActorLocation())
+                if job.rel then job.rel() end
+            elseif state == "after" then
+                job.after = (job.after or 0) + 1
+                if job.after > 30 then
+                    return string.format("path: the tool's own ToolPrimaryUse input event (%s) pressed, held %.1f s, released (the call the engine makes for the bound key)\ntarget: %s %s highlighted via %s\nbefore: %s\nafter:  %s", key, holdS, T.cls(a), a:GetFName():ToString(), tostring(seen), before, sample(a))
+                end
+            end
+        end, 40 + holdS, function() return "timeout in state " .. state end)
+    end
+
     -- ---------------------------------------------------------------- 3. car
     local function car()
         for _, cc in ipairs(FindAllOf("BaseNewCar") or {}) do
@@ -483,9 +548,14 @@ return function(T)
 
     -- the actor a player presses to open and enter the driver's door: the allowed highlight (a door handle child actor, else the door
     -- part) whose collision is nearest to the car's enter-door highlight
-    local function driverDoor(cc)
+    local function driverDoor(cc, mirror, ref)
         local hm = T.first("BP_HighlightManager_C")
-        local o = assert(boundsOrigin(cc.Highlight_EnterDoor.HighlightCollision[1]), "the car's enter-door collision has no position yet")
+        local o = assert(boundsOrigin(ref and ref.Highlight.HighlightCollision[1] or cc.Highlight_EnterDoor.HighlightCollision[1]), "the car's enter-door collision has no position yet")
+        if mirror then -- the passenger door: the driver's mirrored across the car's centre line (car-local Y)
+            local kml = StaticFindObject("/Script/Engine.Default__KismetMathLibrary")
+            local l = kml:InverseTransformLocation(cc:GetTransform(), o)
+            o = kml:TransformLocation(cc:GetTransform(), v3(l.X, -l.Y, l.Z))
+        end
         local best, bd, seen = nil, nil, {}
         for _, h in ipairs(FindAllOf("HighlightComponent") or {}) do
             if alive(h) then
@@ -593,6 +663,40 @@ return function(T)
                 if el - t0 > 1 then return entered("FALLBACK PlayerController:Possess(car) (the game's own enter did not take effect; no enter sequence, character not attached)") end
             end
         end, 40, function() return "enter_car timed out in stage " .. stage .. "; tried: " .. table.concat(tried, " -> ") .. "\n" .. carState(cc) end)
+    end
+
+    -- door_press: real input at a car door (the guest's way in): WALK to the handle (a guest's teleport is undone by the server),
+    -- then press it like a player. passenger=true presses the mirrored (passenger) door; the game only enters through the driver's.
+    function ACT.door_press(o, job)
+        local cc = car()
+        local door, cands = driverDoor(cc, o.passenger == true, o.ref and T.mcp_obj(o.ref))
+        assert(door, "no allowed door interactable: " .. cands)
+        -- the car is in the way from the other side: first a spot 170 uu outside the door (away from the car's centre), then the door
+        local dp, cp = boundsOrigin(door.Highlight.HighlightCollision[1]) or door:K2_GetActorLocation(), cc:K2_GetActorLocation()
+        local dx, dy = dp.X - cp.X, dp.Y - cp.Y
+        local dl = math.sqrt(dx * dx + dy * dy)
+        local stagePt = v3(dp.X + dx / dl * 120, dp.Y + dy / dl * 120, dp.Z)
+        local sub, stage = newJob("move_to", { x = stagePt.X, y = stagePt.Y, z = stagePt.Z, radius = 40, timeout = 20 }), "walk"
+        local ok, err = pcall(ACT.move_to, sub.opts, sub)
+        if not ok then sub.fail(tostring(err)) end
+        frames(job, function()
+            if sub.state == "pending" then return end
+            if stage == "walk" then
+                stage = "walk2"
+                sub = newJob("move_to", { actor = door:GetFullName(), radius = 55, timeout = 10 })
+                local ok1, err1 = pcall(ACT.move_to, sub.opts, sub)
+                if not ok1 then sub.fail(tostring(err1)) end
+                return
+            end
+            if stage == "walk2" then
+                stage = "press"
+                sub = newJob("interact", { actor = door:GetFullName(), approach = o.approach == true, hold = o.hold or 0.3 })
+                local ok2, err2 = pcall(ACT.interact, sub.opts, sub)
+                if not ok2 then sub.fail(tostring(err2)) end
+                return
+            end
+            return "door " .. door:GetFullName() .. "\ncandidates: " .. cands .. "\n" .. tostring(sub.text)
+        end, 60)
     end
 
     -- exit_car: BP_PlayerCarNew:ManualActivate_ExitDoor (what the exit-door highlight calls; works when the game has the player in
