@@ -85,7 +85,12 @@ net.on("g.parts.dmg", function(_, data)
 end)
 -- guest -------------------------------------------------------------------------------------------------------------------
 
-local acc = {} -- "kind\tid\tclass" -> { dmg, ht, ni }
+local acc, held = {}, {} -- "kind\tid\tclass" -> { dmg, ht, ni }; hc address -> { hc, hp } health before the hit
+local function healthOf(hc)
+    local t = { {}, {}, {}, {}, {}, {}, {}, {} }
+    hc:GetHealth(t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8])
+    return t[1].Health, t[2].MaxHealth
+end
 local function targetOf(owner)
     local id = loot.idOf(owner)
     if id then return "P", id end
@@ -115,11 +120,16 @@ local function pre(self, msg)
     e.dmg, e.ht, e.ni = e.dmg + dmg, ht, ni
     acc[k] = e
     m.Damage = 0
+    -- a car part still took a hit with the damage zeroed (a modifier ran before): lift it to full health too, the loop puts it back
+    local hp, max = healthOf(hc)
+    local key = hc:GetAddress()
+    if not held[key] then held[key] = { hc = hc, hp = hp } end
+    hc:SetHealth(max)
 end
 
 local hooked = false
 LoopInGameThreadWithDelay(200, function()
-    if not guest() then acc = {}; return end
+    if not guest() then acc, held = {}, {}; return end
     -- only once a health component of the run map exists (a hook set while the menu is up did not survive the map load)
     if not hooked and valid(FindFirstOf("BP_HealthComponent_C")) and valid(car.theCar(false)) then
         hooked = pcall(RegisterHook, COMP .. "BP_HealthComponent.BP_HealthComponent_C:Process Damage Message", function(...)
@@ -128,6 +138,8 @@ LoopInGameThreadWithDelay(200, function()
         end, function() end)
         if hooked then log("PT|guestparts hooked") end
     end
+    for _, h in pairs(held) do if valid(h.hc) then h.hc:SetHealth(h.hp) end end
+    held = {}
     for key, e in pairs(acc) do
         log("PT|parts send %s %.2f", (key:gsub("\t", " ")), e.dmg)
         net.toHost("g.parts.dmg", key .. "\t" .. e.dmg .. "\t" .. e.ht .. "\t" .. e.ni)

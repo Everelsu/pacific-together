@@ -117,17 +117,29 @@ return function(T)
         add({ check = "host_wreck_part_broken_by_guest", timeout = to(120), cond = function() return not alive(P.a) end })
         add({ check = "host_wreck_dropped", timeout = to(30), cond = function() return worldItems() > base.items end })
         -- 4. every other tool on its own wreck panel (the panels are picked now, before any of them breaks)
-        local list, picked = panels(), {}
-        for i, tl in ipairs(TOOLS) do picked[i] = list[3 + i * 2] end
+        local picked = {}
+        add({ run = function()
+            local list = panels()
+            for i = 1, #TOOLS do picked[i] = list[3 + i * 2] end
+        end })
         for i, tl in ipairs(TOOLS) do
             add({ run = function()
                 local p = picked[i]
                 base.items = worldItems()
+                base.after = nil
                 log("PT|info host %s panel %.0f %.0f %.0f", tl.name, p.x, p.y, p.z)
                 PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.w_" .. tl.name, string.format("%.0f|%.0f|%.0f", p.x, p.y, p.z))
             end })
             add({ check = "host_panel_broken_by_guest_" .. tl.name, timeout = to(90), cond = function() return not alive(picked[i].a) end })
             add({ check = "host_dropped_by_guest_" .. tl.name, timeout = to(30), cond = function() return worldItems() > base.items end })
+            add({ wait = 6 })
+            add({ run = function() base.after = worldItems(); PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.cnt_" .. tl.name, "") end })
+            add({ check = "guest_items_grew_like_host_" .. tl.name, timeout = to(60), cond = function()
+                local g = has("t.cntd_" .. tl.name); if not g then return false end
+                local g0, g1 = g:match("^(%d+)|(%d+)$")
+                log("PT|info %s items host %d -> %d, guest %s -> %s", tl.name, base.items, base.after, g0, g1)
+                return tonumber(g1) - tonumber(g0) == base.after - base.items
+            end })
         end
         -- 5. the blowtorch repairs the hurt door
         add({ run = function()
@@ -259,11 +271,14 @@ return function(T)
             copy = near(panels(), tonumber(x), tonumber(y), tonumber(z))
             return copy ~= nil
         end })
-        add({ run = function() holdByName(tl.arch) end })
+        local g0
+        add({ run = function() g0 = worldItems(); holdByName(tl.arch) end })
         add({ check = "guest_holds_" .. tl.name, timeout = 20, cond = function() tool_ = toolOf(tl.cls); return tool_ ~= nil end })
         add({ wait = 2 })
         add({ run = function() send(tool_, tl, copy.a) end })
         add({ check = "guest_copy_gone_" .. tl.name, timeout = to(90), cond = function() return not alive(copy.a) end })
+        add({ check = "guest_told_cnt_" .. tl.name, timeout = to(60), cond = function() return has("t.cnt_" .. tl.name) ~= nil end })
+        add({ run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.cntd_" .. tl.name, g0 .. "|" .. worldItems()) end })
     end
     -- 5. the blowtorch
     add({ check = "guest_told_torch", timeout = to(120), cond = function() return has("t.torch") ~= nil end })
