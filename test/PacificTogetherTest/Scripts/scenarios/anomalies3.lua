@@ -69,7 +69,7 @@ return function(T)
             T.log("PT|info spawned tesla %s guestHp=%.0f hostHp=%.0f remoteRole=%s replicates=%s", T.name(tesla), guestHp0, hostHp0, tostring(tesla.RemoteRole), tostring(tesla.bReplicates))
         end })
         sees("tesla")
-        add({ check = "guest_hurt_by_tesla", timeout = 90, cond = function()
+        add({ check = "guest_hurt_by_tesla", timeout = 60, cond = function()
             poll()
             T.log("PT|info tesla: guest hp=%.0f (was %.0f) host hp=%.0f", guestHp, guestHp0, health())
             return guestHp < guestHp0 - 3
@@ -124,7 +124,14 @@ return function(T)
         return steps
     end
 
-    local finished = false
+    local finished, peak = false, 0
+    LoopInGameThreadWithDelay(50, function()
+        pcall(function()
+            local me = T.netMode() == "client" and T.myPawn()
+            if me and me:IsValid() then local v = me:GetVelocity(); peak = math.max(peak, math.sqrt(v.X ^ 2 + v.Y ^ 2)) end
+        end)
+    end)
+    local given = false
     local WATCHL = { "BP_Hazard_Tesla_C", "BP_Hazard_PartStealer_C", "BP_Boon_LootCreature_C" }
     LoopInGameThreadWithDelay(1000, function()
         pcall(function()
@@ -154,7 +161,7 @@ return function(T)
             if im then pcall(function() bag = im.Inventory_Player:GetNumItems() end) end
             PTNative_MsgToHost(T.localPC():GetAddress(), "t.bag", tostring(bag))
             local v = me and me:IsValid() and me:GetVelocity() or { X = 0, Y = 0, Z = 0 }
-            PTNative_MsgToHost(T.localPC():GetAddress(), "t.hp", string.format("%.0f	%.0f", health(), math.sqrt(v.X ^ 2 + v.Y ^ 2)))
+            PTNative_MsgToHost(T.localPC():GetAddress(), "t.hp", string.format("%.0f	%.0f", health(), peak)); peak = 0
             while true do
                 local kind, data = PTNative_MsgPoll("t.")
                 if not kind then break end
@@ -165,6 +172,15 @@ return function(T)
     return {
         T.onMap("RB_MainMenu", 90),
         { check = "client_in_zone", timeout = 400, cond = function() return T.netMode() == "client" and T.map() == mapName and T.cls(T.myPawn()) == T.CHAR end },
+        { wait = 12 }, -- the backpack handshake: the host answers "new guest" and the guest keeps its own backpack
+        { run = function()
+            local A = "/Game/Gameplay/Inventory/Items/Resources/Basic/RawSteel/IA_Resource_Raw_Scrap_Steel.IA_Resource_Raw_Scrap_Steel"
+            local a = StaticFindObject(A)
+            if not a:IsValid() then LoadAsset(A); a = StaticFindObject(A) end
+            local lib = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
+            for _ = 1, 3 do T.first("BP_InventoryManager_C").Inventory_Player:AddItem(lib:CreateItemInstance(T.world(), a, 0), true) end
+            T.log("PT|info guest given 3 scrap steel, bag now %d", T.first("BP_InventoryManager_C").Inventory_Player:GetNumItems())
+        end },
         { check = "client_stays_until_host_done", timeout = 600, cond = function() return finished end },
     }
 end

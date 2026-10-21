@@ -10,7 +10,7 @@ local safety = require("safety")
 local ov = require("overlay")
 local log = common.log
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", pushed = 0, applied = 0 } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", debug = true, pushed = 0, applied = 0 } -- the test mutation switches the module off
 local function try(what, fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then log("PT|error anomalies3 %s %s", what, tostring(err)) end
@@ -47,7 +47,9 @@ LoopInGameThreadWithDelay(1000, function()
     try("replicate", function()
         for _, class in ipairs({ "BP_Hazard_Tesla_C", "BP_Hazard_PartStealer_C", "BP_Boon_LootCreature_C" }) do
             each(class, function(o)
-                if o.RemoteRole ~= 0 or not o:HasAuthority() then return end
+                local auth, rr, rep = o:HasAuthority(), o.RemoteRole, o.bReplicates
+                if M.debug then log("PT|anom3 saw %s auth=%s remoteRole=%s replicates=%s", o:GetFName():ToString(), tostring(auth), tostring(rr), tostring(rep)) end
+                if not auth or (rep and rr ~= 0) then return end
                 o:SetReplicates(true)
                 o:SetReplicateMovement(true)
                 o.bAlwaysRelevant = true
