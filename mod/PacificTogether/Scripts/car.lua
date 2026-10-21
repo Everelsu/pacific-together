@@ -23,7 +23,8 @@ local NONE = FName("None")
 local PREFIX = "/Game/Gameplay/Inventory/Items/"
 local COMP = "/Game/Gameplay/Inventory/GenericItemProperties/Components/"
 local PASSENGER = { X = 46.2, Y = 45.8, Z = -12.3 } -- X8: the driver's seat mirrored across the car's centre line
-local ARC_SHIFT = -42.5                              -- X8: both ARC slots, car-local Y
+local ARC_SHIFT = { X = -70, Y = 0 } -- both ARC slots, car-local: behind the seats (the old X8 spot between them hid the starter key)
+if os.getenv("PT_MUTATE") == "arcold" then ARC_SHIFT = { X = 0, Y = -42.5 } end -- test mutation: the old spot
 
 -- helpers -------------------------------------------------------------------------------------------------------------
 
@@ -163,8 +164,9 @@ local function moveArc(car)
                 local slot = a.RootComponent:GetAttachParent()
                 if valid(slot) and not arcDone[slot:GetFullName()] then
                     local r = slot.RelativeLocation
-                    if r.Y > ARC_SHIFT / 2 then
-                        slot:K2_SetRelativeLocation(vec(r.X, r.Y + ARC_SHIFT, r.Z), false, {}, true)
+                    -- not yet moved: the slot is still on the near side of the half-way point along the shift
+                    if r.X * ARC_SHIFT.X + r.Y * ARC_SHIFT.Y < (ARC_SHIFT.X ^ 2 + ARC_SHIFT.Y ^ 2) / 2 then
+                        slot:K2_SetRelativeLocation(vec(r.X + ARC_SHIFT.X, r.Y + ARC_SHIFT.Y, r.Z), false, {}, true)
                         log("PT|car arc slot moved %s", slot:GetFullName())
                     end
                     arcDone[slot:GetFullName()] = true

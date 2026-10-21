@@ -1,6 +1,6 @@
--- Playtest-1 bug A: the moved ARC hid dashboard panels and made the starter key unusable. The host sits in the driver's seat,
--- the guest enters by the door press; the driver's camera is aimed at the ignition key and the game's own highlight must be the
--- key (not the ARC); the guest's camera is aimed at the ARC screen and the highlight must be the ARC.
+-- Playtest-1 bug A: the moved ARC hid dashboard panels and made the starter key unusable. The host enters as the driver through
+-- the game's door entry, the guest by the door press. The driver's real camera traces to the ignition key like the game's highlight
+-- trace (no ARC volume on the way); the guest's camera, aimed at the ARC screen, gets the game's highlight on the ARC.
 -- Run: tools/run-test.ps1 -Scenario arckey -Fixture garage -Headless      Mutation: arcold (the old ARC position)
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -48,6 +48,21 @@ return function(T)
         if not (h and h:IsValid()) then return "none" end
         return T.cls(h:GetOwner()) .. "." .. h:GetFName():ToString()
     end
+    -- the ignition key's highlight collision (what the game's trace has to hit), first live volume
+    local KSL = require("UEHelpers").GetKismetSystemLibrary()
+    local function keyPoint()
+        local hc = theCar().Highlight_Key.HighlightCollision
+        for i = 1, hc:GetArrayNum() do
+            local c = hc[i]
+            if c and c:IsValid() then
+                local o, e, r = {}, {}, {}
+                KSL:GetComponentBounds(c, o, e, r)
+                log("PT|info key collision %d %s origin=%.0f,%.0f,%.0f ext=%.0f,%.0f,%.0f enabled=%s", i, c:GetFullName(), o.X, o.Y, o.Z, e.X, e.Y, e.Z, tostring(c:GetCollisionEnabled()))
+                return { X = o.X, Y = o.Y, Z = o.Z }
+            end
+        end
+        return theCar().UICollision_Key:K2_GetComponentLocation()
+    end
     local function screenPoint()
         for _, a in ipairs(FindAllOf("BP_Carpart_Internal_GobblerScreen_C") or {}) do
             if a:IsValid() and a:GetAttachParentActor():IsValid() then
@@ -72,23 +87,48 @@ return function(T)
             sendGuest("t.p1")
         end })
         add({ check = "guest_seated_by_door_press", timeout = 120, cond = function() local g = L.guestChar(); return g ~= nil and attached(g) end })
-        -- the host as the driver: the character's eye is at the car camera's spot (X8)
+        -- the host as the driver through the game's own door entry (as carenter): the key's highlight is a driving-state thing
         add({ run = function()
             local car, me = theCar(), T.myPawn()
-            car:K2_SetActorRotation({ Pitch = 0, Yaw = 0, Roll = 0 }, true)
-            C.seat(me, car, C.toLocal(car, C.driverSeat(me).Translation))
+            local l = car:K2_GetActorLocation()
+            me:K2_HandleSetCharacterLocation({ Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = l.X + 250, Y = l.Y + 200, Z = l.Z + 20 }, Scale3D = { X = 1, Y = 1, Z = 1 } }, false, false)
         end })
-        add({ wait = 3 })
-        add({ run = function()
-            aimAt(function() return theCar().UICollision_Key:K2_GetComponentLocation() end, 150)
-            sendGuest("t.aim")
+        add({ wait = 1 })
+        add({ run = function() theCar().SLOT_FrontLeftDoor:GetItemActor({}):StartEntry(false) end })
+        add({ check = "host_in_car", timeout = 30, cond = function()
+            local st = {}
+            local m = T.first("BP_CarManager_C")
+            m["Get PlayerCarState"](m, st)
+            return tonumber(st.ReturnedState) == 1
         end })
+        add({ wait = 5 })
+        add({ run = function() sendGuest("t.aim") end })
         add({ wait = 4 })
-        add({ check = "driver_highlights_ignition_key", timeout = 5, cond = function()
-            local h = highlighted()
-            local k = theCar().UICollision_Key:K2_GetComponentLocation()
-            log("PT|info driver highlight=%s key world=%.0f,%.0f,%.0f arc screen=%s", h, k.X, k.Y, k.Z, tostring(screenPoint() and string.format("%.0f,%.0f,%.0f", screenPoint().X, screenPoint().Y, screenPoint().Z)))
-            return h:find("Key", 1, true) ~= nil
+        -- The game's highlight trace (BP_HighlightManager.PerformTrace) is a multi sphere trace for objects from the view target's camera;
+        -- the view cannot be turned in the car state headless, so the same trace is run from the driver's real camera towards the key's
+        -- collision: the key must be hit and none of the ARC's volumes may be in the swept sphere.
+        add({ check = "driver_key_trace_not_blocked_by_arc", timeout = 5, cond = function()
+            local hm = T.first("BP_HighlightManager_C")
+            local cam = T.localPC().PlayerCameraManager:GetCameraLocation()
+            local k = keyPoint()
+            local dx, dy, dz = k.X - cam.X, k.Y - cam.Y, k.Z - cam.Z
+            local n = math.sqrt(dx * dx + dy * dy + dz * dz)
+            local e = { X = cam.X + dx / n * (n + 15), Y = cam.Y + dy / n * (n + 15), Z = cam.Z + dz / n * (n + 15) }
+            local radius = hm.SelectionRadius_Inside
+            local hits = {}
+            KSL:SphereTraceMultiForObjects(T.world(), cam, e, radius, { 1, 7, 3, 12, 0, 6, 8, 13 }, true, {}, 0, hits, true,
+                { R = 1, G = 0, B = 0, A = 1 }, { R = 0, G = 1, B = 0, A = 1 }, 0)
+            local key, arc = false, false
+            for _, h in ipairs(hits) do
+                local c = h:get().Component
+                local ok, name = pcall(function() return c:get():GetFullName() end)
+                name = ok and name or "?"
+                log("PT|info trace hit %s", name)
+                if name:find("UICollision_Key", 1, true) then key = true end
+                if name:find("Gobbler", 1, true) then arc = true end
+            end
+            log("PT|info key trace cam=%.0f,%.0f,%.0f key=%.0f,%.0f,%.0f radius=%.1f hits=%d key=%s arc=%s", cam.X, cam.Y, cam.Z, k.X, k.Y, k.Z, radius, #hits, tostring(key), tostring(arc))
+            return key and not arc
         end })
         add({ check = "guest_highlights_arc", timeout = 60, cond = function() return has("t.hl") and (got["t.hl"]:find("Gobbler", 1, true) ~= nil) end })
         add({ wait = 2 })
