@@ -11,6 +11,7 @@ local common = require("common")
 local net = require("net")
 local safety = require("safety")
 local log = common.log
+local ov = require("overlay")
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "nostory" } -- the test mutation switches the mirror off (the guest stays a bystander)
 
@@ -144,11 +145,13 @@ local function applyQuest(data)
                         q:StartObjective(o, true, false)
                         st = activeOn(q, obj)
                         log("PT|story guest start objective %s mission %s", obj, mis)
+                        ov.post("New objective", "good", "story")
                     end
                     local cur = st and st.ActiveMissionState
                     if st and not (live(cur) and live(cur.Data) and path(cur.Data) == mis) then
                         st:StartNextMission(m)
                         log("PT|story guest mission -> %s", mis)
+                        ov.post("Mission updated", "good", "story")
                     end
                     local ms = st and st.ActiveMissionState
                     if ms and live(ms) then -- the tasks the host completed (tasks run in parallel: a mask, not an index)

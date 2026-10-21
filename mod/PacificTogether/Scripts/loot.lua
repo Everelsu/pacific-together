@@ -12,6 +12,7 @@ local common = require("common")
 local net = require("net")
 local ids = require("ids")
 local log = common.log
+local ov = require("overlay")
 local alive = ids.alive
 
 -- tests only (a mutation that makes this module send and apply nothing); players never set PT_MUTATE
@@ -396,6 +397,20 @@ local function scanChanges()
     end
 end
 
+-- overlay: what the other player took from or put into a container
+local function announce(e, before)
+    local d = (e.n or 0) - (before or 0)
+    if d ~= 0 then log("PT|loot overlay %s %s -> %s settled=%s", e.id, tostring(before), tostring(e.n), tostring(ov.settled())) end
+    if d == 0 or not ov.settled() then return end
+    local what = "a container"
+    pcall(function()
+        what = e.kind == "I" and e.id:match("^I:Inventory_(.+)$"):gsub("_", " "):lower()
+            or e.actor:GetClass():GetFName():ToString():gsub("^BP_Lootable_", ""):gsub("_C$", ""):gsub("_", " "):lower()
+    end)
+    if d < 0 then ov.post("%d item{s} taken from " .. what, "info", "loot.out." .. e.id, -d)
+    else ov.post("%d item{s} put into " .. what, "info", "loot.in." .. e.id, d) end
+end
+
 -- messages --------------------------------------------------------------------------------------------------------
 
 local function handle(pc, data)
@@ -429,7 +444,9 @@ local function handle(pc, data)
             purge()
         elseif op == "S" and ents[id] then
             log("PT|loot got S %s (%s)", id, f[3]:sub(1, 80))
+            local before = ents[id].n
             applyState(ents[id], f[3])
+            announce(ents[id], before)
             -- the guest's change: the host applies it and the other players see it
             if not guest then say(l) end
         elseif op == "S" and guest then
@@ -442,12 +459,14 @@ local function handle(pc, data)
             local e = ents[id]
             ents[id] = nil
             if alive(e.actor) then e.actor:K2_DestroyActor() end
+            if e.kind == "W" and ov.settled() then ov.post(ov.other() .. " picked up an item", "info", "pick") end
         elseif op == "N" and not guest then
             spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
         elseif op == "T" and not guest and ents[id] then
             local e = ents[id]
             ents[id], byName[e.name] = nil, nil
             if alive(e.actor) then e.actor:K2_DestroyActor() end
+            if e.kind == "W" then ov.post(ov.other() .. " picked up an item", "info", "pick") end
             say("D|" .. id)
         end
     end

@@ -11,6 +11,7 @@ local common = require("common")
 local safety = require("safety")
 local net = require("net")
 local log = common.log
+local ov = require("overlay")
 
 local M = {}
 if os.getenv("PT_MUTATE") == "nocarsync" then
@@ -252,6 +253,7 @@ net.on("g.car.enter", function(pc)
     -- shortcut: no reach check (a client-side teleport did not move the guest on the host); add one when doors are real input
     log("PT|car enter from %.0f uu", dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()))
     seat(char, car)
+    ov.post(ov.other() .. " entered the car")
 end)
 
 net.on("g.car.exit", function(pc)
@@ -266,6 +268,7 @@ net.on("g.car.exit", function(pc)
     char:SetActorEnableCollision(true)
     pcall(function() char.CharacterMovement:SetMovementMode(1, 0) end)
     log("PT|car guest left the car")
+    ov.post(ov.other() .. " left the car")
 end)
 
 net.on("g.car.hello", function() lastSent = nil end)
@@ -427,7 +430,7 @@ local function applyState(data)
         local name = slotName(slot)
         local want, it = parts[name], itemOf(slot)
         if not want then
-            if it then slot:RemoveAllItems({}); changed = changed + 1; log("PT|car part removed %s", name) end
+            if it then slot:RemoveAllItems({}); changed = changed + 1; log("PT|car part removed %s", name); if ov.settled() then ov.post("%d car part{s} changed by the host", "info", "carpart") end end
             return
         end
         if not it or archPath(it) ~= want.arch then
@@ -437,6 +440,7 @@ local function applyState(data)
             slot:SetItem(arch:CreateInstance(UEHelpers.GetWorldContextObject(), 0), {})
             changed = changed + 1
             log("PT|car part installed %s %s", name, want.arch)
+            if ov.settled() then ov.post("%d car part{s} changed by the host", "info", "carpart") end
         end
         if want.h or want.f or want.b then
             local m = manifestation(cm, name)

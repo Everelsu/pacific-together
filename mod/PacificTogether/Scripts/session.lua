@@ -332,3 +332,6 @@ ExecuteInGameThreadWithDelay(1000, function()
         join()
     end
 end)
+
+-- for overlay.lua
+return { join = JOIN, wanted = function() return guestActive end }
