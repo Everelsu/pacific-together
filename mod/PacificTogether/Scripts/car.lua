@@ -548,4 +548,7 @@ LoopInGameThreadWithDelay(250, function()
 end)
 
 M.exit = sendExit
+-- for guestact.lua (the guest's car work and ARC)
+M.theCar, M.carManager, M.equipped, M.itemOf, M.slotName = theCar, carManager, equipped, itemOf, slotName
+M.manifestation, M.propComps, M.readPart = manifestation, propComps, readPart
 return M
