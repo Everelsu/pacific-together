@@ -6,7 +6,7 @@ $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $Suite = [ordered]@{
     session = ""; sessiontravel = ""; sessionrejoin = ""; zonejoin = ""; safety = ""; nametag = ""
     overlay = "garage"; carsync = "garage"; carenter = "garage"; storysync = "garage"; pausemenu = "garage"
-    garagesync = "garage"; guestcraft = "garage"; carexit = "garage"; arckey = "garage"; runloop = "garage"
+    garagesync = "garage"; guestcraft = "garage"; carexit = "garage"; arckey = "garage"; runloop = "garage"; carfeel = "garage"
     worldsync = "gateway"; guestact = "gateway"; guestparts = "gateway"
     lootsync = "zone"; lootsync2 = "zone"; backpacksync = "zone"; progsync = "zone"; anomalies = "zone"; anomalies2 = "zone"
     playerhealth = "zone"; playpath = "zone"; lootcar = "zone"; dropfall = "zone"; guestdeath = "zone"
