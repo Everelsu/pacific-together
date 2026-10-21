@@ -148,6 +148,7 @@ function Start-Side($s, $life) {
         # -nullrhi: no rendering, ~1 GB RAM and no GPU per instance, so many lanes can test at once; screenshots need a normal run
         $gameArgs = if ($Headless) { "-NotInstalled", "-nullrhi", "-nosound", "-log", "-port=$Port" } else { "-NotInstalled", "-windowed", "-ResX=960", "-ResY=540", "-log", "-port=$Port" }
         $s.Proc = Start-Process $exe -ArgumentList $gameArgs -WorkingDirectory $s.Bin -PassThru
+        $s.Started = Get-Date
         $script:procs += $s.Proc
         Write-Host "started $($s.Role) life $life PID $($s.Proc.Id)"
     } finally {
@@ -195,6 +196,19 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep 3
     Update-Snapshots
     if ($KillExpected -contains $Scenario) { Invoke-Directives }
+    # the engine sometimes hangs in start-up before any mod loads (X7 notes, seen again 2026-10-21): start that side again
+    foreach ($s in $sides) {
+        if ($s.Proc.HasExited -or $s.BootRetries -ge 2 -or ((Get-Date) - $s.Started).TotalSeconds -lt 120) { continue }
+        if ((Read-Shared $s.Log) -match "PT\|boot ") { continue }
+        $s.BootRetries++
+        Write-Host "runner: $($s.Role) never booted, restarting it (retry $($s.BootRetries))"
+        $script:killed += $s.Proc.Id
+        Stop-Process -Id $s.Proc.Id -Force -ErrorAction SilentlyContinue
+        $s.Proc.WaitForExit(15000) | Out-Null
+        Remove-Item $s.Log -ErrorAction SilentlyContinue
+        Start-Side $s $s.Life
+        $deadline = $deadline.AddSeconds(120)
+    }
     $done = @($sides | Where-Object { (Get-Log $_) -match "\[PacificTogetherTest\] PT\|done side=" })
     if ($done.Count -eq $sides.Count) { $stop = "all sides done"; break }
     if ((Get-NewCrashes) -and $CrashExpected -notcontains $Scenario) { $stop = "crash"; break }

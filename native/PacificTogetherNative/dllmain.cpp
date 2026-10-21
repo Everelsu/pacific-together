@@ -29,8 +29,9 @@ auto pt_register_blackbox(const LuaMadeSimple::Lua& lua) -> void; // blackbox.cp
 auto pt_register_msg(const LuaMadeSimple::Lua& lua) -> void;   // msg.cpp
 auto pt_blackbox_install() -> void;
 auto pt_blackbox_set_game_thread() -> void;
+auto pt_background_install() -> void; // background.cpp
 
-static constexpr const char* NATIVE_VERSION = "0.0.5";
+static constexpr const char* NATIVE_VERSION = "0.0.6";
 
 // Lua hot reload (test runs): UE4SS uninstalls a Lua mod on its event loop thread while the game thread keeps firing
 // that mod's hooks (a host with a guest died on the first RestartMod). The game thread waits in an engine tick instead.
@@ -161,6 +162,7 @@ class PacificTogetherNative : public CppUserModBase
         ModAuthors = STR("Pacific Together contributors");
         Output::send<LogLevel::Verbose>(STR("[PacificTogether] PT|native loaded\n"));
         pt_guard::install();
+        pt_background_install();
     }
 
     auto on_unreal_init() -> void override

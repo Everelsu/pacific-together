@@ -61,6 +61,9 @@ foreach ($c in $c1, $c2) {
     # without it the copy restarts through Steam into the real install
     Set-Content -Path "$bin\steam_appid.txt" -Value "1458140" -Encoding ascii -NoNewline
     if (-not (Test-Path "$bin\ue4ss\UE4SS.dll")) { Expand-Archive -Path $UE4SSZip -DestinationPath $bin -Force }
+    # no UE4SS console windows popping over the owner's work; everything is in UE4SS.log anyway
+    $ini = "$bin\ue4ss\UE4SS-settings.ini"
+    (Get-Content $ini) -replace '^(ConsoleEnabled|GuiConsoleEnabled|GuiConsoleVisible) = 1', '$1 = 0' | Set-Content $ini -Encoding ascii
     # junctions, so edits in the repo apply on the next game launch
     foreach ($m in @(@{n = "PacificTogether"; s = "$Repo\mod\PacificTogether"}, @{n = "PacificTogetherNative"; s = "$Repo\mod\PacificTogetherNative"}, @{n = "PacificTogetherTest"; s = "$Repo\test\PacificTogetherTest"})) {
         $link = "$bin\ue4ss\Mods\$($m.n)"
