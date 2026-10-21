@@ -534,3 +534,17 @@ Observations
 Unknowns
 - Untested with real input: the loot UI, scrapper, cutter and siphon, the ARC screen hover-and-press, cutscenes on the
   guest, story props, the Tourist freeze check (it timed out although the log shows the freeze), and a real wrecked run.
+
+## Playtest-1 fixes, overnight 2026-10-22 (lead)
+
+Observations
+- Full suite on main after the playtest-1 lanes: 28/31 (`local/test-results/suite-20261022-010350.txt`).
+- `lootsync` failed once (`20261022-011719-lootsync`): one `BP_Lootable_MultiMesh_Tacklebox_C` held 4 items on the guest
+  against 6 on the host for the whole 90 s; the rerun on the same code passed 34/34 (`20261022-024022-pt1-loot-lootsync`).
+- `sessiontravel` failed in the suite only because the suite gave it no `-Fixture garage` (fixed in run-suite.ps1).
+- pt1-swap saw a trunk stack count drift by one on a full trunk (guest took 10, host dropped 11) in an earlier run.
+
+Known gaps (rare, not chased per the owner's priority rule)
+- A lootable can stay one snapshot behind on the guest (race between the host's snapshot and a content change). Look at
+  that container's `S|L` lines in both logs if a player reports it.
+- Full-trunk stack counts can drift by one item (`ids.apply` on a full container, lootsync2 area).
