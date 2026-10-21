@@ -245,9 +245,17 @@ pcall(RegisterHook, "/Script/PenDriverPro.BaseSaveGameManager:UserNewGame", func
 -- guest --------------------------------------------------------------------------------------------------------------
 
 local synced, last, lastAsk = false, nil, 0
+local unsaved -- the line of a flush the host may not have got (a run-failure penalty right before the host's travel)
 
 net.on("g.bp.rec", function(_, line)
     if synced then return end
+    if unsaved and encode(read()) == unsaved then
+        -- our backpack is newer than the host's record: the penalty's save was lost in the travel
+        net.toHost("g.bp.save", unsaved)
+        log("PT|bp guest keeps its backpack over the host's older record")
+        synced, last, unsaved = true, nil, nil
+        return
+    end
     if line ~= "none" then
         local ok, err = pcall(write, decode(line))
         if not ok then log("PT|error bp restore %s", tostring(err)); return end
@@ -274,6 +282,7 @@ end
 function M.flush()
     if not (safety.guest() and synced) then return end
     last = encode(read())
+    unsaved = last
     net.toHost("g.bp.save", last)
 end
 
@@ -287,7 +296,7 @@ local function tick()
         return
     end
     local line = encode(read())
-    if line ~= last then last = line; net.toHost("g.bp.save", line) end
+    if line ~= last then last, unsaved = line, nil; net.toHost("g.bp.save", line) end
 end
 
 -- a map change (the host's, or ours) frees what we hold; ask again once the new character is there
