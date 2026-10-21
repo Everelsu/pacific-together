@@ -11,7 +11,8 @@ What works in this build
   host's save and quit. The guest's screen holds still for a few seconds while the host loads, then it loads the
   same map (no trip through the main menu). If the guest's game drops or crashes, the host keeps going and the guest
   can join again.
-- The car: the host drives; the guest gets in through the passenger door (the game's own door) and rides along,
+- The car: the host drives; the guest gets in by tapping the DRIVER's door handle (the passenger door doesn't let you
+  in yet) and rides along in the passenger seat,
   smoothly, and leaves with the X key. The guest's dashboard shows the host's fuel and battery; car parts the host
   installs or removes, their health, fuel and battery match on both sides.
 - Loot: the guest sees the host's lootable containers and items in the same places with the same contents. Taking
@@ -55,6 +56,10 @@ Not done yet (expect oddities)
   already open may need reopening to show the host's route.
 - The overlay uses the engine's plain font, stays visible over the pause menu, and is English only. A host map change
   shows the guest as leaving and rejoining.
+- If the host charges the ARC, the host should look at the ARC screen once so the guest sees the gateway choices.
+- Not tried with a real mouse and keyboard yet (please check tonight): the X key to leave the car, opening the trunk as
+  the guest, using repair putty or a fuel can on the car as the guest, the guest's gateway choice on the ARC screen,
+  and the host abandoning a run from the pause menu with the guest connected.
 - The guest can't use the garage stations, plan the route, or install and remove car parts themselves yet.
 
 Install and start (both players, with the game closed)

@@ -24,6 +24,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   crate that either player can loot.
 
 ### Fixed
+- The guest "died" a few seconds after every map change, dropping their backpack as a crate. Fixed.
+- A failed run's item loss for the guest could be undone when they rejoined. Fixed.
 - An anomaly hitting the guest took the host's health instead of the guest's. It now hurts the guest.
 
 ## [0.0.4] - 2026-10-21
