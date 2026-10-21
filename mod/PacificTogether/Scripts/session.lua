@@ -196,8 +196,8 @@ local function onHello(pc, s)
     try(0)
 end
 
--- Opening or closing the pause menu runs PenDriverViewportClient::ClearAllPressedInputs, whose timer calls PlayerTick on
--- every PlayerController (PenDriverPro+0x10a5b60), paused or not;
+-- Opening the pause menu runs PenDriverViewportClient::ClearAllPressedInputs, whose timer calls PlayerTick on every
+-- PlayerController (PenDriverPro+0x10a5b60);
 -- the engine gives a remote player's controller no PlayerInput, so the host crashed in PlayerInput->Tick (AV reading 0x178
 -- at +0x3160a56, playtest 2026-10-21). An empty PlayerInput makes that tick a no-op for the guest's controller.
 local function giveInput(pc)

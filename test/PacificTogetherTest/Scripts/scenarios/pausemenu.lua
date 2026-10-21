@@ -20,10 +20,10 @@ return function(T)
 
     if T.ROLE == "host" then
         local function ui() return T.first("BP_UIManager_C") end
-        -- the HUD keeps the menu in the viewport and shows/hides it (PDP_Game_Hud SetPauseMenuWidgetVisible)
+        -- the HUD keeps the menu in the viewport; PDP_PauseMenu_Main SetVisible sets the inner menu Visible (0) or Collapsed
         local function menu()
             local w = T.localPC():GetHUD().PauseMenuWidget
-            if w:IsValid() and w:IsInViewport() and w:IsVisible() then return w.PDP_PauseMenu end
+            if w:IsValid() and w:IsInViewport() and w.PDP_PauseMenu:GetVisibility() == 0 then return w.PDP_PauseMenu end
         end
         local function paused() return StaticFindObject("/Script/Engine.Default__GameplayStatics"):IsGamePaused(T.world()) end
         local function open()
@@ -58,7 +58,7 @@ return function(T)
         for _, on in ipairs({ true, false }) do
             local tag = on and "on" or "off"
             add({ run = function() option(on); open() end })
-            add({ check = "host_menu_open_" .. tag, timeout = 10, cond = function() return menu() ~= nil end })
+            add({ check = "host_menu_open_" .. tag, timeout = 10, cond = function() return menu() ~= nil and paused() end })
             add({ wait = HOLD })
             add({ run = settings })
             add({ wait = 5 })
