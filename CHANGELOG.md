@@ -3,16 +3,26 @@
 What changed in Pacific Together, in plain words. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Builds before 1.0 are previews for the developers and friends.
 
-## [0.0.4] - unreleased
+## [0.0.5] - unreleased
 
 ### Added
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
 - The launcher shows the build in this download and the build installed in your game.
 
+## [0.0.4] - 2026-10-21
+
+### Added
+- The guest rides in the host's car: in through the passenger door, smooth movement, out with the X key. Car parts, their
+  health, fuel and battery are the same for both players, and the guest's dashboard shows the host's fuel and battery.
+- Loot is shared: the guest sees the host's containers and items with the same contents. Taking or putting items in a
+  container, the car trunk or garage storage changes it for both. An item picked up from the ground is gone for both.
+- The run is shared: the same time of day, weather, instability, storm, gateway and anomalies for both players.
+- Each player sees the other's health under their name tag. A guest who dies comes back at the car; the host's run goes on.
+- The guest stays out of the story: missions, radio and cutscenes play for the host.
+
 ### Changed
-- Under the hood: a message channel between host and guest and hot reloading of the mod's scripts for our own tests.
-  Nothing to see in the game yet; later features build on it.
+- Under the hood: a message channel between host and guest carries all of the above.
 
 ## [0.0.3] - 2026-10-20
 
