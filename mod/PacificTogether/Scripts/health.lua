@@ -61,11 +61,11 @@ local function revive()
     log("PT|health guest revived")
 end
 
-local function die(h)
+local function die(h, pre)
     dying = true
     log("PT|health guest died")
     local okb, bp = pcall(require, "backpack") -- D6: the backpack drops as a bag at this spot
-    if okb then pcall(bp.died) end
+    if okb then pcall(bp.died, pre) end
     local pc = localPC()
     if pc then
         pc:SetIgnoreMoveInput(true)
@@ -81,6 +81,37 @@ local function die(h)
 end
 
 net.on("g.health.revive", function() revive() end)
+
+-- the game's own death on the guest (BP_MainCharacterManager:KillPlayer: a door that crushes, CheckForGameOver, ...) would
+-- run the guest's local item penalty, leave PlayerAlive false and wait for a return to the garage. It is our death instead:
+-- the backpack of the last tick (before the penalty) goes to the host's crate, the game's death state is undone.
+local function undoGameDeath(cm)
+    pcall(function() StaticFindObject("/Script/Engine.Default__KismetSystemLibrary"):K2_ClearTimer(cm, "OnPlayerDeathReturnTimer") end)
+    pcall(function() cm:SetPlayerAlive(true) end)
+    local ch = cm.CharacterActor
+    if valid(ch) then
+        pcall(function() ch.ALS_MovementMode = 1; ch.CharacterMovement:SetMovementMode(1, 0); ch.CapsuleComponent:SetCollisionEnabled(3) end)
+    end
+    local car = FindFirstOf("BP_CarManager_C")
+    if valid(car) then pcall(function() car["Set PlayerCarState"](car, 0); car:SetIsInvunerable(false) end) end
+    pcall(function()
+        local w = FindObject("BFL_Widget_Utils_C", "Default__BFL_Widget_Utils_C")
+        w["Set Player HUD Hidden"](w, false, cm)
+    end)
+end
+local killHooked = os.getenv("PT_MUTATE") == "nokillfix" -- the class loads after the main menu: hooked from the tick
+local function hookKill()
+    killHooked = pcall(RegisterHook, "/Game/Systems/Managers/BP_MainCharacterManager.BP_MainCharacterManager_C:KillPlayer", function(self)
+        if not safety.guest() or dying then return end
+        local okb, bp = pcall(require, "backpack")
+        local pre = okb and bp.pre and bp.pre() or nil
+        undoGameDeath(self:get())
+        local h = health()
+        if h then h:Adjust(manager, h.Maximum - h.Current) end
+        die(h, pre)
+    end)
+    if killHooked then log("PT|health kill hook registered") end
+end
 
 -- host: the guest's respawn point is the car, else us ---------------------------------------------------------------
 
@@ -115,6 +146,7 @@ end)
 -- every 500 ms ---------------------------------------------------------------------------------------------------------
 
 local function tick()
+    if not killHooked and valid(FindFirstOf("BP_MainCharacterManager_C")) then hookKill() end
     local h = health()
     if not safety.active() then
         if other or dying then other, dying, lastSent = nil, false, "" end

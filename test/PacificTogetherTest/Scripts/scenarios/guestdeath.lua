@@ -72,6 +72,8 @@ return function(T)
         add({ wait = 12 })
         add({ check = "host_no_dropped_materials", timeout = 5, cond = function() return worldItems() == base end })
         add({ check = "host_crate_still_exact", timeout = 5, cond = function() return bagCounts(got["t.snap"]) == got["t.snap"] end })
+        add({ check = "host_got_snapshot2", timeout = 200, cond = function() return has("t.snap2") ~= nil end })
+        add({ check = "host_kill_crate_has_exactly_the_guest_items", timeout = 90, cond = function() return bagCounts(got["t.snap2"]) == got["t.snap2"] end })
         return steps
     end
 
@@ -114,5 +116,32 @@ return function(T)
     add({ wait = 15 })
     add({ check = "guest_backpack_still_empty", timeout = 5, cond = function() return carried() == "" end })
     add({ check = "guest_no_dropped_materials", timeout = 5, cond = function() return worldItems() == base end })
+    -- second death: the game's own, BP_MainCharacterManager:KillPlayer (what a crushing door or CheckForGameOver calls)
+    add({ check = "guest_alive_again", timeout = 30, cond = function() return T.first("BP_MainCharacterManager_C"):IsPlayerAlive() end })
+    add({ run = function()
+        local m = im()
+        local r = StaticFindObject(RECIPE)
+        local comps = r:GetRecipeRaw().Components
+        for i = 1, #comps do
+            local it = comps[i]:get().Item
+            if it.Archetype:IsValid() then for _ = 1, it.Quantity do m.Inventory_Player:AddItem(lib():CreateItemInstance(T.world(), it.Archetype, 0), true) end end
+        end
+        local o = {}
+        m["Craft Recipe Asset"](m, r, true, true, o)
+        local a = StaticFindObject(STEEL)
+        for _ = 1, 5 do m.Inventory_Player:AddItem(lib():CreateItemInstance(T.world(), a, 0), true) end
+    end })
+    add({ check = "guest_holds_again", timeout = 5, cond = function() local c = carried(); return c:find("FixElectronics=1", 1, true) ~= nil and c:find("Scrap_Steel=5", 1, true) ~= nil end })
+    add({ wait = 15 })
+    add({ run = function()
+        snap = carried(); base = worldItems()
+        PTNative_MsgToHost(T.localPC():GetAddress(), "t.snap2", snap)
+    end })
+    add({ wait = 8 })
+    add({ run = function() T.first("BP_MainCharacterManager_C"):KillPlayer() end })
+    add({ wait = 20 })
+    add({ check = "kill_guest_backpack_emptied", timeout = 10, cond = function() return carried() == "" end })
+    add({ check = "kill_guest_alive_again", timeout = 30, cond = function() return T.first("BP_MainCharacterManager_C"):IsPlayerAlive() end })
+    add({ check = "kill_guest_still_in_zone", timeout = 20, cond = L.holds(10, function() return T.netMode() == "client" and T.map() == mapName end) })
     return steps
 end
