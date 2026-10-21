@@ -3,13 +3,13 @@
 param([string[]]$Only = @(), [string]$Root = "C:\PacificTogetherTest", [int]$Port = 7700)
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 # scenario = fixture ("" = none); the fixture each one needs comes from its lane's report
-$Suite = [ordered]@{
-    session = ""; sessiontravel = ""; sessionrejoin = ""; zonejoin = ""; safety = ""; nametag = ""
-    overlay = "garage"; carsync = "garage"; carenter = "garage"; storysync = "garage"; pausemenu = "garage"
-    garagesync = "garage"; guestcraft = "garage"; carexit = "garage"; arckey = "garage"; runloop = "garage"; carfeel = "garage"
-    worldsync = "gateway"; guestact = "gateway"; guestparts = "gateway"
-    lootsync = "zone"; lootsync2 = "zone"; backpacksync = "zone"; progsync = "zone"; anomalies = "zone"; anomalies2 = "zone"
-    playerhealth = "zone"; playpath = "zone"; lootcar = "zone"; dropfall = "zone"; guestdeath = "zone"
+$Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run still covers them
+    session = ""; playpath = "zone"; carsync = "garage"; carenter = "garage"; lootsync = "zone"; lootsync2 = "zone"
+    guestact = "gateway"; progsync = "zone"; playerhealth = "zone"; backpacksync = "zone"; garagesync = "garage"; guestparts = "gateway"
+    guestcraft = "garage"; guestdeath = "zone"; lootcar = "zone"; dropfall = "zone"; carexit = "garage"; arckey = "garage"
+    carfeel = "garage"; pausemenu = "garage"; runloop = "garage"; worldsync = "gateway"; storysync = "garage"; overlay = "garage"
+    anomalies = "zone"; anomalies2 = "zone"; safety = ""; nametag = ""; sessiontravel = ""; sessionrejoin = ""
+    zonejoin = ""
 }
 $out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss).txt"
 $failed = @(); $ran = 0
