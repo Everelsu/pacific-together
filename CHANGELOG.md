@@ -8,7 +8,7 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 ### Added
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
-- An in-game overlay: "Pacific Together" and its version at the top right, the session status with ping, and a short
+- An in-game overlay: "Pacific Together" and its version at the bottom right, the session status with ping, and a short
   feed of what the other player does.
 - The launcher shows the build in this download and the build installed in your game.
 - The guest's game shows the host's progress while joined: garage upgrades, research, the route on the map and the

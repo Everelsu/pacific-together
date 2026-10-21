@@ -1,6 +1,6 @@
 -- M6 overlay (overlay.lua of the shipping mod): the version label top right from the menu on, its session status, and the
 -- feed of what the other player does. Read from the outside, through the UMG widget the mod builds (PTOverlayBox):
---   menu: label present, in the viewport, anchored top right, never hit-testable; host: no status alone; guest: "Joining ...";
+--   menu: label present, in the viewport, anchored bottom right, never hit-testable; host: no status alone; guest: "Joining ...";
 --   garage: host "Host . 1 guest . N ms" and "<name> joined"; guest "Guest . <host> . N ms" and "Connected to <host>";
 --   the host puts an item into the trunk and takes it out again -> the guest's feed: "1 item put into trunk", "1 item taken from trunk"
 --   (one line each: bursts merge); the guest enters the car -> the host's feed "<name> entered the car"; lines expire (6 s);
@@ -20,7 +20,7 @@ return function(T)
                 if w:IsValid() and w:IsInViewport() then
                     local r = { lines = {}, hitInvisible = w:GetVisibility() == 3 and b:GetVisibility() == 3 }
                     local a = b.Slot:GetAnchors()
-                    r.anchored = a.Minimum.X == 1 and a.Minimum.Y == 0 and a.Maximum.X == 1 and a.Maximum.Y == 0
+                    r.anchored = a.Minimum.X == 1 and a.Minimum.Y == 1 and a.Maximum.X == 1 and a.Maximum.Y == 1
                     for i = 0, b:GetChildrenCount() - 1 do
                         local t = b:GetChildAt(i)
                         local s = t:GetText():ToString()

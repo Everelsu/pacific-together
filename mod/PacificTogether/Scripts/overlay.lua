@@ -1,4 +1,4 @@
--- In-game overlay (M6): top right, a version label plus a session status line, and under it a short feed of what the mod
+-- In-game overlay (M6): bottom right (the top right holds the quest list), a version label plus a session status line, and under it a short feed of what the mod
 -- syncs ("<name> entered the car", "2 items taken from the trunk x3"). A UMG widget built from Lua (UserWidget ->
 -- CanvasPanel -> VerticalBox -> TextBlocks), never hit-testable. The label shows from the main menu on, also in single
 -- player; the feed only takes messages during a session. overlay.post(text, kind, key): kind picks the colour
@@ -59,9 +59,10 @@ local function build()
     local box = StaticConstructObject(StaticFindObject("/Script/UMG.VerticalBox"), tree, FName("PTOverlayBox"))
     tree.RootWidget = canvas
     local slot = canvas:AddChildToCanvas(box)
-    slot:SetAnchors({ Minimum = { X = 1, Y = 0 }, Maximum = { X = 1, Y = 0 } })
-    slot:SetAlignment({ X = 1, Y = 0 })
-    slot:SetPosition({ X = -18, Y = 12 })
+    -- bottom right, above the game's own key hints there (the top right holds the quest list)
+    slot:SetAnchors({ Minimum = { X = 1, Y = 1 }, Maximum = { X = 1, Y = 1 } })
+    slot:SetAlignment({ X = 1, Y = 1 })
+    slot:SetPosition({ X = -18, Y = -90 })
     slot:SetAutoSize(true)
     local n = { widget = w, cache = {}, lines = {} }
     local function add(t) box:AddChildToVerticalBox(t):SetHorizontalAlignment(3) end -- right

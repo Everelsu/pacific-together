@@ -35,7 +35,7 @@ What works in this build
   costs the guest items the same way it costs the host.
 - Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
   radio and voice lines with subtitles. Only the host's actions move the story on.
-- An overlay at the top right shows the mod version and, during a session, who is connected and the ping, plus a short
+- An overlay at the bottom right shows the mod version and, during a session, who is connected and the ping, plus a short
   feed of what the other player does (joined, got in the car, took items from the trunk, ...). Lines fade after a few
   seconds.
 - The guest's own saves are never written while joined. Only the host's save game is used.
