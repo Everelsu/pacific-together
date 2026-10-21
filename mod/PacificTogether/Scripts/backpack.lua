@@ -268,15 +268,18 @@ net.on("g.bp.rec", function(_, line)
 end)
 
 -- called by health.lua when the guest dies
-function M.died()
+function M.died(pre)
     if not (safety.guest() and synced) then return end
-    local line = encode(read())
+    local line = pre or encode(read())
     net.toHost("g.bp.death", line)
     clear()
     last = nil
     log("PT|bp guest dropped its backpack (%d bytes)", #line)
     ov.post("Backpack dropped as a death crate", "warn")
 end
+
+-- health.lua: the backpack line of the last tick, from before the game's own death penalty ran on the guest
+function M.pre() return last end
 
 -- progression.lua: the guest's backpack changed outside its own tick (run-failure penalty); tell the host now
 function M.flush()
