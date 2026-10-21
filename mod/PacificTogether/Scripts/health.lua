@@ -10,6 +10,9 @@ local safety = require("safety")
 local net = require("net")
 local log = common.log
 
+-- test mutation (docs/TESTING.md): the feature off, like PT_STATUS this is read only by test runs
+local OFF = os.getenv("PT_MUTATE") == "nohealth"
+
 local M = { DEAD_MS = 3000, FALLBACK_MS = 8000, STALE = 8 }
 
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
@@ -35,6 +38,8 @@ local function localPC()
     local pc = UEHelpers.GetPlayerController()
     return valid(pc) and pc or nil
 end
+
+if OFF then return M end
 
 -- guest: dead until the host has moved us (or the fallback timer ran out) -------------------------------------------
 

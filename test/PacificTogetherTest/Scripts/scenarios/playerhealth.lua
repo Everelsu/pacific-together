@@ -2,8 +2,7 @@
 -- one per process), so the guest's damage and healing are its own sim's; the mod shares the numbers (name tag) and handles the
 -- guest's death: no KillPlayer / return to garage, a respawn at the host's car with health restored, the host's run untouched.
 -- Run: tools/run-test.ps1 -Scenario playerhealth -Fixture zone -Headless
--- Mutation nohealth: the test resets PlayerHealth.Minimum on the guest, so the game's own death runs (KillPlayer, travel to the
--- garage): the respawn and run checks FAIL.
+-- Mutation nohealth: health.lua is inert (no shared health, no guest death handling): the tag, respawn and run checks FAIL.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local SAFE = require("scenarios.safety_lib")
@@ -75,10 +74,6 @@ return function(T)
     add({ run = function() mark = L.mark() end })
     add({ wait = 12 })
     add({ run = function()
-        if T.MUTATE == "nohealth" then
-            -- keep the game's own death armed: reset what the mod sets, every second, until the end
-            LoopInGameThreadWithDelay(500, function() local _, _, h = health(); if h then h.Minimum = 0 end end)
-        end
         adjust(-0.3)
     end })
     add({ check = "guest_health_lowered", timeout = 5, cond = function() return near(pct(), 70) end })
