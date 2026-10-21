@@ -507,3 +507,30 @@ Observations
 Unknowns
 - None of this has seen a human playtest yet: real door and loot-UI input, the guest's view of anomaly effects, garage
   container sync and the car across a map change.
+
+## 2026-10-21 afternoon: second sync pass, story, progression, launcher
+
+Lanes merged into main, each with its spike doc: backpack (`M4-backpack.md`, `backpacksync` 32/32, `nobackpack` 22/32),
+guest actions (`M3-guestact.md`, `guestact` 31/31, `noguestact` 24/31), items 2 (`M4-loot2.md`, `lootsync2` 33/33 zone and
+21/21 garage, `nolootsync2` 23/33), story (`M5-story.md`, `storysync` 24/24, `nostory` 21/24), anomalies (`M5-anomalies.md`,
+`anomalies` 19/19, `noanom` 17/19), progression (`M5-progression.md`, `progsync` 30/30, `noprog` 20/30), and the launcher app
+(`tools/package/app`, C# WinForms built with the in-box .NET Framework csc).
+
+Observations
+- Hazards hurt through MSG_Damage_* messages to pawns in range. The guest's pawn on the host runs the same receiver, which
+  adjusts the host's one PlayerHealth: a hit on the guest hurt the host (100 -> 90) and not the guest. `anomalies.lua`
+  forwards the message to the guest and gives the host back what it lost.
+- The game's save is its own SAVC container with a native per-object serializer, and `LoadGame` loads the map. So a
+  SaveGameToMemory/LoadGameFromMemory round trip cannot carry progression; it travels as state sets instead (whiteboard
+  tags, research nodes, route legs, logbook).
+- Garage storage lives in `Inventories_Garage`, keyed by station tag; `Inventory_Garage*` is nil in `RB_Garage`. The
+  morning's loot sync never covered it.
+- The `carsync` camera check read `PlayerCameraManager` (last frame's view) against the car's current transform, i.e.
+  speed x frame time. Against the previous frame it is 6.7 uu (`20261021-134010-carsync`).
+- UE4SS hooks on Blueprint functions run after the function returns (guest-actions lane).
+- Worktrees made for lanes branch from the commit the session started from, not always from current main: three
+  afternoon lanes had to merge main first.
+
+Unknowns
+- Untested with real input: the loot UI, scrapper, cutter and siphon, the ARC screen hover-and-press, cutscenes on the
+  guest, story props, the Tourist freeze check (it timed out although the log shows the freeze), and a real wrecked run.
