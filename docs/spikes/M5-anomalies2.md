@@ -5,10 +5,11 @@ Follows `M5-anomalies.md` (damage forwarding, Tourist freeze) and `M5-world.md` 
 
 ## Observations
 
-- Leech and BombRock (`BP_Base_Hazard_WorldItem`) **do replicate on their own** when spawned at runtime on the host: with the whole module off
-  (`noanom2`) the guest still gets a Role 1 copy at the same spot (run `20261021-163808-anom2-anomalies2-noanom2`: `guest_sees_leech/bombrock` pass).
-  The "not replicated" note in M5-world was a guess; `world.lua` skipping them is harmless. Hazards the game itself spawns via spawn points
-  (not tried) and the guest's own spawn points (it may add Leeches of its own) are not covered.
+- Leech and BombRock (`BP_Base_Hazard_WorldItem`) **usually replicate on their own** when spawned at runtime on the host: with the module off
+  (`noanom2`) the guest still got a Role 1 copy at the same spot (run `20261021-163808-anom2-anomalies2-noanom2`), but once not at all (run
+  `20261021-173243-anom2-anomalies2`, "none" for 30 s). So the host loop in `anomalies2.lua` sets replicates/always-relevant on any that have
+  `RemoteRole 0` (the same as `world.lua` does for other hazards; it never logged here, 3 clean runs after). The guest's own spawn points (it
+  may add Leeches of its own) are not cleaned up: unknown.
 - The guest's copy of a BombRock does not blow up on its own: a blast next to the guest costs the guest 25 once (MSG_Damage_Physical_Explosive,
   forwarded by anomalies.lua), not twice.
 - A Leech's leap hurts only the host's character: `CheckForHitPlayer(HitActor)` compares with `BP_MainCharacterManager.CharacterActor`; the hit
@@ -21,8 +22,10 @@ Follows `M5-anomalies.md` (damage forwarding, Tourist freeze) and `M5-world.md` 
   (the same call as crash damage), nothing from the backpack (`BP_InventoryManager_C` is only used to find the car's part).
 - `PopOffPartFromCar` on the host's car (door `Body.DoorsRR`): success, and `car.lua` removes it from the guest's car within a second (`PT|car part removed`).
   So stolen or ripped car parts already disappear for the guest (car lane); no new code.
-- Tourist check: `StartCreepTimer` makes one creep step at once (407 uu in the first second), before any guest view check can run, and the game sets
-  `CreepedToCamera` afterwards; the check measured movement from before that step. The freeze itself works (`ShouldCreep` debug: `seen=true flag=true`).
+- Tourist: the earlier `ShouldCreep` flag hook ran AFTER the game's body, so the first step after a reset (the host's own view clears `CreepedToCamera`)
+  was never held back by a guest's view; the old check passed only because the Tourist had already reached its spot (it creeps in jumps, 407 and 4087 uu
+  seen). Runs `20261021-171232-anom2-tourist-mod` (23/25, freeze fails with the flag hook once the test re-arms the Tourist) and
+  `20261021-172536-anom2-tourist-mod` (25/25 with the new hook).
 
 ## Derived (what is built)
 
@@ -32,8 +35,10 @@ Follows `M5-anomalies.md` (damage forwarding, Tourist freeze) and `M5-world.md` 
 - Grabber: every 100 ms the host asks each grabber whether a guest pawn overlaps its `Cone` (or is within 700 uu of the core when the cone's
   overlap events are off). On first contact the guest takes a hit of 10; while inside (3 s, then a 6 s rest per grabber) the host sends
   `g.anom.pull x y z` (core location) and the guest applies the game's pull force to its own pawn every frame for 0.35 s after each message.
-- Tourist scenario: the baseline for "moved" is taken one second after the creep timer starts, and the control step clears the game's
-  `CreepedToCamera` before the guest looks away (what the host looking at it again would do).
+- Tourist (changed in `anomalies.lua`): the `ShouldCreep` hook is replaced by a single-callback hook on `CreepCheck` (runs after the body, may set the
+  out value): "could creep" becomes false while a guest's camera sees the Tourist. Scenario `tourist` (modes `mod`, `noanom`, no test hook): after the
+  first step the Tourist is put back at its spot with the flag cleared (what the host looking at it would do), so the only thing holding it still is
+  the guest's view; mutation `noanom` fails `tourist_frozen_while_guest_looks` (`20261021-172856-anom2-tourist-noanom`).
 
 ## Checks (scenario `anomalies2`)
 

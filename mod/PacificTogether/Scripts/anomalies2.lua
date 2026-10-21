@@ -1,5 +1,5 @@
 -- Anomalies, second pass (W6, W7). The host runs every hazard; what the guest still lacks:
---   leech               Leech and BombRock (item actors) already replicate by themselves (the guest's copy is Role 1, anomalies2 scenario).
+--   leech, bomb rock    item actors: they mostly replicate by themselves, the host makes sure (guest copy = Role 1, anomalies2 scenario).
 --                       A Leech's leap hurts only the host's character (CheckForHitPlayer compares with BP_MainCharacterManager):
 --                       a leap that hits a guest's pawn on the host gives the guest the game's own 15 damage.
 --   physics grabber     it targets the host's character (BP_MainCharacterManager) only. When a guest's pawn (on the host) is inside its
@@ -37,6 +37,24 @@ local function guestPawnOf(o)
     if not (o and o:IsValid()) then return end
     for _, pc in ipairs(net.guests()) do if pc:IsValid() and pc.Pawn:IsValid() and pc.Pawn:GetAddress() == o:GetAddress() then return pc.Pawn end end
 end
+
+-- ---------------------------------------------------------------- leech and bomb rock exist for the guest
+
+-- They usually replicate by themselves, not always (run 20261021-173243: a spawned Leech never reached the guest): the host makes sure.
+LoopInGameThreadWithDelay(1000, function()
+    if not (M.enabled and safety.active() and not safety.guest()) then return end
+    try("worlditem", function()
+        each("BP_Base_Hazard_WorldItem_C", function(o)
+            if o.RemoteRole ~= 0 or not o:HasAuthority() then return end
+            o:SetReplicates(true)
+            o:SetReplicateMovement(true)
+            o.bAlwaysRelevant = true
+            o.NetUpdateFrequency = 10
+            o:ForceNetUpdate()
+            log("PT|anom2 replicating %s", o:GetFName():ToString())
+        end)
+    end)
+end)
 
 -- ---------------------------------------------------------------- leech
 
