@@ -1,4 +1,4 @@
--- P7: the shipping name tag. The host gives the guest a character 300 uu in front of it; each side must show a tag with
+-- P7: the shipping name tag (with health.lua a second line "<n>%" follows the name). The host gives the guest a character 300 uu in front of it; each side must show a tag with
 -- the other's PlayerState name on the other's character (never on its own), full strength near, faded in between
 -- (NEAR 1500, FAR 5000) and hidden at 6000. -Mutate nosession: the guest never joins, so no tag may exist and the
 -- tag checks FAIL. -Mutate shot: screenshots at each distance (run without -Headless).
@@ -19,7 +19,7 @@ return function(T)
             T.log("PT|info tag %s n=%d own=%d text='%s' name='%s' alpha=%s want=%d hidden=%s mat=%s camd=%.0f", id, #tags, #own, s and s.text or "-", name,
                 s and tostring(s.alpha) or "-", want, s and tostring(s.hidden) or "-", s and s.mat or "-", cd)
             if T.MUTATE == "shot" then T.shot(id) end
-            return #tags == 1 and #own == 0 and s.text == name and name ~= "" and math.abs(s.alpha - want) <= 13 and wantAlpha(s.alpha, s.hidden)
+            return #tags == 1 and #own == 0 and (s.text == name or s.text:match("^(.-)\n") == name) and name ~= "" and math.abs(s.alpha - want) <= 13 and wantAlpha(s.alpha, s.hidden)
         end }
     end
     local near = function(a, hidden) return a == 255 and not hidden end
