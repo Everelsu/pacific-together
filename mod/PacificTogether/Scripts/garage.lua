@@ -170,8 +170,27 @@ end
 
 RegisterLoadMapPostHook(function() done = {} end)
 
+-- The guest presses the back-door button: its own press toggles its own switch, the host's copy of the button gets the same press
+-- (the host's switch is the truth and comes back in g.garage.sw). Registered once the button's class is loaded (garage map).
+local hooked = false
+local function hookButton()
+    if hooked or not live(FindFirstOf("BP_BackDoorButton_01_C")) then return end
+    local ok = pcall(RegisterHook, "/Game/Gameplay/CarGarage/BP_BackDoorButton_01.BP_BackDoorButton_01_C:BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature", function()
+        if M.enabled and safety.guest() then net.toHost("g.garage.btn", "") end
+    end)
+    hooked = ok
+end
+net.on("g.garage.btn", function()
+    local b = FindFirstOf("BP_BackDoorButton_01_C")
+    if M.enabled and live(b) then
+        b.Highlight:InteractPressed(nil)
+        b.Highlight:InteractReleased(nil)
+    end
+end)
+
 LoopInGameThreadWithDelay(500, function()
     if not M.enabled or not netted() then last, want = nil, nil return end
+    try("hook", hookButton)
     if safety.guest() then try("guest", guestTick) elseif safety.active() then try("host", hostTick) end
 end)
 

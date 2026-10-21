@@ -47,3 +47,18 @@ directors and applies them with the game's own state names. Mutation `nogarage`.
 - Front door / exit gate switch sync (code applies all three switches, scenario drives only the rear button); car driving out; obstruction reversal.
 - Upgrades removed on the host (a deconstruct) are not removed on the guest; guest-side upgrade actors' own build animations.
 - Rooms opened by the host (hidden-actor lists) are driven by the same spawner install (`GetHideActors`), not separately checked.
+
+## Follow-up (rebased on main 7a0c687)
+- Geometry (fixture): car in the yard at (-3847,-1883); rear door (-360,-496) faces -X; front door (771,-496) faces +X; the road is beyond x=771.
+  A waypoint autopilot (steer by yaw error, throttle 1: (-1800,-1000) (-700,-496) (400,-496) (2500,-496)) drives the car out through both
+  doors in about 20 s and it ends at x=3355. `GSS_Garage_ExitGateOpened` is only the level-transition switch (the director copies the front door's), not a
+  blocking gate.
+- Front door: its director writes the switch every frame (scanned leg AND can embark), so the scenario stops it and sets state `LegSelectedAndEmbark` ON,
+  which is what a chosen route does. Setting another state name did not turn the switch on.
+- Guest presses the rear button: post-hook on `BP_BackDoorButton_01_C:BndEvt__Highlight_..._OnHighlightInteract__DelegateSignature` (registered when the
+  class is loaded) sends `g.garage.btn`; the host presses its own copy. Proved: guest press closes the host's door.
+- Unmaker: no class or string of that name exists in the atlas or dumps. The shredder station (`BP_GarageStation_PartShredder`, upgrade
+  `UP_Garage_PartShredder_Install`) is the closest guess ("unmaking" parts); fax, shredder and destabilizer are all spawner upgrades and all reach the guest.
+- Results: `20261021-232034-pt1-garage-garagesync` 34/34; `nogarage` `20261021-233202-pt1-garage-garagesync-nogarage` 23/34 (11 FAIL: doors, exit gate,
+  parts, car stuck behind the closed doors).
+- Still not driven: a real route selection opening the front door; the guest riding in the car through the doors; obstruction reversal.
