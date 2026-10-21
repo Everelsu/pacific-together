@@ -230,7 +230,10 @@ return function(T)
         c:K2_HandleSetCharacterLocation(xf, false, false)
     end })
     add({ wait = 2 })
-    add({ run = function() L.car().SLOT_FrontLeftDoor:GetItemActor({}):StartEntry(false) end })
+    add({ run = function()
+        if os.getenv("PT_VARIANT") == "nodoor" then toHost("g.car.enter") return end
+        L.car().SLOT_FrontLeftDoor:GetItemActor({}):StartEntry(false)
+    end })
     add({ check = "guest_seated", timeout = 60, cond = function()
         local car, me = L.car(), T.myPawn()
         if not (car and me and attached(me, car)) then return false end

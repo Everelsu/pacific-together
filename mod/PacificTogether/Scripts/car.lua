@@ -249,10 +249,8 @@ net.on("g.car.enter", function(pc)
     local char, car = guestChar(pc), theCar(true)
     if not char or not car then return end
     if same(char:GetAttachParentActor(), car) then return end
-    if dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()) > 1500 then
-        log("PT|car enter refused: guest too far from the car")
-        return
-    end
+    -- shortcut: no reach check (a client-side teleport did not move the guest on the host); add one when doors are real input
+    log("PT|car enter from %.0f uu", dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()))
     seat(char, car)
 end)
 
@@ -498,7 +496,8 @@ local function hookAll()
             if common.netMode() ~= "client" then return end
             sendEnter()
             -- the door flow set this and waits for the (muted) enter to end it
-            ExecuteInGameThreadWithDelay(500, function() pcall(function() self:get().PlayerStartedEnteringCar = false end) end)
+            local door = self:get() -- a hook parameter must not outlive the callback
+            ExecuteInGameThreadWithDelay(500, function() pcall(function() if valid(door) then door.PlayerStartedEnteringCar = false end end) end)
         end)
         if not okc then log("PT|error car door hook %s", tostring(e)) end
     end)
