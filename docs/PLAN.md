@@ -226,6 +226,13 @@ Progress (2026-10-20, lanes F1 and F2 merged; details in `docs/spikes/M2-session
 | Q9 | Implemented: own crash marker, no CrashReportClient start, Sentry DSN cleared, `sentry_init` refused (`safety_crash`, `safety_solo`). The D23 firewall crash run is ready (`tools/q9-firewall.ps1`, scenario `crashfw`, dry run checked) and needs the owner's elevated run |
 | G5 | Implemented, tested with a guest (`safety`); not isolated from the game's own multiplayer behaviour, real menu path untested |
 
+### Prototype day (2026-10-21): first pass of M3-M5 for playtesters
+
+Lanes merged into main and checked together there: `carsync` 35/36 and 36/36 (C1-C4, C7), `lootsync` 34/34 (W1, W2, C6, G1),
+`worldsync` 27/27 (W3, W4, W6 partly, G3), `playerhealth` 26/26 (P4, D6 without the bag), `carenter` 21/21, smoke set and
+`sessiontravel` all pass. Dev zip `PacificTogether-0.0.4-dev-965154f`. Gaps are in the lanes' spike docs and `NOTES.md`; not done:
+P5, C5, C9, W7, W8, W11, item durability, wreck scrap, the guest's death bag.
+
 ### M3 Car (M-L)
 
 C1-C7: door interaction for both, passenger seat, interpolated car on the guest, visible state, shared health and
