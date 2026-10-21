@@ -20,11 +20,10 @@ return function(T)
 
     if T.ROLE == "host" then
         local function ui() return T.first("BP_UIManager_C") end
+        -- the HUD keeps the menu in the viewport and shows/hides it (PDP_Game_Hud SetPauseMenuWidgetVisible)
         local function menu()
-            for _, w in ipairs(FindAllOf("PDP_PauseMenu_C") or {}) do if w:IsValid() and w:IsInViewport() then return w end end
-            for _, w in ipairs(FindAllOf("PDP_PauseMenu_Main_C") or {}) do
-                if w:IsValid() and w:IsInViewport() then return w.PDP_PauseMenu end
-            end
+            local w = T.localPC():GetHUD().PauseMenuWidget
+            if w:IsValid() and w:IsInViewport() and w:IsVisible() then return w.PDP_PauseMenu end
         end
         local function paused() return StaticFindObject("/Script/Engine.Default__GameplayStatics"):IsGamePaused(T.world()) end
         local function open()
@@ -39,7 +38,7 @@ return function(T)
             if not ok then ui()["Set Pause Menu Opened"](ui(), false) end
         end
         local function settings()
-            local ok, err = pcall(function() menu():BndEvt__PDP_MenuItem_Settings_K2Node_ComponentBoundEvent_6_Pressed__DelegateSignature(0) end)
+            local ok, err = pcall(function() menu():BndEvt__PDP_MenuItem_Settings_K2Node_ComponentBoundEvent_6_Pressed__DelegateSignature(FName("Settings")) end)
             T.log("PT|info pausemenu settings ok=%s %s", tostring(ok), tostring(err or ""))
         end
         local function option(on)
