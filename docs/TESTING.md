@@ -148,3 +148,15 @@ so several can sit in one SaveGames folder.
 - Remake (build or game update): start `-Scenario repl` (no `-Fixture`), follow each `fixture.txt` through `tools\repl.ps1`,
   copy `odsaveN.sav` from `<root>\client1\PenDriverPro\Saved\SaveGames` into `local\fixtures\<name>\`. Never copy saves from
   the real install. `UserNewGame(slot, CHALLENGE)` (expedition) hangs and then crashes the game, do not use it.
+
+## Playing by hand
+
+`tools/play-local.ps1` starts the two test copies windowed side by side (960x540 each, `-ResX/-ResY` to change) with no
+test bots, so you can try things yourself. The guest joins the host by itself (`PT_JOIN=127.0.0.1:<port>`, retried at the
+menu until the host listens); the host's shipping mod listens like a real player's. The test mod stays inert (no `PT_SCENARIO`).
+
+- `tools/play-local.ps1`: both stop at the main menu; start or load a game on the host, the guest joins once it listens.
+- `tools/play-local.ps1 -Fixture garage|zone`: the host loads that fixture save (the test mod's `repl` scenario does only
+  that), the guest follows. The host copy's own saves are put back when the script ends.
+- `-Root` (default `C:\PacificTogetherTest`), `-Port`. It refuses to start while a game from `-Root` runs, waits until
+  both games are closed (Ctrl+C closes them) and prints each side's `UE4SS.log` path.
