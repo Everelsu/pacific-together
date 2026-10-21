@@ -62,6 +62,8 @@ end
 local function die(h)
     dying = true
     log("PT|health guest died")
+    local okb, bp = pcall(require, "backpack") -- D6: the backpack drops as a bag at this spot
+    if okb then pcall(bp.died) end
     local pc = localPC()
     if pc then
         pc:SetIgnoreMoveInput(true)
