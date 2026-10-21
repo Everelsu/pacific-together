@@ -139,7 +139,7 @@ function M.apply(container, want)
 end
 
 function M.path2(o) return o:GetFullName():match("^%S+ (.+)$") end
-M.path, M.archetype, M.system = path, archetype, system
+M.path, M.archetype, M.system, M.bfl = path, archetype, system, bfl
 function M.spec(it) return spec(it, path(it.Archetype)) end -- "path:d12:f7.5" of one item instance
 function M.setProps(it, s) setProps(it, s:match("^[^:]+"), s) end
 function M.asset(p) -- any asset by full path, loaded on demand

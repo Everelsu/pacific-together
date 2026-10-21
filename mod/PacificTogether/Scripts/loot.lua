@@ -20,6 +20,9 @@ local DEAF = os.getenv("PT_MUTATE") == "nointent"
 -- tests only: no wreck parts and no lootable visuals (item state: ids.lua)
 local NO2 = os.getenv("PT_MUTATE") == "nolootsync2"
 
+-- tests only: a template part's own container (a wreck's trunk contents, a box truck's cargo) is not carried
+local NOCAR = os.getenv("PT_MUTATE") == "nocarloot"
+
 local INV = { "Inventory_Trunk", "Inventory_LargeTrunk", "Inventory_Garage", "Inventory_GarageLarge", "Inventory_GarageExpansion1",
               "Inventory_GarageExpansion1_Large", "Inventory_Garage_BackRoom" }
 local DROP = 500 -- uu: an unknown pickup this close to the guest is its own drop
@@ -100,15 +103,35 @@ local function applyFlags(a, f)
 end
 
 -- a template part (abandoned-car door, wheel, gas cap): "pitch,roll,item spec,mesh"
+-- some parts hold items (their ItemInstance has a container): "spec;contents", contents "-" when there is none
+local function partBox(a)
+    if NOCAR then return nil end
+    local ok, c = pcall(function()
+        local o = {}
+        ids.bfl():GetInstanceContainer(a.ItemInstance, a, o)
+        return o.Container
+    end)
+    return ok and alive(c) and c or nil
+end
+local function partContents(a)
+    local c = partBox(a)
+    return c and ids.encode(ids.count(c)) or "-"
+end
+local function partKey(a) return ids.spec(a.ItemInstance) .. ";" .. partContents(a) end
 local function partState(a)
     local r = a:K2_GetActorRotation()
-    return string.format("%.1f,%.1f,%s,%s", r.Pitch, r.Roll, ids.spec(a.ItemInstance), alive(a.RequestedMesh) and ids.path2(a.RequestedMesh) or "-")
+    return string.format("%.1f,%.1f,%s,%s;%s", r.Pitch, r.Roll, ids.spec(a.ItemInstance), alive(a.RequestedMesh) and ids.path2(a.RequestedMesh) or "-", partContents(a))
 end
 
 local function applyState(e, s)
     if e.kind == "P" then
         local spec = s:match("^[^,]*,[^,]*,([^,]*),")
-        if alive(e.actor) and alive(e.actor.ItemInstance) and spec then ids.setProps(e.actor.ItemInstance, spec); e.last = ids.spec(e.actor.ItemInstance) end
+        if alive(e.actor) and alive(e.actor.ItemInstance) and spec then
+            ids.setProps(e.actor.ItemInstance, spec)
+            local body, box = s:match(";(.*)$"), partBox(e.actor)
+            if box and body and body ~= "-" then ids.apply(box, ids.decode(body)) end
+            e.last = partKey(e.actor)
+        end
         return
     end
     local c = e.get()
@@ -193,7 +216,7 @@ local function scanHost()
         if n and not n:find("/Engine/Transient", 1, true) and not byName[n] then
             local e = register("P" .. nextId, "P", a)
             nextId, byName[n] = nextId + 1, e.id
-            e.last = ids.spec(a.ItemInstance)
+            e.last = partKey(a)
             say(line(e))
         end
     end
@@ -263,7 +286,7 @@ local function spawnLootable(class, x, y, z, yaw)
 end
 
 local function spawnPart(class, x, y, z, yaw, state)
-    local pitch, roll, spec, mesh = state:match("^([^,]*),([^,]*),([^,]*),(.*)$")
+    local pitch, roll, spec, mesh = state:match("^([^,]*),([^,]*),([^,]*),([^;]*)")
     local cls, arch = ids.asset(class), spec and ids.archetype(spec:match("^[^:]+"))
     if not cls or not arch then log("PT|loot no part class/archetype %s %s", class, tostring(spec)); return nil end
     local inst = ids.system() and StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary"):CreateItemInstance(UEHelpers.GetWorld(), arch, 0)
@@ -301,7 +324,7 @@ local function onAdd(id, what, x, y, z, yaw, state)
     elseif kind == "P" then
         a = claim("LootableTemplatePart", function(o) return alive(o.ItemInstance) and ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
             or spawnPart(what, x, y, z, yaw, state)
-        if a then local e = register(id, kind, a); applyState(e, state); e.last = ids.spec(a.ItemInstance); return end
+        if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); return end
     else
         a = claim("BP_WorldItem_C", function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what and near(o, x, y, z) end)
             or spawnItem(what, x, y, z, yaw)
@@ -377,7 +400,7 @@ local function scanChanges()
         local c = e.get()
         if e.kind == "P" and alive(e.actor) and alive(e.actor.ItemInstance) then
             -- siphoned fuel, worn durability: the part's item state
-            local s = ids.spec(e.actor.ItemInstance)
+            local s = partKey(e.actor)
             if s ~= e.last then
                 e.last = s
                 say("S|" .. id .. "|" .. partState(e.actor))
