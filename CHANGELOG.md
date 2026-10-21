@@ -13,6 +13,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - The launcher shows the build in this download and the build installed in your game.
 - The guest's game shows the host's progress while joined: garage upgrades, research, the route on the map and the
   logbook. A failed run costs the guest items too, as it does the host.
+- More anomalies act on the guest: Leech leaps, BombRock blasts and Physics Grabbers. Tourists stop while either player
+  looks at them.
 - The story is shared: the guest sees the host's mission and objectives on the HUD and in the journal, and hears the
   host's radio transmissions and voice lines with subtitles.
 - The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
