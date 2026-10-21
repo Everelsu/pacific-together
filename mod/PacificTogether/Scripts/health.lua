@@ -44,6 +44,7 @@ if OFF then return M end
 -- guest: dead until the host has moved us (or the fallback timer ran out) -------------------------------------------
 
 local dying = false
+local loadedAt = 0 -- os.clock() of the last map load
 local seenAlive = false -- health above 1 seen in this level: a fresh level starts at the minimum until the game fills it, that is no death
 
 local function revive()
@@ -126,7 +127,8 @@ local function tick()
         -- the game's death needs Current <= 0: stay above it (a runtime value on the resource, not a saved setting)
         if h.Minimum ~= 1 then h.Minimum, clamped = 1, true end
         if cur > 1.01 then seenAlive = true end
-        if not dying and seenAlive and cur <= 1.01 then die(h) end
+        -- a level loads its health over the first seconds (seen: 100 then the minimum 0.5 s after arrival): no death then
+        if not dying and seenAlive and os.clock() - loadedAt > 8 and cur <= 1.01 then die(h) end
     end
     -- on change, else every 2 s so a late joiner and a missed message catch up
     local msg = string.format("%.1f,%.1f", cur, max)
@@ -138,6 +140,7 @@ end
 
 -- a map change frees the objects we hold
 RegisterLoadMapPreHook(function() manager, seenAlive = nil, false end)
+RegisterLoadMapPostHook(function() loadedAt = os.clock() end)
 
 LoopInGameThreadWithDelay(500, function()
     local ok, err = pcall(tick)
