@@ -62,7 +62,7 @@ return function(T)
         add({ run = function() gpc = L.remotePCs()[1] end })
 
         -- spark tower: a map Tesla (a hazard created at run time destroys itself at once when spawned by hand) and the guest next to it
-        local tesla, home
+        local tesla, home, hhome
         add({ run = function()
             poll(); guestHp0, hostHp0 = guestHp, health()
             local gl, best = L.guestChar():K2_GetActorLocation(), nil
@@ -75,16 +75,19 @@ return function(T)
             end
             tesla = best.o
             home = gl
+            hhome = T.myPawn():K2_GetActorLocation()
+            T.log("PT|info host teleport ok=%s", tostring(T.myPawn():K2_TeleportTo({ X = best.l.X - 350, Y = best.l.Y, Z = best.l.Z + 150 }, { Pitch = 0, Yaw = 0, Roll = 0 })))
             T.log("PT|info teleport ok=%s", tostring(L.guestChar():K2_TeleportTo({ X = best.l.X + 350, Y = best.l.Y, Z = best.l.Z + 150 }, { Pitch = 0, Yaw = 180, Roll = 0 })))
             T.log("PT|info tesla %s, guest sent next to it (%.0f uu away from the guest) guestHp=%.0f hostHp=%.0f", T.name(tesla), math.sqrt(best.d), guestHp0, hostHp0)
         end })
         sees("tesla")
         add({ check = "guest_hurt_by_tesla", timeout = 90, cond = function()
             poll()
-            T.log("PT|info tesla: guest hp=%.0f (was %.0f) host hp=%.0f", guestHp, guestHp0, health())
+            local ok, tgt = pcall(function() return tesla.TargetActor:IsValid() and tesla.TargetActor:GetFullName() or "none" end)
+            T.log("PT|info tesla: guest hp=%.0f (was %.0f) host hp=%.0f cooldown=%s target=%s tick=%s", guestHp, guestHp0, health(), tostring(tesla.Cooldown), tostring(tgt), tostring(tesla:IsActorTickEnabled()))
             return guestHp < guestHp0 - 3
         end })
-        add({ run = function() L.guestChar():K2_TeleportTo(home, { Pitch = 0, Yaw = 0, Roll = 0 }) end })
+        add({ run = function() L.guestChar():K2_TeleportTo(home, { Pitch = 0, Yaw = 0, Roll = 0 }); T.myPawn():K2_TeleportTo(hhome, { Pitch = 0, Yaw = 0, Roll = 0 }) end })
         add({ wait = 5 })
         -- pickpocket: a Part Stealer within reach of the guest takes a backpack item (the game only reaches for the host's character)
         local stealer
