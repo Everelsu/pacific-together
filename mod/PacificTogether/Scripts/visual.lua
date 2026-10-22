@@ -15,6 +15,7 @@ local safety = require("safety")
 local log = common.log
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual" } -- the test mutation switches the module off
+M.zone = os.getenv("PT_VISUAL_ZONE") == "1" -- the zone props mirror is OFF by default: it broke playpath, lootsync, lootcar, backpacksync (guest load, collisions); set 1 to try it
 
 local RF_WasLoaded = 0x00080000 -- placed in the map file: the guest has it already
 
@@ -344,10 +345,28 @@ local function make(f)
     else
         applyState(a, f[8] or "")
     end
+    -- copies block pawns and the car but not the interaction/camera traces: a guest's interact, pickup and aim trace must not hit a copy
+    -- (playpath, lootsync2 failed with the copies blocking them)
+    pcall(function()
+        for _, c in ipairs(a:K2_GetComponentsByClass(StaticFindObject("/Script/Engine.PrimitiveComponent"))) do
+            local p = c:get()
+            p:SetCollisionResponseToChannel(0, 0) -- ECC_Visibility
+            p:SetCollisionResponseToChannel(1, 0) -- ECC_Camera
+        end
+    end)
     return a
 end
 
+local nextApply, applyBatch = 0, nil
 local function applyProps()
+    if os.clock() < nextApply then return end -- duty cycle: a mesh load blocks the game thread, the guest's other work (loot copies) must get its share
+    local started = os.clock()
+    local ok, err = pcall(applyBatch)
+    nextApply = os.clock() + (os.clock() - started)
+    if not ok then error(err) end
+end
+
+function applyBatch()
     local t0 = os.clock() -- a time budget per tick: loading a mesh package can take long, spawns are cheap
     for _ = 1, 200 do
         if os.clock() - t0 > 0.03 then return end
@@ -377,6 +396,7 @@ local function applyProps()
 end
 
 net.on("g.vis.p", function(_, data)
+    if not M.zone then return end
     if not M.enabled then return end
     local kind, rest = data:match("^(%a)\n(.*)$")
     if kind == "M" then
@@ -413,7 +433,7 @@ local function hostTick()
         local p = paintLines()
         if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
-    if beat % 4 == 2 then try("scan", propsHost) end
+    if M.zone and beat % 4 == 2 then try("scan", propsHost) end
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
         if q then net.toGuests("g.vis.p", q) end
