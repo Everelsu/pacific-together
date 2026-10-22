@@ -21,11 +21,14 @@ param(
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
-$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420); sessionabrupt = @(2, 900); sessionabruptzone = @(2, 900); sessiontravel = @(2, 1500); safetysaves = @(2, 900); carenter = @(2, 1200); reload = @(2, 900); channel = @(2, 600); playerhealth = @(2, 900); worldsync = @(2, 600); carsync = @(2, 900); lootsync = @(2, 900); backpacksync = @(2, 1500); guestact = @(2, 900); lootsync2 = @(2, 900); storysync = @(2, 900); anomalies = @(2, 900); progsync = @(2, 900); overlay = @(2, 900); playpath = @(2, 1500); anomalies2 = @(2, 1200) }
+$Defaults = @{ boot = @(2, 150); listen = @(2, 330); dump = @(1, 600); travel = @(2, 1500); zonejoin = @(2, 420); guestsave = @(2, 1200); body = @(2, 420); fixtureload = @(1, 300); session = @(2, 1500); sessionmismatch = @(2, 420); sessionsolo = @(1, 600); sessionrejoin = @(2, 900); safety = @(2, 600); x2garage = @(2, 420); x2zone = @(2, 420); sessionabrupt = @(2, 900); sessionabruptzone = @(2, 900); sessiontravel = @(2, 1500); safetysaves = @(2, 900); carenter = @(2, 1200); reload = @(2, 900); channel = @(2, 600); playerhealth = @(2, 900); worldsync = @(2, 600); carsync = @(2, 900); lootsync = @(2, 900); backpacksync = @(2, 1500); guestact = @(2, 900); lootsync2 = @(2, 900); storysync = @(2, 900); anomalies = @(2, 900); progsync = @(2, 900); overlay = @(2, 900); playpath = @(2, 1500); anomalies2 = @(2, 1200); steamsession = @(2, 900) }
 # M2: in these scenarios the shipping mod's guest joins by itself (PT_JOIN), the test mod never runs `open`
 $AutoJoin = @("session", "sessionlook", "sessionprobe", "sessionrejoin", "sessionabrupt", "sessionabruptzone", "sessiontravel", "carenter", "reload", "channel", "playerhealth", "worldsync", "carsync", "lootsync", "backpacksync", "guestact", "lootsync2", "storysync", "anomalies", "progsync", "overlay", "playpath", "anomalies2")
 # per-run Engine.ini additions, restored after the run; the mutations in skip run without them
 $IniEdits = @{ zonejoin = @{ client = "[/Script/OnlineSubsystemUtils.IpNetDriver]`r`nResolutionConnectionTimeout=120`r`n"; skip = @("noconfig", "cdo") } }
+# M6: the shipping mod's Steam lobby/join runs in these scenarios only (test runs keep it off so they never touch the owner's Steam presence);
+# the guest's join request comes through a file instead of Steam's command line (steam.lua inbox)
+$SteamMod = @("steamsession")
 # Q9: a side crashes on purpose, so the run needs that crash instead of "no crash" and keeps waiting after it
 $CrashExpected = @("safety_crash", "crashfw")
 # S5: a scenario asks the runner to kill a side (PT|runner kill side=<role> n=<k>) and start it again later
@@ -141,6 +144,7 @@ function Start-Side($s, $life) {
     $env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
     if ($Tunnel) { $env:PT_TUNNEL = $Tunnel }
     $env:PT_LIFE = "$life"
+    if ($SteamMod -contains $Scenario) { $env:PT_STEAM = "1"; $env:PT_STEAM_INBOX = Join-Path $Root "steam-inbox.txt" }
     try {
         $env:PT_ROLE = $s.Role
         $env:PT_JOIN = if ($s.Role -eq "client" -and $AutoJoin -contains $Scenario) { "127.0.0.1:$Port" } else { "" }
@@ -152,7 +156,7 @@ function Start-Side($s, $life) {
         $script:procs += $s.Proc
         Write-Host "started $($s.Role) life $life PID $($s.Proc.Id)"
     } finally {
-        Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN, Env:PT_TUNNEL, Env:PT_LIFE -ErrorAction SilentlyContinue
+        Remove-Item Env:PT_ROLE, Env:PT_SCENARIO, Env:PT_STATUS, Env:PT_HOST, Env:PT_MUTATE, Env:PT_FIXTURE, Env:PT_JOIN, Env:PT_TUNNEL, Env:PT_LIFE, Env:PT_STEAM, Env:PT_STEAM_INBOX -ErrorAction SilentlyContinue
     }
 }
 foreach ($s in $sides) {

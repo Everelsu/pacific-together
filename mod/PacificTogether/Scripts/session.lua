@@ -26,6 +26,10 @@ end
 local JOIN = joinAddress()
 -- guest: a session is wanted until the player quits to the menu or the host refuses us
 local guestActive = JOIN ~= nil
+-- M6: Steam join (steam.lua) hands us a tunnel address later through M.setJoin; M.join is what overlay.lua shows
+local M = { join = JOIN, wanted = function() return guestActive end }
+local okSteam, steam = pcall(require, "steam")
+if not okSteam then steam = nil end
 
 local function world() return UEHelpers.GetWorld() end
 -- destroyed actors stay findable (and IsValid) until garbage collection; calling into them can crash the game
@@ -58,8 +62,12 @@ local function gameBuild() return PTNative_GameBuild and PTNative_GameBuild() or
 -- S4 hello, guest -> host over the stock reliable ServerChangeName RPC; the host puts the login name back afterwards.
 -- Never rewrite the hooked RPC's string parameter: that corrupted the host's heap (docs/spikes/M2-session.md).
 local function hello()
-    return string.format("PT|hello mod=%s protocol=%d game=%s build=%d", common.MOD_VERSION, common.PROTOCOL_VERSION,
+    local s = string.format("PT|hello mod=%s protocol=%d game=%s build=%d", common.MOD_VERSION, common.PROTOCOL_VERSION,
         gameVersion(), gameBuild())
+    -- S2: the Steam id and name, so the host names us by the persona and keys our backpack by the id (spaces and more percent-encoded)
+    local sid, persona = steam and steam.identity()
+    if sid then s = s .. " sid=" .. sid .. " name=" .. persona:gsub("[^%w]", function(c) return string.format("%%%02X", c:byte()) end) end
+    return s
 end
 local function parseHello(s)
     if not s:find("^PT|hello ") then return nil end
@@ -125,6 +133,10 @@ end
 -- host --------------------------------------------------------------------------------------------------------------
 
 local greeted = {} -- remote PC full name -> true once its hello was accepted
+local guests = {} -- remote PC full name -> { login = name it came with, sid = SteamID or nil }
+
+-- for backpack.lua: who a guest is as the host's hello learned it
+function M.guestInfo(pc) return guests[pc:GetFullName()] end
 
 local function refuse(pc, reason)
     log("PT|session refused %s: %s", fullName(pc), reason)
@@ -181,6 +193,12 @@ local function onHello(pc, s)
         end
     end
     greeted[key] = true
+    -- S2: a guest with Steam is named by its persona and keyed by its SteamID; the login name stays as the backpack's old key
+    guests[key] = { login = name, sid = h.sid and h.sid:match("^%d+$") }
+    log("PT|session guest %s login=%s sid=%s", key, name, tostring(guests[key].sid))
+    if guests[key].sid and h.name then
+        name = h.name:gsub("%%(%x%x)", function(x) return string.char(tonumber(x, 16)) end)
+    end
     -- outside the RPC's hook, so the spawn's own hooks and Blueprint events do not run nested in it. A guest that
     -- connects while the host still loads a zone logs in before the host's own character exists: look again each second.
     local function try(n)
@@ -227,7 +245,7 @@ end
 local attempt, lastJoin = 0, -100
 local function join()
     -- the boot menu load and the start-up both ask; one open at a time
-    if not guestActive or mapOf(world()) ~= MENU or os.time() - lastJoin < 5 then return end
+    if not JOIN or not guestActive or mapOf(world()) ~= MENU or os.time() - lastJoin < 5 then return end
     attempt, lastJoin = attempt + 1, os.time()
     local mine = attempt
     StaticFindObject("/Script/OnlineSubsystemUtils.Default__IpNetDriver").ResolutionConnectionTimeout = CONNECT_TIMEOUT
@@ -235,6 +253,16 @@ local function join()
     console("open " .. JOIN)
     -- a connect that fails without a map load leaves us in the menu: try again once it has surely timed out
     ExecuteInGameThreadWithDelay((CONNECT_TIMEOUT + 10) * 1000, function() if mine == attempt then join() end end)
+end
+
+-- M6: steam.lua resolved the lobby's host to a tunnel address; from here on we are an ordinary guest
+function M.setJoin(addr)
+    JOIN, M.join, guestActive, lastJoin = addr, "via Steam", true, -100
+    if PTNative_SetAutoListen then PTNative_SetAutoListen(false) end
+    StaticFindObject("/Script/OnlineSubsystemUtils.Default__IpNetDriver").ResolutionConnectionTimeout = CONNECT_TIMEOUT
+    log("PT|session steam join %s rejoin without menu=%s", addr, tostring(PTNative_SetRejoin and PTNative_SetRejoin(addr)))
+    -- a host who was in a world when the request came leaves it for the other host
+    if mapOf(world()) ~= MENU then console("open " .. addr) else join() end
 end
 
 -- hooks -------------------------------------------------------------------------------------------------------------
@@ -321,11 +349,14 @@ end)
 -- the native layer registers its functions only after the scripts started
 ExecuteInGameThreadWithDelay(1000, function()
     hookAll()
-    local host = JOIN == nil
+    -- Steam started the game for a friend's lobby: a guest, whose address steam.lua sets once the lobby is entered
+    local viaSteam = JOIN == nil and steam and steam.pendingJoin() ~= nil
+    if viaSteam then M.join, guestActive = "via Steam", true end
+    local host = JOIN == nil and not viaSteam
     if host and not PTNative_SetAutoListen then log("PT|error session native layer missing, cannot host") end
     local patched = host and PTNative_SetAutoListen and PTNative_SetAutoListen(true)
-    log("PT|session ready role=%s join=%s autolisten=%s game=%s build=%d", host and "host" or "guest", tostring(JOIN), tostring(patched), gameVersion(), gameBuild())
-    if not host then
+    log("PT|session ready role=%s join=%s autolisten=%s game=%s build=%d", host and "host" or "guest", viaSteam and "steam" or tostring(JOIN), tostring(patched), gameVersion(), gameBuild())
+    if JOIN then
         -- the host's map changes drop us: go straight back to the host instead of through the menu (native Browse swap)
         StaticFindObject("/Script/OnlineSubsystemUtils.Default__IpNetDriver").ResolutionConnectionTimeout = CONNECT_TIMEOUT
         log("PT|session rejoin without menu=%s", tostring(PTNative_SetRejoin and PTNative_SetRejoin(JOIN)))
@@ -333,5 +364,5 @@ ExecuteInGameThreadWithDelay(1000, function()
     end
 end)
 
--- for overlay.lua
-return { join = JOIN, wanted = function() return guestActive end }
+-- for overlay.lua, steam.lua, backpack.lua
+return M
