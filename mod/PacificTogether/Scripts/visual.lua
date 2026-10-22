@@ -1,0 +1,460 @@
+-- PT2 visual sync: things one player sees that the other did not (docs/spikes/PT2-visual.md). Messages g.vis.*.
+--   levels  the host's run-time streaming sublevels (the Fig DLC garage dressing: 876 props, candles, graffiti) are loaded on the guest too
+--           (g.vis.lv, ULevelStreamingDynamic::LoadLevelInstance, the call the game made on the host).
+--   paint   paint, decal palette and tinting of every installed car part: the guest builds its parts from archetypes, so a part the host
+--           repainted stayed stock on the guest (g.vis.paint, BP_TintableComponent SetPaint/SetDecal/SetTintingEnabled, the game's own setters).
+--   props   the zone's procedural dressing exists on the host only (the run's spawn pass never runs on a guest): buildings (BuildingFrame),
+--           prefab meshes (StaticMeshActor), doors, destructibles, lights, posters, decals, poles. The host lists them (class or mesh,
+--           transform, door state, broken flag) and the guest spawns and keeps copies (g.vis.p, g.vis.hello). Copies have no gameplay of their
+--           own: a guest opening a door or smashing a crate does not reach the host (known gap).
+-- Inert in single player (Q7): nothing runs without a listening host with a guest, or a guest.
+local UEHelpers = require("UEHelpers")
+local common = require("common")
+local net = require("net")
+local safety = require("safety")
+local log = common.log
+
+local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual" } -- the test mutation switches the module off
+
+local RF_WasLoaded = 0x00080000 -- placed in the map file: the guest has it already
+
+local function live(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+local function try(what, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then log("PT|error visual %s %s", what, tostring(err)) end
+end
+local function fpath(o) return (o:GetFullName():gsub("^%S+ ", "")) end
+local function world() return UEHelpers.GetWorld() end
+local function netted() local m = common.netMode(); return m == "listen" or m == "client" end
+local function mapName()
+    local w = world()
+    return w:IsValid() and UEHelpers.GetGameplayStatics():GetCurrentLevelName(w, true):ToString() or ""
+end
+local function loadObj(path) -- "/Game/x/Y.Y_C" -> object, loading the package when needed
+    local o = StaticFindObject(path)
+    if not (o and o:IsValid()) then
+        pcall(LoadAsset, path)
+        o = StaticFindObject(path)
+    end
+    return (o and o:IsValid()) and o or nil
+end
+local function vec(x, y, z) return { X = x, Y = y, Z = z } end
+
+-- ---------------------------------------------------------------- levels
+
+local function levelPackages()
+    local r = {}
+    for _, s in ipairs(FindAllOf("LevelStreamingDynamic") or {}) do
+        if live(s) and s:IsLevelLoaded() then
+            local ok, p = pcall(function() return s:GetWorldAssetPackageFName():ToString() end)
+            if ok and p ~= "" then r[#r + 1] = p end
+        end
+    end
+    table.sort(r)
+    return r
+end
+
+local asked = {} -- guest: package -> map it was requested in
+local function applyLevels(data)
+    local have = {}
+    for _, s in ipairs(FindAllOf("LevelStreaming") or {}) do
+        if live(s) then
+            local ok, p = pcall(function() return s:GetWorldAssetPackageFName():ToString() end)
+            if ok then have[p] = true end
+        end
+    end
+    local map = mapName()
+    local lib = StaticFindObject("/Script/Engine.Default__LevelStreamingDynamic")
+    for p in data:gmatch("[^\n]+") do
+        if not have[p] and asked[p] ~= map and lib:IsValid() then
+            asked[p] = map
+            local out = {}
+            lib:LoadLevelInstance(world(), p, vec(0, 0, 0), { Pitch = 0, Yaw = 0, Roll = 0 }, out, "")
+            log("PT|visual level %s requested ok=%s", p, tostring(out.bOutSuccess))
+        end
+    end
+end
+
+-- ---------------------------------------------------------------- paint
+
+local TINT = "/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_TintableComponent.BP_TintableComponent_C"
+local NOTAG = { TagName = FName("None") }
+
+local function tintOf(m)
+    local cls = loadObj(TINT)
+    local l = cls and m:K2_GetComponentsByClass(cls)
+    return (l and #l > 0) and l[1]:get() or nil
+end
+local function props(tc)
+    local a, b, c, d = {}, {}, {}, {}
+    tc:GetTintableProperties(a, b, c, d)
+    if not d.Valid then return nil end
+    local function cp(x) return (x and x:IsValid()) and fpath(x) or "" end
+    return cp(a.Paint), b.TintingEnabled and "1" or "0", cp(c.DecalPalette)
+end
+
+local function eachPart(fn)
+    local car = require("car")
+    local cm, cont = car.carManager(), car.equipped()
+    if not (cm and cont) then return end
+    cont.Slots:ForEach(function(_, e)
+        local slot = e:get()
+        if car.itemOf(slot) then
+            local name = car.slotName(slot)
+            local m = car.manifestation and car.manifestation(cm, name)
+            local tc = m and tintOf(m)
+            if tc then fn(name, tc) end
+        end
+    end)
+end
+
+local function paintLines()
+    local L = {}
+    eachPart(function(name, tc)
+        local p, en, d = props(tc)
+        if p then L[#L + 1] = table.concat({ name, p, en, d }, "\t") end
+    end)
+    table.sort(L)
+    return table.concat(L, "\n")
+end
+
+local function applyPaint(data)
+    local want = {}
+    for line in data:gmatch("[^\n]+") do
+        local n, p, en, d = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
+        if n then want[n] = { p, en, d } end
+    end
+    eachPart(function(name, tc)
+        local w = want[name]
+        if not w then return end
+        local p, en, d = props(tc)
+        if not p then return end
+        if w[1] ~= p and w[1] ~= "" then
+            local c = loadObj(w[1])
+            if c then tc:SetPaint(c, NOTAG); log("PT|visual paint %s %s", name, w[1]:match("[^.]+$")) end
+        end
+        if w[3] ~= d and w[3] ~= "" then
+            local c = loadObj(w[3])
+            if c then tc:SetDecal(c, NOTAG); log("PT|visual decal %s %s", name, w[3]:match("[^.]+$")) end
+        end
+        if w[2] ~= en then tc:SetTintingEnabled(w[2] == "1") end
+    end)
+end
+
+-- ---------------------------------------------------------------- props
+
+-- what the host lists: run-time spawned (not placed in the map file) dressing. Wreck parts, loot, hazards, items and car parts have their
+-- own modules, so they are not here. A static mesh that moves (debris, a wreck's loose part) is skipped.
+local ALLOW = { "BP_Destruct_", "BP_Door_", "BP_Prop_", "BP_Poster_", "BP_Decal_", "BP_TpoleTool_", "BP_RoadObstruct_", "BP_BuildingFrame_" }
+local function allowed(cn)
+    for _, p in ipairs(ALLOW) do
+        if cn:sub(1, #p) == p then return not cn:find("Part_", 1, true) end
+    end
+end
+local function nums(s) local a, b, c = (s or ""):match("^([^,]+),([^,]+),([^,]+)$"); return tonumber(a), tonumber(b), tonumber(c) end
+-- paths go over the wire once ("M" lines: id, path); lines carry the ids. Messages are reliable RPCs (256 outstanding bunches per
+-- channel): a burst overflowed it and closed the guest's connection, so the host sends one small message per tick.
+local ids, nextId, newDefs = {}, 0, {}
+local function intern(path)
+    local id = ids[path]
+    if not id then
+        nextId = nextId + 1
+        id = nextId
+        ids[path] = id
+        newDefs[#newDefs + 1] = id .. "\t" .. path
+    end
+    return id
+end
+local function xform(o)
+    local p, r, s = o:K2_GetActorLocation(), o:K2_GetActorRotation(), o:GetActorScale3D()
+    local sc = (math.abs(s.X - 1) + math.abs(s.Y - 1) + math.abs(s.Z - 1) < 0.001) and "-" or string.format("%.3f,%.3f,%.3f", s.X, s.Y, s.Z)
+    return string.format("%.1f,%.1f,%.1f", p.X, p.Y, p.Z), string.format("%.1f,%.1f,%.1f", r.Pitch, r.Yaw, r.Roll), sc
+end
+local function state(o)
+    local t = {}
+    local ok, v = pcall(function() return o.CurrentState end)
+    if ok and type(v) == "number" then t[#t + 1] = "st=" .. v end
+    ok, v = pcall(function() return o.IsBroken end)
+    if ok and v then t[#t + 1] = "br=1" end
+    return table.concat(t, ";")
+end
+local function smaLine(o, name)
+    local sm = o.StaticMeshComponent
+    if not live(sm) or sm.Mobility == 2 then return end
+    local mesh = sm.StaticMesh
+    if not (mesh and mesh:IsValid()) then return end
+    local par = o:GetAttachParentActor()
+    if par and par:IsValid() and par:GetClass():GetFName():ToString():find("^BP_Template_") then return end
+    local ov = {}
+    local def = mesh.StaticMaterials
+    for i = 0, sm:GetNumMaterials() - 1 do
+        local m = sm:GetMaterial(i)
+        local d = def[i + 1]
+        if m and m:IsValid() and d and d.MaterialInterface:IsValid() then
+            local mp = fpath(m)
+            if mp ~= fpath(d.MaterialInterface) and not mp:find("/Engine/Transient", 1, true) then ov[#ov + 1] = i .. "=" .. intern(mp) end
+        end
+    end
+    local l, r, s = xform(o)
+    return table.concat({ "S", (name:gsub("^StaticMeshActor_", "#")), intern(fpath(mesh)), l, r, s, intern(sm:GetCollisionProfileName():ToString()), table.concat(ov, ";") }, "\t")
+end
+local function bpLine(o, cn, name)
+    local l, r, s = xform(o)
+    return table.concat({ "B", name, intern(fpath(o:GetClass())), l, r, s, "", state(o) }, "\t")
+end
+
+local cache = {} -- host: actor name -> { addr, line } of static meshes (they never change)
+local function scan()
+    local cur = {}
+    for _, o in ipairs(FindAllOf("Actor") or {}) do
+        if live(o) and not o:HasAnyFlags(RF_WasLoaded) then
+            local cn = o:GetClass():GetFName():ToString()
+            local sma = cn == "StaticMeshActor"
+            if sma or allowed(cn) then
+                local name = o:GetFName():ToString()
+                local c = cache[name]
+                local line
+                if sma and c and c.addr == o:GetAddress() then
+                    line = c.line
+                elseif not fpath(o):find("/Engine/Transient", 1, true) then
+                    line = sma and smaLine(o, name) or (not sma and bpLine(o, cn, name))
+                    if sma then cache[name] = line and { addr = o:GetAddress(), line = line } or nil end
+                end
+                if line then cur[line:match("^%a\t([^\t]*)")] = line end
+            end
+        end
+    end
+    return cur
+end
+
+local sent, queue, lastMap, lastGuests = {}, {}, nil, 0
+local function reset() sent, queue, cache, ids, nextId, newDefs = {}, {}, {}, {}, 0, {} end
+local function propsHost()
+    local guests = #net.guests()
+    local map = mapName()
+    if map ~= lastMap or guests ~= lastGuests or M.hello then
+        reset()
+        lastMap, lastGuests, M.hello = map, guests, nil
+    end
+    if not M.ready or #queue > 40 then return end -- the guest is still working through the last scan
+    local cur = scan()
+    local add, del = {}, {}
+    for key, line in pairs(cur) do
+        if sent[key] ~= line then add[#add + 1] = line; sent[key] = line end
+    end
+    for key in pairs(sent) do
+        if not cur[key] then del[#del + 1] = key; sent[key] = nil end
+    end
+    -- what is near the players first (the guest builds slowly: every new mesh is a synchronous asset load)
+    local at = {}
+    for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
+        local p = live(pc) and live(pc.Pawn) and pc.Pawn:K2_GetActorLocation()
+        if p then at[#at + 1] = p end
+    end
+    if #at > 0 and #add > 1 then
+        local key = {}
+        for _, line in ipairs(add) do
+            local x, y, z = nums(line:match("^%a\t[^\t]*\t[^\t]*\t([^\t]*)"))
+            local d = math.huge
+            for _, p in ipairs(at) do d = math.min(d, (p.X - (x or 0)) ^ 2 + (p.Y - (y or 0)) ^ 2) end
+            key[line] = d
+        end
+        table.sort(add, function(a, b) return key[a] < key[b] end)
+    end
+    -- small messages, each complete in itself; definitions first (the queue keeps its order)
+    local function batch(kind, list)
+        local buf, n = {}, 0
+        for _, line in ipairs(list) do
+            if n + #line > 2500 then queue[#queue + 1] = kind .. "\n" .. table.concat(buf, "\n"); buf, n = {}, 0 end
+            buf[#buf + 1] = line; n = n + #line + 1
+        end
+        if #buf > 0 then queue[#queue + 1] = kind .. "\n" .. table.concat(buf, "\n") end
+    end
+    if #add + #del > 0 then log("PT|visual host props add=%d gone=%d defs=%d", #add, #del, #newDefs) end
+    batch("M", newDefs)
+    newDefs = {}
+    batch("A", add)
+    batch("D", del)
+end
+net.on("g.vis.hello", function() M.hello, M.ready = true, true; log("PT|visual hello from the guest") end)
+
+local mine, todo, specs, guestMap = {}, {}, {}, nil -- guest: host actor key -> our copy; lines to apply; the line each copy was made from
+local dict, gone = {}, {} -- guest: id -> path (the host's "M" lines); keys the host removed
+
+local function dropAll()
+    for _, a in pairs(mine) do if live(a) then a:K2_DestroyActor() end end
+    mine, todo, specs, dict, gone = {}, {}, {}, {}, {}
+end
+
+local function fields(line)
+    local f = {}
+    for x in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = x end
+    return f
+end
+
+local function applyState(a, st)
+    if st:find("br=1", 1, true) then
+        pcall(function() -- crates and fences are "complex", cones and signs "simple" destructibles; both take the break impulse
+            local z = vec(0, 0, 0)
+            if not a.IsBroken and not pcall(function() a:ComplexBreak(z, a.BaseMesh) end) then a:SimpleBreak(z) end
+        end)
+    end
+    local s = tonumber(st:match("st=(%d+)"))
+    if s then
+        pcall(function() if a.CurrentState ~= s then a["Set Door from State"](a, s) end end) -- 0 closed, 1 and 2 open (either way), 3 and up shut
+    end
+end
+
+-- the host's actor is gone: a destructible that broke there breaks here (debris, sound), then goes; everything else just goes
+local function dispose(a)
+    if not live(a) then return end
+    if a:GetClass():GetFName():ToString():find("^BP_Destruct_") then
+        applyState(a, "br=1")
+        ExecuteInGameThreadWithDelay(8000, function() if live(a) then a:K2_DestroyActor() end end)
+    else
+        a:K2_DestroyActor()
+    end
+end
+
+local function make(f)
+    local asset, l, r, s = dict[f[3]], f[4], f[5], f[6]
+    local x, y, z = nums(l)
+    local pi, ya, ro = nums(r)
+    local sx, sy, sz = 1, 1, 1
+    if s ~= "-" then sx, sy, sz = nums(s) end
+    if not (x and pi and sx and asset) then return nil, "line" end
+    local cls = f[1] == "S" and StaticFindObject("/Script/Engine.StaticMeshActor") or loadObj(asset)
+    if not cls then return nil, "class " .. asset end
+    local mesh = f[1] == "S" and loadObj(asset)
+    if f[1] == "S" and not mesh then return nil, "mesh " .. asset end
+    local rot = { Pitch = pi, Yaw = ya, Roll = ro }
+    local a = world():SpawnActor(cls, vec(x, y, z), rot)
+    if not live(a) then return nil, "spawn " .. asset end
+    a:K2_SetActorLocationAndRotation(vec(x, y, z), rot, false, {}, true) -- the spawn may have nudged it off a blocker
+    a:SetActorScale3D(vec(sx, sy, sz))
+    if f[1] == "S" then
+        local sm = a.StaticMeshComponent
+        sm:SetMobility(2)
+        sm:SetStaticMesh(mesh)
+        if dict[f[7]] then sm:SetCollisionProfileName(FName(dict[f[7]]), true) end
+        for i, id in (f[8] or ""):gmatch("(%d+)=(%d+)") do
+            local m = dict[id] and loadObj(dict[id])
+            if m then sm:SetMaterial(tonumber(i), m) end
+        end
+    else
+        applyState(a, f[8] or "")
+    end
+    return a
+end
+
+local function applyProps()
+    local t0 = os.clock() -- a time budget per tick: loading a mesh package can take long, spawns are cheap
+    for _ = 1, 200 do
+        if os.clock() - t0 > 0.03 then return end
+        local line = table.remove(todo, 1)
+        if not line then return end
+        local f = fields(line)
+        local name, a = f[2], mine[f[2]]
+        if gone[name] then
+            -- the host removed it after this line was sent
+        elseif live(a) and specs[name] == line then
+            -- nothing new
+        elseif live(a) and f[1] == "B" and specs[name] and specs[name]:gsub("\t[^\t]*$", "") == line:gsub("\t[^\t]*$", "") then
+            specs[name] = line
+            applyState(a, f[8] or "") -- only the door state or the broken flag changed
+        else
+            if live(a) then a:K2_DestroyActor() end
+            local ok, na, why = pcall(make, f)
+            mine[name] = ok and na or nil
+            specs[name] = ok and na and line or nil
+            if not ok then log("PT|error visual make %s %s", f[3] or "?", tostring(na))
+            elseif not na then
+                M.failed = (M.failed or 0) + 1
+                if M.failed <= 5 then log("PT|visual could not make %s: %s", f[2], tostring(why)) end
+            end
+        end
+    end
+end
+
+net.on("g.vis.p", function(_, data)
+    if not M.enabled then return end
+    local kind, rest = data:match("^(%a)\n(.*)$")
+    if kind == "M" then
+        for id, p in rest:gmatch("(%d+)\t([^\n]+)") do dict[id] = p end
+    elseif kind == "A" then
+        for line in rest:gmatch("[^\n]+") do
+            todo[#todo + 1] = line
+            gone[line:match("^%a\t([^\t]*)")] = nil
+            M.rx = (M.rx or 0) + 1
+        end
+    elseif kind == "D" then
+        for name in rest:gmatch("[^\n]+") do
+            dispose(mine[name])
+            mine[name], specs[name], gone[name] = nil, nil, true -- a line for it that is still waiting must not bring it back
+        end
+    end
+end)
+
+-- ---------------------------------------------------------------- loops
+
+local wantLevels, wantPaint
+net.on("g.vis.lv", function(_, data) wantLevels = data end)
+net.on("g.vis.paint", function(_, data) wantPaint = data end)
+
+local beat, lastLv, lastPaint = 0, nil, nil
+local function hostTick()
+    beat = beat + 1
+    if not M.ready then return end
+    if beat % 8 == 1 then
+        local s = table.concat(levelPackages(), "\n")
+        if s ~= lastLv or beat % 40 == 1 then lastLv = s; net.toGuests("g.vis.lv", s) end
+    end
+    if beat % 2 == 0 then
+        local p = paintLines()
+        if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
+    end
+    if beat % 4 == 2 then try("scan", propsHost) end
+    if beat % 2 == 0 then -- one small message per 500 ms: see intern()
+        local q = table.remove(queue, 1)
+        if q then net.toGuests("g.vis.p", q) end
+    end
+end
+
+local helloFor, mapSince, lastCopies = nil, 0, -1
+local function guestTick()
+    beat = beat + 1
+    local map = mapName()
+    if map ~= guestMap then
+        guestMap, mapSince = map, os.clock()
+        dropAll()
+        asked, wantLevels, wantPaint, helloFor = {}, nil, nil, nil
+    end
+    -- the host waits for this before it sends anything: a guest that is still loading acks late, and the reliable channel overflows
+    local pc = UEHelpers.GetPlayerController()
+    local pawn = (pc and pc:IsValid()) and pc.Pawn or nil
+    if helloFor ~= map and map ~= "" and map ~= "RB_MainMenu" and live(pawn) and os.clock() - mapSince > 5 then
+        helloFor = map
+        log("PT|visual hello sent=%s map=%s", tostring(net.toHost("g.vis.hello", "")), map)
+    end
+    if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
+    if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
+    if #todo > 0 then try("props", applyProps) end
+    for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
+    if beat % 20 == 0 then
+        local n = 0
+        for _ in pairs(mine) do n = n + 1 end
+        if n ~= lastCopies or #todo > 0 then lastCopies = n; log("PT|visual guest copies=%d queued=%d received=%d failed=%d", n, #todo, M.rx or 0, M.failed or 0) end
+    end
+end
+
+LoopInGameThreadWithDelay(250, function()
+    if not M.enabled or not netted() or not safety.active() then
+        if next(mine) then dropAll() end
+        guestMap, lastMap, sent, queue, M.ready = nil, nil, {}, {}, false
+        return
+    end
+    if safety.guest() then guestTick() else hostTick() end
+end)
+
+M.scan = scan
+return M
