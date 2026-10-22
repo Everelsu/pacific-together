@@ -544,6 +544,26 @@ Observations
 - `sessiontravel` failed in the suite only because the suite gave it no `-Fixture garage` (fixed in run-suite.ps1).
 - pt1-swap saw a trunk stack count drift by one on a full trunk (guest took 10, host dropped 11) in an earlier run.
 
+Local hand playtest 2026-10-22 evening (two games on one PC, logs in `local/playtest-0.0.6-local/`)
+Observations
+- Works by hand: guest join (after the 90 s hello wait), loot a world container as guest, guest drops, host picks up,
+  moves to the trunk; driving together; car exit (camera back on the character, 2 of 3 times).
+- `PT|slow` (main.lua loop timer): in a rendered zone loot.lua still costs 300-400 ms (max ~1 s) every 2 s on both
+  sides after the name->address change; garage.lua:214 ~35 ms every 500 ms, anomalies3.lua:150 ~35 ms/s,
+  guestact.lua:344 ~45 ms/s, upgrades.lua:171 ~190 ms every 30 s. Headless runs show a fraction of this.
+Guesses
+- The common cost is UE4SS `FindAllOf` (walks every UObject, ~35 ms per call with a rendered zone loaded). Fix idea:
+  `NotifyOnNewObject` for the loot classes instead of polling, one full scan at session start; same for the other loops.
+Open (owner wants these fixed next)
+- FPS stutter: above. Biggest: loot.lua discovery/purge, then the 35 ms loops.
+- Guest sees no buildings/walls in a zone, only loot containers: the zone props mirror is off by default (it starved
+  loot sync, 5b70a28); needs pacing near the players before it can be on.
+- Guest stuck after a car exit (camera and walking locked) once of three; F8 dump from that case is missing (the one
+  dump taken was during the join freeze). Controller flags, view target and movement mode were all normal.
+- Host vanished from the driver's seat in the guest's view while driving (once, nothing in either log).
+- Ping spam crash fixed (key flag); a hook wrapper in main.lua raised "attempt to index a function value" and the guest
+  closed without a crash report: hooks are no longer wrapped. Which hook threw is unknown.
+
 Known gaps (rare, not chased per the owner's priority rule)
 - A lootable can stay one snapshot behind on the guest (race between the host's snapshot and a content change). Look at
   that container's `S|L` lines in both logs if a player reports it.

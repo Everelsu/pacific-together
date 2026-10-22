@@ -7,7 +7,9 @@ local common = require("common")
 local log = common.log
 
 local MENU = "RB_MainMenu"
-local HELLO_WAIT_MS = 20000
+-- the guest's hello only arrives once its first zone load ends: 20 s kicked slow loaders, who then sat frozen ~65 s until
+-- the rejoin (two games on one PC, 2026-10-22)
+local HELLO_WAIT_MS = 90000
 -- X11: a connect to a host that is still loading must wait instead of dying at 20 s
 local CONNECT_TIMEOUT = 120
 local CHAR_CLASS = "/Game/Characters/Player/PDP_MainCharacter.PDP_MainCharacter_C"

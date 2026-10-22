@@ -149,7 +149,7 @@ local function applyState(e, s)
 end
 
 local function register(id, kind, actor, invName)
-    local e = { id = id, kind = kind, actor = actor, name = actor and actor:GetFullName() }
+    local e = { id = id, kind = kind, actor = actor, name = actor and actor:GetFullName(), addr = actor and actor:GetAddress() }
     if kind == "L" then e.get = function() return alive(e.actor) and e.actor.InventoryContainer or nil end
     elseif kind == "I" and invName:find("^Stations%.") then
         -- garage storage and lockers: the manager's tag map
@@ -190,38 +190,40 @@ end
 
 -- host ------------------------------------------------------------------------------------------------------------
 
+-- known actors by address: a GetFullName of every lootable, item and wreck part per scan took 370-720 ms in a zone
+-- (local playtest 2026-10-22); the name is only read for actors not seen before
 local function scanHost()
     for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
-        local n = alive(a) and alive(a.InventoryContainer) and a:GetFullName()
-        if n and not byName[n] then
+        local k = a:GetAddress()
+        if not byName[k] and alive(a) and alive(a.InventoryContainer) then
             local e = register("L" .. nextId, "L", a)
-            nextId, byName[n] = nextId + 1, e.id
+            nextId, byName[k] = nextId + 1, e.id
             e.last, e.n = stateOf(e), e.get():GetNumItems()
             say(line(e))
         end
     end
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
-        local n = alive(a) and alive(a.Instance) and not a:GetAttachParentActor():IsValid() and a:GetFullName()
-        if n and not byName[n] then
+        local k = a:GetAddress()
+        if not byName[k] and alive(a) and alive(a.Instance) and not a:GetAttachParentActor():IsValid() then
             local e = register("W" .. nextId, "W", a)
-            nextId, byName[n] = nextId + 1, e.id
+            nextId, byName[k] = nextId + 1, e.id
             say(line(e))
         end
     end
     -- abandoned cars: the body (B) and each part still on it (P); the guest has neither
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplate") or {}) do
-        local n = alive(a) and a:GetFullName()
-        if n and not n:find("/Engine/Transient", 1, true) and not byName[n] then
+        local k = a:GetAddress()
+        if not byName[k] and alive(a) and not a:GetFullName():find("/Engine/Transient", 1, true) then
             local e = register("B" .. nextId, "B", a)
-            nextId, byName[n] = nextId + 1, e.id
+            nextId, byName[k] = nextId + 1, e.id
             say(line(e))
         end
     end
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplatePart") or {}) do
-        local n = alive(a) and alive(a.ItemInstance) and a:GetFullName()
-        if n and not n:find("/Engine/Transient", 1, true) and not byName[n] then
+        local k = a:GetAddress()
+        if not byName[k] and alive(a) and alive(a.ItemInstance) and not a:GetFullName():find("/Engine/Transient", 1, true) then
             local e = register("P" .. nextId, "P", a)
-            nextId, byName[n] = nextId + 1, e.id
+            nextId, byName[k] = nextId + 1, e.id
             e.last = partKey(a)
             say(line(e))
         end
@@ -252,7 +254,7 @@ local function scanHost()
     for id, e in pairs(ents) do
         if e.kind ~= "I" and not alive(e.actor) then
             say("D|" .. id)
-            byName[e.name], ents[id] = nil, nil
+            byName[e.addr], ents[id] = nil, nil
         end
     end
 end
@@ -524,7 +526,7 @@ local function handle(pc, data)
             spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
         elseif op == "T" and not guest and ents[id] then
             local e = ents[id]
-            ents[id], byName[e.name] = nil, nil
+            ents[id], byName[e.addr] = nil, nil
             if alive(e.actor) then e.actor:K2_DestroyActor() end
             if e.kind == "W" then ov.post(ov.other() .. " picked up an item", "info", "pick") end
             say("D|" .. id)

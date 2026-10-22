@@ -554,6 +554,28 @@ local function unstick()
     probe("parent", function() local p = me:GetAttachParentActor(); return p:IsValid() and p:GetFName():ToString() or "none" end)
     probe("riding", function() return riding ~= nil end)
     log("PT|car unstick %s", table.concat(s, " "))
+    -- the controller looked normal when stuck (2026-10-22): dump the game's own car/seat/input state on the character and its manager
+    local function dump(tag, o)
+        if not valid(o) then return end
+        local out = {}
+        pcall(function()
+            local cls = o:GetClass()
+            while cls and cls:IsValid() do
+                cls:ForEachProperty(function(p)
+                    local n = p:GetFName():ToString()
+                    if n:find("Car") or n:find("Seat") or n:find("Driv") or n:find("Input") or n:find("Camera") or n:find("State") or n:find("Mode") or n:find("Lock") then
+                        local ok, v = pcall(function() return o[n] end)
+                        if ok and type(v) ~= "userdata" then out[#out + 1] = n .. "=" .. tostring(v)
+                        elseif ok and v and v.IsValid and v:IsValid() and v.GetFName then out[#out + 1] = n .. "=" .. v:GetFName():ToString() end
+                    end
+                end)
+                cls = cls:GetSuperStruct()
+            end
+        end)
+        log("PT|car unstick %s %s", tag, table.concat(out, " "))
+    end
+    dump("char", me)
+    dump("manager", FindFirstOf("BP_MainCharacterManager_C"))
     if riding and not same(me:GetAttachParentActor(), theCar(false)) then stopRide(me) end
     if not riding then
         pcall(function() me:K2_DetachFromActor(1, 1, 1) end)

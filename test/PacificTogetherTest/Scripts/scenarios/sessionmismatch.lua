@@ -32,8 +32,8 @@ return function(T)
     local function send(s) T.log("PT|info sending %s", s); T.localPC():ServerChangeName(s) end
     local function badHello() send(T.hello(T.MUTATE ~= "match" and "0.0.0-mismatch" or nil)) end
     local function connected() return T.netMode() == "client" and T.map() == "RB_Garage" and T.localPC() ~= nil end
-    local function kicked(id, want)
-        return { check = id, timeout = 60, cond = function()
+    local function kicked(id, want, timeout)
+        return { check = id, timeout = timeout or 60, cond = function()
             assert(T.cls(T.myPawn()) ~= T.CHAR, "possessed a character")
             return T.map() == "RB_MainMenu" and reason ~= nil and reason:find(want, 1, true) ~= nil
         end }
@@ -50,7 +50,7 @@ return function(T)
         T.join("client_connected_silent", "RB_Garage", 120, 60),
         { wait = 2 },
         { run = function() if T.MUTATE == "hello2" then send(T.hello()) end end },
-        kicked("client_refused_no_hello", "no handshake"),
+        kicked("client_refused_no_hello", "no handshake", 130), -- the host waits 90 s (session.lua HELLO_WAIT_MS)
         { run = function() T.log("PT|info reason 2: %s", tostring(reason)) end },
     }
 end
