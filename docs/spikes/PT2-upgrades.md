@@ -33,5 +33,19 @@ No edit to car.lua or carfeel.lua. Messages: `g.up.a` (provider event), `g.up.f`
 - Guest quirks: every 2 s on the guest the quirk status effects (`SE_Quirk_MixAndMatch`, `SE_FAF_DoQuirkBehavior` family, directors included) are removed
   from its status manager.
 
-## Not covered
-See the report; filled in after the runs.
+## Results (local/test-results)
+- `20261022-100251-pt2-upgrades-upgrades` 67/67. Mutation `noupgrades`: `20261022-102806-pt2-upgrades-upgrades-noupgrades` 46/67 (21 fail).
+- First full run (60/69) found: Bracer shield is a hold with `AudioActive` + `blobbyCarMesh` visible (`ShieldActive` stays false); Bubble shield is a toggle
+  (a second press ends it); `-nosound` creates no `Ak Component` (audio only logged, not a check).
+- Guest effect times are "seen at the first 50 ms sample after the host's announcement" (0.00 s measured), the effect arrives with it.
+
+## Not covered / unknowns
+- Impact shield and Anti-Gravity: hooks written (paths from the atlas), not run in a scenario; hooks of classes not yet loaded stay pending until the part exists.
+- Power Grip, Winch, Resource Scanner, Spotlight aim: provider path wired for Power Grip and Spotlight, not tested.
+- Audible sound and ability cooldown lights on the dashboard: not testable headless / not found; the guest's `DoAbilityStarted` also drains the guest's own battery
+  by the initial cost until the next host state message (<= 3 s).
+- Quirk gauge effects (FuelGaugeLies, DashFlicker), wiper speed quirks, headlight brightness/flicker quirks are not carried; horn, lights, doors, wipers on/off,
+  radio, engine, gearbox and interior light are (car.lua, carfeel.lua, upgrades.lua).
+- "Guest fires no quirk": the guest's quirk status effects and directors are removed every 2 s; an `AddItemStatusEffect` on the guest did not even create an
+  effect in the test (count 0), so the check is: none present and no QB `StartBehavior` ran on the guest. Removed objects stay in memory until GC.
+- Guest installing a battery/tank/ability part is guestswap.lua's path (proven there), not repeated here.
