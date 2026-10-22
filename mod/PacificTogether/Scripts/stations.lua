@@ -155,7 +155,9 @@ local function hookAll()
                     if not ok then log("PT|error stations hook %d %s", i, tostring(err)) end
                 end
             end
-            local ok = pcall(RegisterHook, h[1], wrap(h[2]) or function() end, wrap(h[3]))
+            -- Blueprint functions: one callback (it runs after the function, as in guestact.lua); the native PurchaseNode takes pre and post
+            local ok
+            if h[2] and h[3] then ok = pcall(RegisterHook, h[1], wrap(h[2]), wrap(h[3])) else ok = pcall(RegisterHook, h[1], wrap(h[2] or h[3])) end
             if ok then done[i] = true; log("PT|stations hooked %d", i) end
         end
     end

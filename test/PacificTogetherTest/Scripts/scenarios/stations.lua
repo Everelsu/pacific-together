@@ -27,6 +27,17 @@ return function(T)
         table.sort(r)
         return table.concat(r, " ")
     end
+    local function garageRes() -- resource counts in the garage storage containers only (the shared part; backpacks are per player)
+        local c = {}
+        im().Inventories_Garage:ForEach(function(_, v)
+            local a = {}
+            v:get():GetAllItems(a)
+            for _, e in ipairs(a) do local k = arch(e:get()); c[k] = (c[k] or 0) + 1 end
+        end)
+        local keep = {}
+        for _, k in ipairs({ "IA_Resource_Raw_Plasma", "IA_Resource_Raw_Battery", "IA_Resource_Raw_Copper", "IA_Resource_Raw_Electronics" }) do keep[#keep + 1] = k .. "=" .. (c[k] or 0) end
+        return table.concat(keep, " ") -- shared storage counts of what the checks spend (one fixture container is not mirrored, not ours)
+    end
     local function worldRes() -- resource pickups lying in this side's world
         local t, n = {}, 0
         for _, w in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
@@ -48,6 +59,7 @@ return function(T)
     -- research: the first node that costs items and can be bought now
     local function costNode()
         local g = graph()
+        im():SetActiveTier(3, true, true) -- the station screen sets this; without it nothing can be bought
         for _, x in ipairs(FindAllOf("GenericGraphRecipeNode") or {}) do
             if real(x) or x:GetFullName():find("RecipeResearchGraph", 1, true) then
                 if g:IsNodeUnlockable(x) and not g:HasNodeBeenPurchased(x) then
@@ -162,11 +174,11 @@ return function(T)
             end
             return true
         end) })
-        add({ run = function() st.after = resources(owned()); toGuest("t.buydone") end })
+        add({ run = function() st.after = garageRes(); toGuest("t.buydone") end })
         add({ check = "guest_shows_node_purchased", timeout = 60, cond = function() return g("t.bought") == "1" end })
         add({ check = "guest_resources_equal_host", timeout = 60, cond = function()
             local r = g("t.gresources")
-            if r ~= st.after then T.log("PT|info guest resources differ from host") end
+            if r ~= st.after and r ~= st.shownA then st.shownA = r; T.log("PT|info guest garage %s | host %s", tostring(r), st.after) end
             return r == st.after
         end })
 
@@ -197,10 +209,10 @@ return function(T)
             end
             return true
         end) })
-        add({ run = function() st.after2 = resources(owned()); toGuest("t.craftdone") end })
+        add({ run = function() st.after2 = garageRes(); toGuest("t.craftdone") end })
         add({ check = "guest_resources_equal_host_after_craft", timeout = 60, cond = function()
             local r = g("t.gresources2")
-            if r ~= st.after2 then T.log("PT|info guest resources after craft differ from host") end
+            if r ~= st.after2 and r ~= st.shownB then st.shownB = r; T.log("PT|info guest garage %s | host %s", tostring(r), st.after2) end
             return r == st.after2
         end })
         add({ run = function() toGuest("t.done") end })
@@ -246,7 +258,7 @@ return function(T)
     add({ check = "guest_go_buydone", timeout = 180, cond = function() return has("t.buydone") end })
     add({ check = "guest_reports_purchase", timeout = 90, cond = function()
         say("t.bought", graph():HasNodeBeenPurchased(st.node) and "1" or "0")
-        say("t.gresources", resources(owned()))
+        say("t.gresources", garageRes())
         return has("t.go.up")
     end })
 
@@ -275,7 +287,7 @@ return function(T)
         say("t.crafted", st.crafted and "1" or "0")
     end })
     add({ check = "guest_reports_resources_after_craft", timeout = 180, cond = function()
-        say("t.gresources2", resources(owned()))
+        say("t.gresources2", garageRes())
         return has("t.done")
     end })
     return steps
