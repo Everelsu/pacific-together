@@ -6,13 +6,10 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 ## [0.0.5] - unreleased
 
 ### Added
-<<<<<<< HEAD
 - You see where the other player is: a marker on the ARC map in the car, and a blue marker with their name and distance on the HUD once they are more than 30 m away (closer, the name tag shows).
-=======
 - Car upgrades show for the guest: when the host fires nitro, the jump rack, the shields or the juke, the guest sees and hears
   them on the car; bigger batteries and fuel tanks grow the guest's gauges too; the interior light follows the host. The
   Chrono Dilator still does nothing in co-op. The guest's car no longer rolls its own quirks.
->>>>>>> worktree-agent-a6d682cf73c3b7e29
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
 - An in-game overlay: "Pacific Together" and its version at the bottom right, the session status with ping, and a short
