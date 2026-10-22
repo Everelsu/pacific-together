@@ -1,0 +1,256 @@
+-- P1 hands: what the other player holds and does with it. The game is first person: a held item is a hand manifestation actor
+-- (BP_BaseHandManifestation_C, local to each process, drawn on the first-person arms), so nothing of it reaches the other player's
+-- view of the character. Each side reports its own hand (item meshes, size, toggle state) and tool use; the other side mirrors it
+-- on the character it has of us: StaticMeshActors on the hand_r bone (large items in front of the chest), a spot light for an
+-- "on" flashlight, a swing of the item on use. Nothing replicates, nothing exists outside a session (Q7).
+-- The mannequin skeleton has no tool animation (only ALS turn and get-up montages), so the swing is procedural.
+local UEHelpers = require("UEHelpers")
+local common = require("common")
+local safety = require("safety")
+local net = require("net")
+local log = common.log
+
+local M = {}
+if os.getenv("PT_MUTATE") == "nohands" then return M end
+
+local CHAR = "PDP_MainCharacter_C"
+local SWING_S = 0.45
+local function valid(o) return type(o) == "userdata" and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+local function path(o) return valid(o) and (o:GetFullName():match("^%S+ (.+)$")) or nil end
+
+-- ours ----------------------------------------------------------------------------------------------------------------
+
+local function ownChar()
+    local pc = UEHelpers.GetPlayerController()
+    local p = valid(pc) and pc.Pawn
+    if valid(p) and p:GetClass():GetFName():ToString() == CHAR then return p end
+    local cm = FindFirstOf("BP_MainCharacterManager_C")
+    return valid(cm) and valid(cm.CharacterActor) and cm.CharacterActor or nil
+end
+
+local SMC, LIGHT = StaticFindObject("/Script/Engine.StaticMeshComponent"), StaticFindObject("/Script/Engine.LightComponent")
+
+-- What the item shows in the hand: its visible static meshes (an item's CurrentItemMesh; a tool has a few: can body, handle, ...),
+-- the biggest first. SM_bboxTube is a VFX volume some tools carry.
+local function heldParts(h)
+    local list = {}
+    for _, c in ipairs(h:K2_GetComponentsByClass(SMC)) do
+        c = c:get()
+        local sm = valid(c) and c:IsVisible() and c.StaticMesh
+        if valid(sm) and not sm:GetFullName():find("bboxTube", 1, true) then list[#list + 1] = { c = c, sm = sm, r = sm:GetBounds().SphereRadius } end
+    end
+    table.sort(list, function(a, b) return a.r > b.r end)
+    return list
+end
+
+-- "<mesh>@<tx,ty,tz,qx,qy,qz,qw,sx,sy,sz>" per part; the others' transforms are relative to the first
+local function encodeParts(list)
+    local out, kml = {}, UEHelpers.GetKismetMathLibrary()
+    local base = list[1] and list[1].c:K2_GetComponentToWorld()
+    for i, p in ipairs(list) do
+        local t = i == 1 and { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+            or kml:MakeRelativeTransform(p.c:K2_GetComponentToWorld(), base)
+        out[#out + 1] = string.format("%s@%.2f,%.2f,%.2f,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f", path(p.sm), t.Translation.X, t.Translation.Y, t.Translation.Z,
+            t.Rotation.X, t.Rotation.Y, t.Rotation.Z, t.Rotation.W, t.Scale3D.X, t.Scale3D.Y, t.Scale3D.Z)
+    end
+    return table.concat(out, ";")
+end
+
+-- "<archetype>|<size>|<on 0/1>|<light kind>|<parts>"; "" for an empty hand
+local function localState()
+    local c = ownChar()
+    if not c then return "" end
+    local o = {}
+    c:GetActiveHandItem(false, o)
+    local h = o["Hand Item"]
+    if not valid(h) or not valid(h.Instance) then return "" end
+    local arch = h.Instance.Archetype
+    local on, kind = 0, "none"
+    local ok, v = pcall(function() return h.IsOn end)
+    if ok and v == true then on = 1 end
+    if h:K2_GetComponentsByClass(LIGHT)[1] then kind = h:GetClass():GetFName():ToString():find("Camping", 1, true) and "point" or "spot" end
+    return string.format("%s|%d|%d|%s|%s", valid(arch) and arch:GetFName():ToString() or "?", arch.Size or 0, on, kind, encodeParts(heldParts(h)))
+end
+
+-- theirs ----------------------------------------------------------------------------------------------------------------
+
+local remote = { state = "", at = 0 } -- last report from the other player
+local mirrors = {}                    -- character full name -> { actor, parts, light, state, swingAt }
+local handledUse = nil
+
+local function otherChars()
+    local list, me = {}, ownChar()
+    local wn = UEHelpers.GetWorld():GetFullName()
+    for _, c in ipairs(FindAllOf(CHAR) or {}) do
+        if valid(c) and c:GetWorld():GetFullName() == wn and not (valid(me) and c:GetFullName() == me:GetFullName()) then list[#list + 1] = c end
+    end
+    return list
+end
+
+local function spawn(char, class)
+    local gs = UEHelpers.GetGameplayStatics()
+    local l = char:K2_GetActorLocation()
+    local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = l.X, Y = l.Y, Z = l.Z }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+    return gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(char, StaticFindObject(class), xf, 1, nil), xf)
+end
+
+local function dropMirror(key)
+    local m = mirrors[key]
+    if not m then return end
+    for _, a in ipairs(m.parts) do if valid(a) then a:K2_DestroyActor() end end
+    if valid(m.light) then m.light:K2_DestroyActor() end
+    mirrors[key] = nil
+end
+
+local function loadMesh(p)
+    local m = StaticFindObject(p)
+    if not valid(m) then pcall(LoadAsset, p); m = StaticFindObject(p) end
+    return valid(m) and m or nil
+end
+
+local function meshActor(char, p)
+    local sm = loadMesh(p)
+    if not sm then return nil end
+    local a = spawn(char, "/Script/Engine.StaticMeshActor")
+    local comp = a.StaticMeshComponent
+    comp:SetMobility(2)
+    comp:SetStaticMesh(sm)
+    comp:SetCollisionEnabled(0)
+    comp:SetCastShadow(false)
+    return a
+end
+
+local function build(char, st)
+    local arch, size, on, kind, parts = st:match("^([^|]*)|(%d+)|(%d)|(%a+)|(.*)$")
+    local m = { state = st, arch = arch, size = tonumber(size), on = on == "1", kind = kind, parts = {}, swingAt = nil }
+    for p, t in parts:gmatch("([^;@]+)@([^;]+)") do
+        local a = meshActor(char, p)
+        if a then
+            local v = {}
+            for n in t:gmatch("[^,]+") do v[#v + 1] = tonumber(n) end
+            if #m.parts == 0 then
+                -- large items: both hands, in front of the chest (the mannequin has no carry animation); the rest in the right hand
+                if m.size == 1 then
+                    a:K2_AttachToComponent(char.RootComponent, FName("None"), 2, 2, 2, false)
+                    a:K2_SetActorRelativeLocation({ X = 45, Y = 0, Z = 0 }, false, {}, true)
+                else
+                    a:K2_AttachToComponent(char.Mesh, FName("hand_r"), 2, 2, 2, false)
+                end
+            else
+                a:K2_AttachToActor(m.parts[1], FName("None"), 2, 2, 2, false)
+                a:K2_SetActorRelativeTransform({ Translation = { X = v[1], Y = v[2], Z = v[3] }, Rotation = { X = v[4], Y = v[5], Z = v[6], W = v[7] },
+                    Scale3D = { X = v[8], Y = v[9], Z = v[10] } }, false, {}, true)
+            end
+            m.parts[#m.parts + 1] = a
+        end
+    end
+    m.actor = m.parts[1]
+    if m.on then
+        local a = spawn(char, m.kind == "point" and "/Script/Engine.PointLight" or "/Script/Engine.SpotLight")
+        local lc = a.LightComponent
+        lc:SetMobility(2)
+        -- the potato flashlight's own values (intensity is unitless here: the level's lamps are 2..160, the torch 80000)
+        lc:SetLightColor({ R = 1, G = 0.77, B = 0.75, A = 1 }, true)
+        if m.kind == "point" then
+            lc:SetIntensity(20000); lc:SetAttenuationRadius(800)
+        else
+            lc:SetIntensity(80000); lc:SetAttenuationRadius(1350); lc:SetOuterConeAngle(36)
+        end
+        m.light = a
+    end
+    -- a toggle press arrives just before the state it changes: the swing goes on in the rebuilt mirror
+    if remote.useAt and os.clock() - remote.useAt < SWING_S then m.swingAt = remote.useAt end
+    return m
+end
+
+local function swing(m)
+    if not (m.swingAt and valid(m.actor)) then return end
+    local t = (os.clock() - m.swingAt) / SWING_S
+    if t >= 1 then
+        m.swingAt = nil
+        m.actor:K2_SetActorRelativeRotation({ Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true)
+        return
+    end
+    m.actor:K2_SetActorRelativeRotation({ Pitch = -70 * math.sin(t * math.pi), Yaw = 0, Roll = 0 }, false, {}, true)
+end
+
+local function follow(char, m)
+    if valid(m.light) then
+        local head = char.Mesh:GetSocketLocation(FName("head"))
+        local aim = char:GetBaseAimRotation()
+        local f = UEHelpers.GetKismetMathLibrary():GetForwardVector(aim)
+        m.light:K2_SetActorLocationAndRotation({ X = head.X + f.X * 30, Y = head.Y + f.Y * 30, Z = head.Z + f.Z * 30 }, aim, false, {}, true)
+    end
+    swing(m)
+end
+
+local nextScan, others = 0, {}
+local function update()
+    if not safety.active() then
+        for k in pairs(mirrors) do dropMirror(k) end
+        remote = { state = "", at = 0 }
+        return
+    end
+    if os.time() >= nextScan then nextScan = os.time() + 2; others = otherChars() end
+    local seen = {}
+    for _, c in ipairs(others) do
+        if valid(c) then
+            local key = c:GetFullName()
+            seen[key] = true
+            local m = mirrors[key]
+            if remote.state == "" then
+                if m then dropMirror(key) end
+            else
+                if m and m.state ~= remote.state then dropMirror(key); m = nil end
+                if not m then m = build(c, remote.state); mirrors[key] = m; log("PT|hands mirror %s %s", key:match("[^.]+$"), remote.state:sub(1, 160)) end
+                if remote.useAt and remote.useAt ~= handledUse then handledUse, m.swingAt = remote.useAt, remote.useAt end
+                follow(c, m)
+            end
+        end
+    end
+    for key in pairs(mirrors) do if not seen[key] then dropMirror(key) end end
+end
+
+-- state reports and tool use ---------------------------------------------------------------------------------------------
+
+local lastSent, lastAt = nil, 0
+local function send(kind, data)
+    if safety.guest() then net.toHost(kind, data) else net.toGuests(kind, data) end
+end
+
+local function report()
+    if not safety.active() then lastSent = nil; return end
+    local s = localState()
+    -- on change, else every 3 s so a late joiner and a missed message catch up
+    if s ~= lastSent or os.time() - lastAt >= 3 then
+        lastSent, lastAt = s, os.time()
+        send("g.hands.s", s)
+    end
+end
+
+net.on("g.hands.s", function(_, data) remote.state, remote.at = data, os.time() end)
+net.on("g.hands.use", function() remote.useAt = os.clock() end)
+
+-- The use-press input event of the base class (_2 is the press, _3 the release; every tool's overridden PrimaryUsePress is called
+-- from it). A pre hook: post hooks of Blueprint events do not fire (docs/spikes/PT1-feel.md).
+local USE = "/Game/Gameplay/Inventory/BaseItems/Hand/BP_BaseHandManifestation.BP_BaseHandManifestation_C:InpActEvt_ToolPrimaryUse_K2Node_InputActionEvent_2"
+local useHooked = false
+local function hookUse()
+    useHooked = pcall(RegisterHook, USE, function()
+        if safety.active() then send("g.hands.use", "") end
+    end)
+end
+
+-- a map change frees every object we hold
+RegisterLoadMapPreHook(function() mirrors, others, nextScan, remote = {}, {}, 0, { state = "", at = 0 } end)
+
+LoopInGameThreadWithDelay(100, function()
+    local ok, err = pcall(function()
+        if not useHooked then hookUse() end
+        report()
+        update()
+    end)
+    if not ok then log("PT|error hands %s", tostring(err)) end
+end)
+
+return M
