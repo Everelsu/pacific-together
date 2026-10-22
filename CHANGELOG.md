@@ -3,32 +3,13 @@
 What changed in Pacific Together, in plain words. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Builds before 1.0 are previews for the developers and friends.
 
-## [0.0.5] - unreleased
+## [0.0.6] - 2026-10-22
 
 ### Added
 - You see where the other player is: a marker on the ARC map in the car, and a blue marker with their name and distance on the HUD once they are more than 30 m away (closer, the name tag shows).
 - Car upgrades show for the guest: when the host fires nitro, the jump rack, the shields or the juke, the guest sees and hears
   them on the car; bigger batteries and fuel tanks grow the guest's gauges too; the interior light follows the host. The
   Chrono Dilator still does nothing in co-op. The guest's car no longer rolls its own quirks.
-- A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
-  log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
-- An in-game overlay: "Pacific Together" and its version at the bottom right, the session status with ping, and a short
-  feed of what the other player does.
-- The launcher shows the build in this download and the build installed in your game.
-- The guest's game shows the host's progress while joined: garage upgrades, research, the route on the map and the
-  logbook. A failed run costs the guest items too, as it does the host.
-- More anomalies act on the guest: Leech leaps, BombRock blasts and Physics Grabbers. Tourists stop while either player
-  looks at them.
-- The story is shared: the guest sees the host's mission and objectives on the HUD and in the journal, and hears the
-  host's radio transmissions and voice lines with subtitles.
-- The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
-  gateway at the ARC.
-- Abandoned cars and their parts are shared; scrapping and siphoning fuel happen once for both. Handed-over items keep
-  their durability, fuel and battery. Opened and emptied containers look that way for both players, and garage storage
-  is really shared now.
-- The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
-  crate that either player can loot.
-
 - The guest's tools work on car parts and abandoned cars: Scrapper and Electric Scrapper, Hammer and Magnetic Hammer,
   Prybar, Explosive Cutter, Blowtorch and putty. The part breaks or heals for both players and its scrap drops once.
 - The guest can take parts off the car, install parts, refuel and use the car's storage; the host's car takes the change.
@@ -39,6 +20,10 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
+- You see what the other player holds: their tool or item in their hand, their flashlight's beam, a car part they
+  carry, and a swing when they use a tool.
+- The guest can use the garage stations: the Part Shredder, research, garage upgrades, fabrication and curing car
+  quirks. The host's shared materials are spent once and the result shows for both players. Both see the same car quirks.
 - Join through Steam: the host's game opens a friends-only lobby, the guest uses "Join game" in the friends list or
   an invite, and names come from Steam (not tested between two PCs yet; joining by IP works as before).
 - The guest's journal lists the host's finished missions, and a quest item the guest picks up counts for the host.
@@ -61,6 +46,32 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - Pressing X to leave the car left the guest stuck inside on their own screen.
 - The ARC device between the seats blocked the starter key and some panels; it now sits behind the front seats.
 - The overlay moved higher; it overlapped the game's HUD at the bottom right.
+
+## [0.0.5] - 2026-10-21
+
+### Added
+- A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
+  log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
+- An in-game overlay: "Pacific Together" and its version at the bottom right, the session status with ping, and a short
+  feed of what the other player does.
+- The launcher shows the build in this download and the build installed in your game.
+- The guest's game shows the host's progress while joined: garage upgrades, research, the route on the map and the
+  logbook. A failed run costs the guest items too, as it does the host.
+- More anomalies act on the guest: Leech leaps, BombRock blasts and Physics Grabbers. Tourists stop while either player
+  looks at them.
+- The story is shared: the guest sees the host's mission and objectives on the HUD and in the journal, and hears the
+  host's radio transmissions and voice lines with subtitles.
+- The guest can repair the car with putty, charge its battery, refuel from a fuel can, deposit anchors and pick the
+  gateway at the ARC.
+- Abandoned cars and their parts are shared; scrapping and siphoning fuel happen once for both. Handed-over items keep
+  their durability, fuel and battery. Opened and emptied containers look that way for both players, and garage storage
+  is really shared now.
+- The guest's backpack is kept by the host and comes back when the guest rejoins. A guest who dies drops their items in a
+  crate that either player can loot.
+
+### Fixed
+- The host's game crashed when the host opened the pause menu with a guest connected, and the guest couldn't open the
+  pause menu at all. Pausing now works: the host's pause menu pauses the game for both players.
 - The guest "died" a few seconds after every map change, dropping their backpack as a crate. Fixed.
 - A failed run's item loss for the guest could be undone when they rejoined. Fixed.
 - An anomaly hitting the guest took the host's health instead of the guest's. It now hurts the guest.
