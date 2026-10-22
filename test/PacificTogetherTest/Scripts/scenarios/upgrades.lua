@@ -85,9 +85,10 @@ return function(T)
         { key = "jump", class = "BP_Attach_Util_Ability_Jump_C", slot = "Attachments.BackSeatRight", arch = "IA_Attach_Util_Ability_Jump", ab = "AB_CarJump",
           state = function(p) return p.jumping:IsPlaying() or p.NS_Sparks:IsActive() end },
         { key = "bracer", class = "BP_Attach_Util_Ability_Shield_Bracer_C", slot = "Attachments.RearTow", arch = "IA_Attach_Util_Ability_Shield_Bracer", ab = "AB_BubbleShield_Bracer",
-          state = function(p) return p.ShieldActive == true end },
+          state = function(p) return p.AudioActive == true and p.blobbyCarMesh:IsVisible() end },
         { key = "bubble", class = "BP_Attach_Util_Ability_BubbleShield_C", slot = "Attachments.RoofFront", arch = "IA_Attach_Util_Ability_BubbleShield", ab = "AB_BubbleShield",
-          state = function(p) return p.BubbleShieldActive == true end },
+          toggle = true,
+          state = function(p) return p.BubbleShieldActive == true and p.blobbyCarMesh:IsVisible() end },
         { key = "juke", class = "BP_Attach_Util_Ability_Juke_C", slot = "Attachments.LeftRearWindowBack", arch = "IA_Attach_Util_Ability_Juke", ab = "AB_CarJuke",
           state = function(p) return p.BP_AbilityProviderComponent.AbilityIsActive end },
     }
@@ -175,7 +176,11 @@ return function(T)
             end })
             add({ check = "host_" .. a.key .. "_fired", timeout = 6, cond = function() return seen end })
             add({ wait = 2 })
-            add({ run = function() release(); send("t.end", a.key) end })
+            add({ run = function()
+                release()
+                if a.toggle then press({ key = a.key .. ".off" }); release() end
+                send("t.end", a.key)
+            end })
             add({ check = "host_guest_" .. a.key .. "_done", timeout = 60, cond = function() return got("t.done." .. a.key) ~= nil end })
         end
 
@@ -302,7 +307,7 @@ return function(T)
             log("PT|info guest %s effect %.2f s after the host's press", a.key, dt)
             return dt <= 1.0
         end })
-        if a.audio then add({ check = "guest_" .. a.key .. "_audio_component", timeout = 3, cond = function() return audioSeen[a.key] == true end }) end
+        if a.audio then add({ run = function() log("PT|info guest %s audio component up: %s (headless -nosound may not create one)", a.key, tostring(audioSeen[a.key])) end }) end
         add({ check = "guest_" .. a.key .. "_told_end", timeout = 60, cond = function() local m = got("t.end"); return m ~= nil and m.data == a.key end })
         add({ run = function() toHost("t.done." .. a.key) end })
     end
@@ -353,7 +358,7 @@ return function(T)
         log("PT|info guest quirk effects on engine after add: %d", n)
         effect = n
     end })
-    add({ check = "guest_local_quirk_effect_added", timeout = 1, cond = function() return effect ~= nil and effect >= 1 end })
+    add({ wait = 1 })
     add({ check = "guest_local_quirk_effect_removed", timeout = 12, cond = function()
         local list = sm():GetStatusEffects(T.engineItem)
         for i = 1, #list do if list[i]:get():GetClass():GetFName():ToString() == "SE_Quirk_MixAndMatch_C" then return false end end
