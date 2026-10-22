@@ -54,8 +54,7 @@ net.on("g.st.shred", function(pc, data)
     local back, n = {}, 0 -- specs the host could not take: they go back to the guest, who already lost them
     local c, lib
     if sh then c, lib = sh.BP_InventoryContainerComponent, StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary") end
-    for spec in data:gmatch("[^
-]+") do
+    for spec in data:gmatch("[^\n]+") do
         local a = c and ids.archetype(spec:match("^[^:]+"))
         local r = {}
         if a then
@@ -67,8 +66,7 @@ net.on("g.st.shred", function(pc, data)
     end
     if not sh then log("PT|st shred: host has no shredder installed") end
     if #back > 0 then
-        net.toGuest(pc, "g.st.shredback", table.concat(back, "
-"))
+        net.toGuest(pc, "g.st.shredback", table.concat(back, "\n"))
         log("PT|st shred: %d items sent back to the guest", #back)
     end
     kick = n > 0
@@ -82,8 +80,7 @@ net.on("g.st.shredback", function(_, data)
     local im = FindFirstOf("BP_InventoryManager_C")
     local lib = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
     if not (valid(im) and valid(lib)) then return end
-    for spec in data:gmatch("[^
-]+") do
+    for spec in data:gmatch("[^\n]+") do
         local a = ids.archetype(spec:match("^[^:]+"))
         if a then
             local inst = lib:CreateItemInstance(UEHelpers.GetWorld(), a, 0)
