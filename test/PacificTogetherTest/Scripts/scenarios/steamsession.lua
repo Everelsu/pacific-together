@@ -17,10 +17,12 @@ return function(T)
         local t = f:read("a"); f:close()
         return t
     end
+    -- every PlayerState of the world (a guest has no PlayerController of the host, but replicates its PlayerState)
     local function names()
-        local out = {}
-        for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-            if T.inWorld(pc) and pc.PlayerState:IsValid() then out[#out + 1] = pc.PlayerState:GetPlayerName():ToString() end
+        local out, gs = {}, T.world().GameState
+        if gs:IsValid() then
+            local a = gs.PlayerArray
+            for i = 1, #a do if a[i]:IsValid() then out[#out + 1] = a[i]:GetPlayerName():ToString() end end
         end
         return out
     end

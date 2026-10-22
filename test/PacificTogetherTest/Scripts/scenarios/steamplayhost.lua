@@ -4,12 +4,15 @@ return function(T)
     local lobby
     local function stats() return PTNative_TunnelStats and PTNative_TunnelStats() or "" end
     local function stat(k) return tonumber(stats():match(k .. "=(%d+)")) or 0 end
+    -- own name first, then every PlayerState of the world (a guest has no controller of the host, but replicates its PlayerState)
     local function names()
-        local out = {}
-        for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-            if T.inWorld(pc) and pc.PlayerState:IsValid() then out[#out + 1] = (pc:IsLocalController() and "me:" or "guest:") .. pc.PlayerState:GetPlayerName():ToString() end
+        local pc, out = T.localPC(), {}
+        local gs = T.world().GameState
+        if gs:IsValid() then
+            local a = gs.PlayerArray
+            for i = 1, #a do if a[i]:IsValid() then out[#out + 1] = a[i]:GetPlayerName():ToString() end end
         end
-        return table.concat(out, ",")
+        return "me:" .. (pc and pc.PlayerState:IsValid() and pc.PlayerState:GetPlayerName():ToString() or "?") .. " all:" .. table.concat(out, ",")
     end
     return {
         T.onMap("RB_MainMenu", 90),
