@@ -167,6 +167,7 @@ return function(T)
     add({ run = function()
         local p = portals()[1]
         log("PT|info guest picks gateway %s", T.name(p))
+        if not p then return end -- the check above failed; calling the screen with nil crashes the game
         T.first("BP_Carpart_Internal_GobblerScreen_C"):OnExitUseComplete(p)
     end })
     -- what the guest sees now is the host's car: the repaired door stays repaired, the ARC follows the host, the gateway is picked
