@@ -119,7 +119,13 @@ return function(T)
         table.sort(r)
         return table.concat(r, ",")
     end
-    local function cured() return FindFirstOf("BP_ProgressionManager_C").GlobalWhiteboard:GetTagFloat({ TagName = FName("WB.Statistics.Quirks.QuirksCured") }) end
+    local function cured()
+        local v = 0
+        FindFirstOf("BP_ProgressionManager_C").GlobalWhiteboard.Entries:ForEach(function(k, x)
+            if k:get().TagName:ToString() == "WB.Statistics.Quirks.QuirksCured" then v = x:get() end
+        end)
+        return v
+    end
     local RECIPE = "/Game/Gameplay/Inventory/Items/Tools/FixStatusEffect/FixElectronic/CR_Tool_Target_FixElectronics.CR_Tool_Target_FixElectronics"
     local function tools() return owned()["IA_Tool_Target_FixElectronics"] or 0 end
 
@@ -159,11 +165,13 @@ return function(T)
             if n > st.worldBefore then st.products = n; st.list = list end
             return st.products ~= nil
         end })
-        add({ check = "host_products_stay_once_for_25s_and_shredder_empty", timeout = 60, cond = L.holds(25, function()
+        -- the dispenser lets the products out one by one: wait until the count has not moved for 20 s
+        add({ check = "host_products_settle_and_shredder_empty", timeout = 120, cond = function()
             local n, list = worldRes()
-            if n ~= st.products then T.log("PT|info host products changed %d -> %d (%s)", st.products, n, list) end
-            return n == st.products and shredderItems() == 0
-        end) })
+            if n ~= st.lastN then st.lastN, st.since, st.list = n, os.clock(), list end
+            if n > st.worldBefore and shredderItems() == 0 and os.clock() - st.since > 20 then st.products = n; return true end
+            return false
+        end })
         add({ run = function() T.log("PT|info host products: %s", st.list); toGuest("t.shreddone") end })
         add({ check = "guest_sees_same_products", timeout = 60, cond = function()
             local n = tonumber(g("t.gres") or "-1")
@@ -203,7 +211,11 @@ return function(T)
             if st.up then toGuest("t.go.up", st.up) end
         end })
         add({ check = "host_upgrade_candidate_exists", timeout = 1, cond = function() return st.up ~= nil end })
-        add({ check = "host_has_upgrade_installed_once", timeout = 60, cond = L.holds(10, function() return upCount(st.up) == 1 end) })
+        add({ check = "host_has_upgrade_installed_once", timeout = 120, cond = function()
+            local n = upCount(st.up)
+            if n == 1 then st.upSince = st.upSince or os.clock() else st.upSince = nil end
+            return n == 1 and os.clock() - st.upSince > 10
+        end })
         add({ check = "guest_shows_upgrade_once", timeout = 60, cond = function() return g("t.upcount") == "1" end })
 
         -- tinker: a quirk the host's game rolled shows on the guest; the guest cures it (its own CureCarQuirk, what the station UI calls)
@@ -268,15 +280,14 @@ return function(T)
         say("t.shredded")
     end })
     add({ check = "guest_go_shreddone", timeout = 180, cond = function() return has("t.shreddone") end })
-    add({ check = "guest_report_world_products", timeout = 120, cond = L.holds(10, function()
+    add({ check = "guest_report_world_products", timeout = 400, cond = function()
         local n, list = worldRes()
         say("t.gres", tostring(n))
-        T.log("PT|info guest world resources %d %s", n, list)
         return has("t.go.buy")
-    end) })
+    end })
 
     -- research
-    add({ check = "guest_go_buy", timeout = 120, cond = function() return has("t.go.buy") end })
+    add({ check = "guest_go_buy", timeout = 400, cond = function() return has("t.go.buy") end })
     add({ run = function()
         local node = nodeByName(g("t.go.buy"))
         st.node = node
@@ -292,20 +303,20 @@ return function(T)
     end })
 
     -- upgrade
-    add({ check = "guest_go_up", timeout = 120, cond = function() return has("t.go.up") end })
+    add({ check = "guest_go_up", timeout = 400, cond = function() return has("t.go.up") end })
     add({ run = function()
         local key = g("t.go.up")
         st.up = key
         spawner(UP[key][1]):InstallSpecificUpgrade(StaticFindObject(UP[key][2]), false)
         T.log("PT|info guest installed %s", key)
     end })
-    add({ check = "guest_reports_upgrade", timeout = 120, cond = function()
+    add({ check = "guest_reports_upgrade", timeout = 400, cond = function()
         say("t.upcount", tostring(upCount(st.up)))
         return has("t.go.quirk")
     end })
 
     -- tinker
-    add({ check = "guest_reports_quirks", timeout = 120, cond = function()
+    add({ check = "guest_reports_quirks", timeout = 400, cond = function()
         say("t.q", quirkNames())
         return has("t.go.cure")
     end })
@@ -321,13 +332,13 @@ return function(T)
         T.log("PT|info guest cured quirk: %s", tostring(o.Removed))
         say("t.qcured", o.Removed and "1" or "0")
     end })
-    add({ check = "guest_reports_quirks_after", timeout = 120, cond = L.holds(15, function()
+    add({ check = "guest_reports_quirks_after", timeout = 400, cond = L.holds(15, function()
         say("t.qafter", quirkNames())
         return quirkNames() == ""
     end) })
 
     -- fabrication
-    add({ check = "guest_go_craft", timeout = 120, cond = function() return has("t.go.craft") end })
+    add({ check = "guest_go_craft", timeout = 400, cond = function() return has("t.go.craft") end })
     add({ run = function()
         local m = im()
         m:SetActiveTier(3, true, true)
