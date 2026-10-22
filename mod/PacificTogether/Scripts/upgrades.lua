@@ -92,8 +92,13 @@ local function installHooks()
     end
     local left = {}
     for _, h in ipairs(pending) do
-        local ok
-        if h[1] == "provider" then ok = hookProvider(h[2], h[3]) else ok = hookDirect(h[2], h[3], h[4]) end
+        -- only once the class is loaded: a RegisterHook on an unloaded part took ~240 ms and was retried every second while a
+        -- guest was in, freezing both games every 1-2 s (local playtest 2026-10-22, PT|slow upgrades.lua)
+        local cls = h[1] == "provider" and PROV:sub(1, -2) or (h[2] .. "." .. h[2]:match("[^/]+$") .. "_C")
+        local ok = false
+        if StaticFindObject(cls):IsValid() then
+            if h[1] == "provider" then ok = hookProvider(h[2], h[3]) else ok = hookDirect(h[2], h[3], h[4]) end
+        end
         if not ok then
             left[#left + 1] = h
             if not h.warned then h.warned = true; log("PT|up hook pending %s %s", tostring(h[2]), tostring(h[4])) end
@@ -161,10 +166,14 @@ local function hookDrop()
     dropHooked = ok
 end
 
+local lastTry = -math.huge
 LoopInGameThreadWithDelay(1000, function()
     local m = mode()
     local ok, err = pcall(function()
-        if m == "listen" and #net.guests() > 0 then installHooks()
+        -- a missing part class costs ~60 ms to look up even unhooked: the ones still pending are retried every 30 s
+        if m == "listen" and #net.guests() > 0 and (not pending or (#pending > 0 and os.clock() - lastTry > 30)) then
+            lastTry = os.clock()
+            installHooks()
         elseif m == "client" then hookDrop() end
     end)
     if not ok then log("PT|error up tick %s", tostring(err)) end

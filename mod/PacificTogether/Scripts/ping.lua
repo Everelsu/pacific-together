@@ -186,25 +186,29 @@ end
 -- a map change frees every object we hold
 RegisterLoadMapPreHook(function() marks = {} end)
 
+-- the key only raises a flag that this loop handles: an ExecuteInGameThread per press, spammed, crashed both games inside
+-- UE4SS ("Ref was not function", playtest 2026-10-22); at most one ping per half second
+local wanted, lastPress = false, -1
 LoopInGameThreadWithDelay(50, function()
+    if wanted then
+        wanted = false
+        if os.clock() - lastPress >= 0.5 then
+            lastPress = os.clock()
+            local ok, err = pcall(M.press)
+            if not ok then log("PT|error ping press %s", tostring(err)) end
+        end
+    end
     local ok, err = pcall(update)
     if not ok then log("PT|error ping %s", tostring(err)) end
 end)
 
 -- middle mouse; if UE4SS has no such key (or cannot bind it) the fallback is G
 local KEY = (Key and Key.MIDDLE_MOUSE_BUTTON) and "MIDDLE_MOUSE_BUTTON" or "G"
-local function bind(k)
-    return pcall(RegisterKeyBind, Key[k], function()
-        ExecuteInGameThread(function()
-            local ok, err = pcall(M.press)
-            if not ok then log("PT|error ping press %s", tostring(err)) end
-        end)
-    end)
-end
+local function bind(k) return pcall(RegisterKeyBind, Key[k], function() wanted = true end) end
 local ok = bind(KEY)
 if not ok and KEY ~= "G" then KEY = "G"; ok = bind(KEY) end
 -- the test mod is another Lua state: its scenario presses the key through the console ("ptping"), same handler
-pcall(RegisterConsoleCommandHandler, "ptping", function() ExecuteInGameThread(function() pcall(M.press) end) return true end)
+pcall(RegisterConsoleCommandHandler, "ptping", function() wanted = true return true end)
 log("PT|ping key %s bound=%s", KEY, tostring(ok))
 
 return M

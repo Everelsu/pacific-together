@@ -391,7 +391,15 @@ net.on("g.car.out", function(_, data)
     pcall(function() me:K2_DetachFromActor(1, 1, 1) end)
     stopRide(me)
     me:K2_SetActorLocation(vec(tonumber(x), tonumber(y), tonumber(z)), false, {}, true)
-    log("PT|car guest placed outside at %s,%s,%s", x, y, z)
+    -- the camera and the controls stayed with the car: camera frozen, no walking (local playtest 2026-10-22)
+    local pc = localPC()
+    pcall(function() pc:ResetIgnoreInputFlags() end)
+    pcall(function() pc:SetIgnoreLookInput(false); pc:SetIgnoreMoveInput(false) end)
+    pcall(function() pc:SetViewTargetWithBlend(me, 0, 0, 0, false) end)
+    pcall(function() me:EnableInput(pc) end)
+    pcall(function() StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary"):SetInputMode_GameOnly(pc) end)
+    local okv, view = pcall(function() return pc:GetViewTarget():GetFName():ToString() end)
+    log("PT|car guest placed outside at %s,%s,%s view=%s", x, y, z, okv and view or "?")
 end)
 
 local function ride(char, car)
@@ -509,7 +517,7 @@ local function sendExit()
     log("PT|car exit intent sent=%s", tostring(net.toHost("g.car.exit")))
 end
 
-local hooked = false
+local hooked, exitWanted = false, false
 local function hookAll()
     if hooked then return end
     local ok, err = pcall(RegisterHook, "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:EnterCar", function(self)
@@ -524,14 +532,16 @@ local function hookAll()
     end)
     if not ok then log("PT|error car hook EnterCar %s", tostring(err)); return end
     hooked = true
-    -- leaving: key X while seated
-    pcall(RegisterKeyBind, Key.X, function()
-        ExecuteInGameThread(function() if common.netMode() == "client" and riding then sendExit() end end)
-    end)
+    -- leaving: key X while seated; the key only raises a flag (an ExecuteInGameThread per press crashed UE4SS when spammed, ping.lua)
+    pcall(RegisterKeyBind, Key.X, function() exitWanted = true end)
 end
 
 local helloFor = nil
 local function guestTick()
+    if exitWanted then
+        exitWanted = false
+        if common.netMode() == "client" and riding then sendExit() end
+    end
     local car = theCar(false)
     if not car then return end
     hookAll()
