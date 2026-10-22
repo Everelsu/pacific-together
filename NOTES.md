@@ -547,6 +547,11 @@ Observations
 Known gaps (rare, not chased per the owner's priority rule)
 - A lootable can stay one snapshot behind on the guest (race between the host's snapshot and a content change). Look at
   that container's `S|L` lines in both logs if a player reports it.
+  Correction (`20261022-190420-lootsync`): not a race. The same `BP_Lootable_MultiMesh_Tacklebox_C` held 6 on the host and 5
+  on the guest (Plastic missing) for 90 s, and the host's state never changed after the send, so the guest's `ids.apply`
+  could not add the 6th item. Guess: the MultiMesh picks its mesh variant per process, and the guest's variant has fewer
+  slots. Risk: when the guest takes from it, its 5-item state goes back to the host and the host loses the 6th item.
+  Unknown: whether a container's slot count can be raised (no setter found in our dumps yet).
 - Full-trunk stack counts can drift by one item (`ids.apply` on a full container, lootsync2 area).
 - The guest crashes intermittently on its native rejoin after a run failure (`sessiontravel -Fixture garage`): 5 of 8
   runs overnight (pt1-travel, folders `20261022-03*-pt1-travel-sessiontravel`), AV at varying addresses, crash marker depth 0,

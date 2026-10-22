@@ -199,7 +199,12 @@ return function(T)
         add({ check = "p2_guest_carries_item", timeout = 60, cond = function() return has("t.p2ok") end })
         -- 6. a world item
         add({ run = function()
-            for _, e in ipairs(worldItems()) do W = e; break end
+            -- the nearest to the guest: a host-side move of the guest across the map does not stick (it stayed at the crate, item 360 m off)
+            local best
+            for _, e in ipairs(worldItems()) do
+                local d = (e.x - A.x) ^ 2 + (e.y - A.y) ^ 2 + (e.z - A.z) ^ 2
+                if not best or d < best then W, best = e, d end
+            end
             placeGuest(W.x + 150, W.y, W.z + 60)
             log("PT|info p6 world item %s at %.0f,%.0f,%.0f", W.class, W.x, W.y, W.z)
             sendGuest("t.p6", pack(W))
@@ -264,6 +269,8 @@ return function(T)
     -- 6. a world item by interact
     add({ check = "guest_told_p6", timeout = 120, cond = function() return has("t.p6") end })
     add({ check = "guest_has_world_item_copy", timeout = 60, cond = function() W = near(worldItems(), unpack(got["t.p6"]), 80); return W ~= nil end })
+    -- the zone's loose items lie ~350 m from the crate and the host's move of the guest does not stick that far: the guest moves itself
+    add({ run = function() T.myPawn():K2_SetActorLocation({ X = W.x + 150, Y = W.y, Z = W.z + 60 }, false, {}, true) end })
     add({ wait = 2 })
     actSteps(add, 3, "move_to", function() return { actor = path(W.a), radius = 50, timeout = 10 } end, 40, nil)
     local n1

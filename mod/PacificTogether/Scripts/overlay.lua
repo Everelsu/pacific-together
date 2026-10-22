@@ -35,7 +35,7 @@ end
 local ui = nil -- { widget, label, status, lines = { TextBlock... }, cache = {} }
 local feed = {} -- { text, kind, key, n, t0 }
 local sessionSince, names, seen = nil, {}, {} -- session age; remote player names now / ever (host side)
-local wasConnected, hostName = false, nil
+local wasConnected, hostName, greeted = false, nil, false
 
 local function text(tree, name, size, kind)
     local t = StaticConstructObject(StaticFindObject("/Script/UMG.TextBlock"), tree, FName(name))
@@ -167,24 +167,28 @@ local function status()
     local join = s and s.join
     local connected, str = false, ""
     if mode == "listen" and valid(w) then
-        local cur, ping = {}, 0
+        local cur, kept, ping = {}, {}, 0
         for _, ps in ipairs(playerStates(w)) do
             local pc = ps:GetOwner()
             if valid(pc) and not pc:IsLocalController() then
                 local n = realName(ps)
-                if n then cur[n] = true; ping = math.max(ping, ps.Ping * 4) end
+                if n then
+                    cur[n] = true; ping = math.max(ping, ps.Ping * 4)
+                    -- announced once its character exists: the PlayerState shows up while the guest still loads the map, and the line expired unseen
+                    if names[n] or valid(pc.Pawn) then kept[n] = true end
+                end
             end
         end
         local count = 0
-        for n in pairs(cur) do
-            count = count + 1
+        for n in pairs(cur) do count = count + 1 end
+        for n in pairs(kept) do
             if not names[n] then
                 push(n .. (seen[n] and " rejoined" or " joined"), "good")
                 seen[n] = true
             end
         end
         for n in pairs(names) do if not cur[n] then push(n .. " left", "warn") end end
-        names = cur
+        names = kept
         if count > 0 then connected, str = true, string.format("Host \194\183 %d guest%s \194\183 %d ms", count, count == 1 and "" or "s", ping) end
     elseif mode == "client" or (join and s.wanted()) then
         local mine = valid(w) and UEHelpers.GetPlayerController()
@@ -199,7 +203,9 @@ local function status()
             end
         end
         if not connected then str = "Joining " .. tostring(join or "the host") .. "\226\128\166" end
-        if connected and not wasConnected then push("Connected to " .. hostName, "good") end
+        -- once this side has a character: during the map load the line expired unseen
+        if connected and not greeted and valid(mine.Pawn) then push("Connected to " .. hostName, "good"); greeted = true end
+        if not connected then greeted = false end
         if not connected and wasConnected then push("Connection lost, rejoining", "warn") end
     end
     if connected then sessionSince = sessionSince or os.clock() else sessionSince, hostName = nil, nil end
