@@ -165,8 +165,11 @@ return function(T)
                 local h
                 h = LoopInGameThreadWithDelay(100, function()
                     n = n + 1
-                    local p = part(a.class)
-                    if p and pcall(function() if a.state(p) then seen = true end end) and seen then CancelDelayedAction(h) end
+                    local okp, p = pcall(part, a.class)
+                    local oks, v = false, nil
+                    if okp and p then oks, v = pcall(a.state, p) end
+                    if n == 3 or n == 20 then log("PT|info host %s sample n=%d part=%s ok=%s v=%s", a.key, n, tostring(okp and p ~= nil), tostring(oks), tostring(v)) end
+                    if oks and v then seen = true; CancelDelayedAction(h) end
                     if n > 40 then CancelDelayedAction(h) end
                 end)
             end })
