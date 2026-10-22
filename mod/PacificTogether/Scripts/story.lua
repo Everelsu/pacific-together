@@ -281,30 +281,43 @@ local function reportTasks()
     end
 end
 
--- the journal's history: add what the host finished (the arrays are plain data; 25 assets per message keeps a late join smooth)
+-- the journal's history: add what the host finished. Loading an asset can stall the game thread, so the loads run two at a time from a
+-- queue (a burst of them in the zone fixture got the guest dropped); the arrays themselves are plain data.
+local pendingDone, queued = {}, {}
 net.on("g.story.done", function(_, data)
     if not (PROG and M.enabled) or not safety.guest() then return end
-    try("done", function()
-        local q = quests()
-        if not q then return end
-        local have = { o = {}, m = {} }
-        for i = 1, q.CompletedObjectives:GetArrayNum() do local o = q.CompletedObjectives[i]; if live(o) then have.o[(path(o):gsub("%.[^./]+$", ""))] = true end end
-        for i = 1, q.CompletedMissions:GetArrayNum() do local o = q.CompletedMissions[i]; if live(o) then have.m[(path(o):gsub("%.[^./]+$", ""))] = true end end
-        local n = 0
-        for line in data:gmatch("[^\n]+") do
-            local k, p = line:sub(1, 1), line:sub(2)
-            hostDone[k][p] = true
-            if not have[k][p] and n < 25 then
-                local o = load(p .. "." .. p:match("[^/]+$"))
-                if o then
-                    local arr = k == "o" and q.CompletedObjectives or q.CompletedMissions
-                    arr[arr:GetArrayNum() + 1] = o
-                    n = n + 1
-                end
+    for line in data:gmatch("[^\n]+") do
+        local k, p = line:sub(1, 1), line:sub(2)
+        hostDone[k][p] = true
+        if not queued[line] then queued[line] = true; pendingDone[#pendingDone + 1] = line end
+    end
+end)
+local function doneStep()
+    if #pendingDone == 0 then return end
+    local q = quests()
+    if not q then return end
+    local have = { o = {}, m = {} }
+    for i = 1, q.CompletedObjectives:GetArrayNum() do local o = q.CompletedObjectives[i]; if live(o) then have.o[(path(o):gsub("%.[^./]+$", ""))] = true end end
+    for i = 1, q.CompletedMissions:GetArrayNum() do local o = q.CompletedMissions[i]; if live(o) then have.m[(path(o):gsub("%.[^./]+$", ""))] = true end end
+    local n = 0
+    while #pendingDone > 0 and n < 2 do
+        local line = table.remove(pendingDone, 1)
+        queued[line] = nil
+        local k, p = line:sub(1, 1), line:sub(2)
+        if not have[k][p] then
+            local o = load(p .. "." .. p:match("[^/]+$"))
+            if o then
+                local arr = k == "o" and q.CompletedObjectives or q.CompletedMissions
+                arr[arr:GetArrayNum() + 1] = o
+                n = n + 1
+                log("PT|story guest journal history +1 (%d waiting)", #pendingDone)
             end
         end
-        if n > 0 then log("PT|story guest journal history +%d", n) end
-    end)
+    end
+end
+RegisterLoadMapPostHook(function() pendingDone, queued = {}, {} end)
+LoopInGameThreadWithDelay(250, function()
+    if PROG and M.enabled and safety.active() and safety.guest() then try("done", doneStep) end
 end)
 
 net.on("g.story.quest", function(_, data)
