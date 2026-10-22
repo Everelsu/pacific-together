@@ -34,4 +34,7 @@ Module `mod/PacificTogether/Scripts/ping.lua`, scenario `scenarios/ping.lua`, mu
 - A lootable's class name can be an internal name ("Lootable Glovebox"); no list was checked.
 
 ## Runs
-See the report; result folders in `local/test-results/*pt2-ping-ping*`.
+- `20261022-085336-pt2-ping-ping` 20/25: item named, guest ping and expiry worked; the replace check was wrong (item lay 60 uu from the first hit).
+- `20261022-091111-pt2-ping-ping`: guest landed in the forest map, not the garage (join flake, no ping code involved); rerun fine.
+- `20261022-092215-pt2-ping-ping` 24/25: last check returned a number instead of a boolean (test bug).
+- `20261022-094707-pt2-ping-ping` **25/25**. `20261022-092712-pt2-ping-ping-noping` 16/25 (mutation: no marker anywhere, 9 checks fail).
