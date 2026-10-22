@@ -35,6 +35,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
+- The guest sees the host's world as the host does: the zone's buildings, props, doors, fences and crates (they only existed
+  on the host before), the garage's Fig decorations, and the paint and decals of the car's parts.
 
 ### Fixed
 - The host's game crashed when the host pressed Esc with a guest connected (with "Pause game while in menus" on or off).
