@@ -65,7 +65,8 @@ local function hello()
     local s = string.format("PT|hello mod=%s protocol=%d game=%s build=%d", common.MOD_VERSION, common.PROTOCOL_VERSION,
         gameVersion(), gameBuild())
     -- S2: the Steam id and name, so the host names us by the persona and keys our backpack by the id (spaces and more percent-encoded)
-    local sid, persona = steam and steam.identity()
+    local sid, persona
+    if steam then sid, persona = steam.identity() end
     if sid then s = s .. " sid=" .. sid .. " name=" .. persona:gsub("[^%w]", function(c) return string.format("%%%02X", c:byte()) end) end
     return s
 end
