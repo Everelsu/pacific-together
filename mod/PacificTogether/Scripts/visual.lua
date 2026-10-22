@@ -279,11 +279,11 @@ end
 net.on("g.vis.hello", function() M.hello, M.ready = true, true; log("PT|visual hello from the guest") end)
 
 local mine, todo, specs, guestMap = {}, {}, {}, nil -- guest: host actor key -> our copy; lines to apply; the line each copy was made from
-local dict = {} -- guest: id -> path (the host's "M" lines)
+local dict, gone = {}, {} -- guest: id -> path (the host's "M" lines); keys the host removed
 
 local function dropAll()
     for _, a in pairs(mine) do if live(a) then a:K2_DestroyActor() end end
-    mine, todo, specs, dict = {}, {}, {}, {}
+    mine, todo, specs, dict, gone = {}, {}, {}, {}, {}
 end
 
 local function fields(line)
@@ -355,7 +355,9 @@ local function applyProps()
         if not line then return end
         local f = fields(line)
         local name, a = f[2], mine[f[2]]
-        if live(a) and specs[name] == line then
+        if gone[name] then
+            -- the host removed it after this line was sent
+        elseif live(a) and specs[name] == line then
             -- nothing new
         elseif live(a) and f[1] == "B" and specs[name] and specs[name]:gsub("\t[^\t]*$", "") == line:gsub("\t[^\t]*$", "") then
             specs[name] = line
@@ -380,11 +382,15 @@ net.on("g.vis.p", function(_, data)
     if kind == "M" then
         for id, p in rest:gmatch("(%d+)\t([^\n]+)") do dict[id] = p end
     elseif kind == "A" then
-        for line in rest:gmatch("[^\n]+") do todo[#todo + 1] = line; M.rx = (M.rx or 0) + 1 end
+        for line in rest:gmatch("[^\n]+") do
+            todo[#todo + 1] = line
+            gone[line:match("^%a\t([^\t]*)")] = nil
+            M.rx = (M.rx or 0) + 1
+        end
     elseif kind == "D" then
         for name in rest:gmatch("[^\n]+") do
             dispose(mine[name])
-            mine[name], specs[name] = nil, nil
+            mine[name], specs[name], gone[name] = nil, nil, true -- a line for it that is still waiting must not bring it back
         end
     end
 end)
