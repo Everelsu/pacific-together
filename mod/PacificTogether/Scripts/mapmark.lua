@@ -79,9 +79,8 @@ local function update()
                     local ps = ch.PlayerState
                     local text = (valid(ps) and ps:GetPlayerName():ToString() or "") .. " " .. math.floor(d / 100 + 0.5) .. " m"
                     if text ~= m.text then m.text = text; w.TaskText:SetText(FText(text)) end
+                    w.ObjectiveText:SetVisibility(0)
                 end
-                -- TaskText is the text block, inside the ObjectiveText overlay: the game hides that overlay again on its own
-                if show and w.ObjectiveText:GetVisibility() ~= 0 then w.ObjectiveText:SetVisibility(0) end
                 if show ~= m.shown then m.shown = show; w:SetVisibility(show and 0 or 2) end
             end
         end
