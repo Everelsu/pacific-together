@@ -231,20 +231,14 @@ end
 net.on("g.hands.s", function(_, data) remote.state, remote.at = data, os.time() end)
 net.on("g.hands.use", function() remote.useAt = os.clock() end)
 
--- The press and release input events of the base class (every tool's overridden PrimaryUsePress is called from them); the press
--- is the one that leaves "Desire Tool Primary Use" set.
-local BASE = "/Game/Gameplay/Inventory/BaseItems/Hand/BP_BaseHandManifestation.BP_BaseHandManifestation_C:InpActEvt_ToolPrimaryUse_K2Node_InputActionEvent_"
-local hooked, useHooked = {}, false
+-- The use-press input event of the base class (_2 is the press, _3 the release; every tool's overridden PrimaryUsePress is called
+-- from it). A pre hook: post hooks of Blueprint events do not fire (docs/spikes/PT1-feel.md).
+local USE = "/Game/Gameplay/Inventory/BaseItems/Hand/BP_BaseHandManifestation.BP_BaseHandManifestation_C:InpActEvt_ToolPrimaryUse_K2Node_InputActionEvent_2"
+local useHooked = false
 local function hookUse()
-    for _, i in ipairs({ 2, 3 }) do
-        if not hooked[i] then
-            hooked[i] = pcall(RegisterHook, BASE .. i, function() end, function(self)
-                local h = self:get()
-                if safety.active() and h["Desire Tool Primary Use"] == true then send("g.hands.use", "") end
-            end)
-        end
-    end
-    useHooked = hooked[2] and hooked[3]
+    useHooked = pcall(RegisterHook, USE, function()
+        if safety.active() then send("g.hands.use", "") end
+    end)
 end
 
 -- a map change frees every object we hold

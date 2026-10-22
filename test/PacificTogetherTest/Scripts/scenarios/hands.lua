@@ -5,8 +5,8 @@
 --   3 off      A presses again: the light is gone
 --   4 switch   A holds a patch kit instead: the mesh follows (a different one), no light
 --   5 use      A presses the patch kit's use input: B sees the use swing (the mannequin has no tool montage, the mirror swings)
---   6 carry    A holds a two-handed item (a car door): the mirror sits in front of the chest, not on the hand
---   7 empty    A empties the hand: the mirror is gone
+--   6 empty    A puts the stack back in the pack: the mirror is gone
+--   7 carry    A holds a two-handed item (a car door): the mirror sits in front of the chest, not on the hand
 -- Run: tools/run-test.ps1 -Scenario hands -Fixture garage -Headless      Mutation nohands: hands.lua inert, B's checks FAIL.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -191,17 +191,16 @@ return function(T)
             log("PT|info %s swing=%s", d.b, tostring(swing.last))
             return swing.last ~= nil
         end)
-        phase(6, "carry", function() hold(DOOR) end, function(mesh)
+        -- nothing in hand: the equipped tool leaves its pack slot (the game then has no hand item; a tool put back is the same state)
+        phase(6, "empty", function()
+            local h = handItem()
+            h.Instance:GetOuterSlot():RemoveAllItems({})
+        end, function() return mirror() == nil end)
+        phase(7, "carry", function() hold(DOOR) end, function(mesh)
             local s, m = mirrorSocket(), mirrorMesh()
             log("PT|info %s carry socket=%s mirror=%s hand=%s", d.b, s, m, mesh)
             return s == "chest(x=45)" and m == mesh
         end)
-        -- empty the hand the way a player does: the stack goes back into the pack
-        phase(7, "empty", function()
-            local m = im()
-            m.Inventory_PlayerHand:GetSlot(0):TransferStackIntoContainer(m.Inventory_Player, {})
-            log("PT|info hand after emptying: %d items", m.Inventory_PlayerHand:GetNumItems())
-        end, function() return mirror() == nil end)
     end
     add({ wait = 3 })
     return steps
