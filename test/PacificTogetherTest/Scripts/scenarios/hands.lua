@@ -129,7 +129,7 @@ return function(T)
         LoopInGameThreadWithDelay(30, function()
             pcall(function()
                 -- FindAllOf is slow: look for the mirror twice a second, read its rotation every tick
-                if not alive(cache) or os.clock() - at > 0.5 then cache, at = mirror(), os.clock() end
+                if not alive(cache) or os.clock() - at > 0.15 then cache, at = mirror(), os.clock() end
                 if alive(cache) and math.abs(cache.RootComponent.RelativeRotation.Pitch) > 5 then swing.last = os.clock() end
             end)
         end)
@@ -155,7 +155,7 @@ return function(T)
 
     local dirs = { { a = "host", b = "guest", tag = "1" }, { a = "guest", b = "host", tag = "2" } }
     for _, d in ipairs(dirs) do
-        local I, tag = ROLE == d.a, d.tag
+        local I, tag = (ROLE == "host" and "host" or "guest") == d.a, d.tag -- ROLE is host or client
         local pre = (I and d.a or d.b) .. "_"
         local function msg(n) return "t.h" .. tag .. "_" .. n end
         -- A: act, announce; B: wait for the announcement, check, acknowledge. A waits for the ack before the next step.
@@ -167,9 +167,9 @@ return function(T)
                 add({ check = d.a .. "_phase_" .. name .. "_acked", timeout = to(30), cond = function() return has(msg(n) .. "k") ~= nil end })
             else
                 add({ check = d.b .. "_told_" .. name, timeout = to(60), cond = function() return has(msg(n)) ~= nil end })
-                add({ run = function() swing.last = nil end })
                 add({ check = d.b .. "_sees_" .. name, timeout = to(4), cond = function() return observe(has(msg(n))) end })
-                add({ run = function() say(msg(n) .. "k", "") end })
+                -- A acts only after our ack, so a swing seen later belongs to A's next action
+                add({ run = function() swing.last = nil; say(msg(n) .. "k", "") end })
             end
         end
         phase(1, "item", function() hold(FLASH) end, function(mesh)
@@ -196,7 +196,12 @@ return function(T)
             log("PT|info %s carry socket=%s mirror=%s hand=%s", d.b, s, m, mesh)
             return s == "chest(x=45)" and m == mesh
         end)
-        phase(7, "empty", function() hold(nil) end, function() return mirror() == nil end)
+        -- empty the hand the way a player does: the stack goes back into the pack
+        phase(7, "empty", function()
+            local m = im()
+            m.Inventory_PlayerHand:GetSlot(0):TransferStackIntoContainer(m.Inventory_Player, {})
+            log("PT|info hand after emptying: %d items", m.Inventory_PlayerHand:GetNumItems())
+        end, function() return mirror() == nil end)
     end
     add({ wait = 3 })
     return steps
