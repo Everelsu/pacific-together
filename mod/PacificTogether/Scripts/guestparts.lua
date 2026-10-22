@@ -123,7 +123,7 @@ local function pre(self, msg)
     -- a car part still took a hit with the damage zeroed (a modifier ran before): lift it to full health too, the loop puts it back
     local hp, max = healthOf(hc)
     local key = hc:GetAddress()
-    if not held[key] then held[key] = { hc = hc, hp = hp } end
+    if not held[key] then held[key] = { hc = hc, hp = hp, max = max } end
     hc:SetHealth(max)
 end
 
@@ -138,7 +138,8 @@ LoopInGameThreadWithDelay(200, function()
         end, function() end)
         if hooked then log("PT|guestparts hooked") end
     end
-    for _, h in pairs(held) do if valid(h.hc) then h.hc:SetHealth(h.hp) end end
+    -- only undo our lift: a host-synced health that arrived meanwhile stays
+    for _, h in pairs(held) do if valid(h.hc) and healthOf(h.hc) == h.max then h.hc:SetHealth(h.hp) end end
     held = {}
     for key, e in pairs(acc) do
         log("PT|parts send %s %.2f", (key:gsub("\t", " ")), e.dmg)

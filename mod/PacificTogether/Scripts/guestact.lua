@@ -226,19 +226,40 @@ local function healsWith(comp)
         end
     end
 end
+-- the lookups cost three object scans: cached per component for 0.5 s; the heals of a tool tick are summed per target and sent every 200 ms
+local healCache, healPend = {}, {} -- comp address -> { ok, slot, id, at }; "slot|id" key -> { msg, data key, amount }
 local function pasteHeal(comp, amount)
-    if not healsWith(comp) then return end
-    if amount and amount > 0.005 then
-        local slot = carSlotOf(comp)
-        if slot then
-            log("PT|act send heal %s %.3f (tool)", slot, amount)
-            net.toHost("g.act.heal", slot .. "\t" .. amount)
-        else
-            local id = require("loot").idOf(comp:GetOwner())
-            if id then log("PT|act send heal wreck %s %.3f", id, amount); net.toHost("g.parts.heal", id .. "\t" .. amount) end
+    local addr, t = comp:GetAddress(), now()
+    local c = healCache[addr]
+    if not c or t - c.at > 0.5 then
+        c = { ok = healsWith(comp) or false, at = t }
+        if c.ok then
+            c.slot = carSlotOf(comp)
+            if not c.slot then c.id = require("loot").idOf(comp:GetOwner()) end
         end
+        healCache[addr] = c
+    end
+    if not c.ok then return end
+    if not (c.slot or c.id) then return end -- neither a car part nor a wreck part: the old note path decides
+    if amount and amount > 0.005 then
+        local key = c.slot or c.id
+        local e = healPend[key] or { slot = c.slot, id = c.id, amount = 0 }
+        e.amount, healPend[key] = e.amount + amount, e
     end
     return true
+end
+local function flushHeals()
+    for key, e in pairs(healPend) do
+        if e.slot then
+            log("PT|act send heal %s %.3f (tool)", e.slot, e.amount)
+            net.toHost("g.act.heal", e.slot .. "	" .. e.amount)
+        else
+            log("PT|act send heal wreck %s %.3f", e.id, e.amount)
+            net.toHost("g.parts.heal", e.id .. "	" .. e.amount)
+        end
+    end
+    healPend = {}
+    for addr, c in pairs(healCache) do if now() - c.at > 2 then healCache[addr] = nil end end
 end
 local function healNote(self, _, _, healed)
     if not guest() then return end
@@ -322,6 +343,11 @@ LoopInGameThreadWithDelay(1000, function()
     beat = beat + 1
     try("gate", holdGate)
     if beat % 2 == 0 then try("hook", hookAll) end
+end)
+
+LoopInGameThreadWithDelay(200, function()
+    if not guest() then healPend = {}; return end
+    try("heals", flushHeals)
 end)
 
 LoopInGameThreadWithDelay(1000, function()

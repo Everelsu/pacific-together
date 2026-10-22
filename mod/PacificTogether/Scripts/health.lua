@@ -102,7 +102,8 @@ end
 local killHooked = os.getenv("PT_MUTATE") == "nokillfix" -- the class loads after the main menu: hooked from the tick
 local function hookKill()
     killHooked = pcall(RegisterHook, "/Game/Systems/Managers/BP_MainCharacterManager.BP_MainCharacterManager_C:KillPlayer", function(self)
-        if not safety.guest() or dying then return end
+        if not safety.guest() then return end
+        if dying then undoGameDeath(self:get()); return end -- a game death after our own: undo it, no second flow
         local okb, bp = pcall(require, "backpack")
         local pre = okb and bp.pre and bp.pre() or nil
         undoGameDeath(self:get())
