@@ -48,25 +48,50 @@ local function shredHook(self, inst)
 end
 
 local kick = false
-net.on("g.st.shred", function(_, data)
+net.on("g.st.shred", function(pc, data)
     if not host() then return end
-    local s = first("BP_Garage_PartShredder_C")
-    if not s then log("PT|st shred: host has no shredder installed"); return end
-    local c, n = s.BP_InventoryContainerComponent, 0
-    local lib = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
-    for spec in data:gmatch("[^\n]+") do
-        local a = ids.archetype(spec:match("^[^:]+"))
+    local sh = first("BP_Garage_PartShredder_C")
+    local back, n = {}, 0 -- specs the host could not take: they go back to the guest, who already lost them
+    local c, lib
+    if sh then c, lib = sh.BP_InventoryContainerComponent, StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary") end
+    for spec in data:gmatch("[^
+]+") do
+        local a = c and ids.archetype(spec:match("^[^:]+"))
+        local r = {}
         if a then
             local inst = lib:CreateItemInstance(UEHelpers.GetWorld(), a, 0)
             ids.setProps(inst, spec)
-            local r = {}
             c:AddItem(inst, r)
-            if r.Added then n = n + 1 end
         end
+        if r.Added then n = n + 1 else back[#back + 1] = spec end
+    end
+    if not sh then log("PT|st shred: host has no shredder installed") end
+    if #back > 0 then
+        net.toGuest(pc, "g.st.shredback", table.concat(back, "
+"))
+        log("PT|st shred: %d items sent back to the guest", #back)
     end
     kick = n > 0
     log("PT|st shred %d items put in the host's shredder", n)
     if n > 0 then ov.post(ov.other() .. " is using the part shredder", "good", "st.shred") end
+end)
+
+-- guest: what the host's shredder refused goes back into the backpack
+net.on("g.st.shredback", function(_, data)
+    if not guest() then return end
+    local im = FindFirstOf("BP_InventoryManager_C")
+    local lib = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
+    if not (valid(im) and valid(lib)) then return end
+    for spec in data:gmatch("[^
+]+") do
+        local a = ids.archetype(spec:match("^[^:]+"))
+        if a then
+            local inst = lib:CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+            ids.setProps(inst, spec)
+            local ok = im.Inventory_Player:AddItem(inst, true)
+            log("PT|st shred item returned to the backpack: %s", tostring(ok))
+        end
+    end
 end)
 
 local function hostShredder()
@@ -184,6 +209,14 @@ end
 
 local wantQ, cured = nil, {} -- guest: the host's last list; key -> os.clock of the guest's own cure
 net.on("g.st.q", function(_, data) if guest() then wantQ = data end end)
+-- upgrades.lua: a quirk effect on the guest that mirrors one of the host's stays (its behaviours are still never run here)
+function M.mirrored(q)
+    if not wantQ then return false end
+    local ok, k = pcall(qKey, q)
+    if not ok then return false end
+    local c, b = k:match("^(.-)|(.+)$")
+    return wantQ:find(c .. "\t" .. b .. "\t", 1, true) ~= nil
+end
 
 local byAddr = {} -- guest: quirk object address -> key (the cured quirk is already gone when CureCarQuirk's hook runs)
 local function guestQuirks()
@@ -299,7 +332,8 @@ LoopInGameThreadWithDelay(500, function()
             shredded = {}
         end
     elseif host() then
-        pcall(hostQuirks)
+        local okq, errq = pcall(hostQuirks)
+        if not okq then log("PT|error stations host quirks %s", tostring(errq)) end
         local ok, err = pcall(hostShredder)
         if not ok then log("PT|error stations host %s", tostring(err)) end
     end
