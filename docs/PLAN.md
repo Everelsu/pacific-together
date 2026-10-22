@@ -30,7 +30,7 @@ Anything marked **(spike)** is a design assumption that a milestone M1 experimen
 | D21 | **Guest can use the garage stations** (Fabrication, Tinker, Detailing) in v1.0, spending the host's shared resources (G2). |
 | D22 | **ARC scope for the guest in v1.0: gateway summon and energy use only.** Route planning stays host-only until v1.1 (it runs through native `UBaseRouteState`; lane E research, 2026-10-20). Narrows D13 / W11. |
 | D23 | **Prove the crash-upload block (D16/Q9) before 1.0** with one deliberate test-copy crash while a Windows Firewall rule blocks the test copy's CrashReportClient outbound (owner approved; needs a UAC prompt). Until then test copies have no CrashReportClient.exe at all (`setup-test.ps1` removes it). |
-| D24 | **Deferred to v1.1** (not immersion blockers): guest use of the garage stations (D21, G2), the other player's marker on the ARC map (D17 second half, P8), Tourists freezing for any player's view (D19, W7). Name tags (P7) stay in v1.0. Research for all three is done (`docs/research/garage-stations.md`, `arc-marker.md`, `tourists.md`). |
+| D24 | **Deferred to v1.1** (not immersion blockers; owner 2026-10-22 moved guest garage stations G2 back into v1.0, guest driving stays v1.1): the other player's marker on the ARC map (D17 second half, P8), Tourists freezing for any player's view (D19, W7). Name tags (P7) stay in v1.0. Research for all three is done (`docs/research/garage-stations.md`, `arc-marker.md`, `tourists.md`). |
 
 ## 2. Fixed constraints
 
@@ -125,7 +125,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | Id | Requirement | P |
 |---|---|---|
 | G1 | Guest can walk the garage and hand items to the host or the locker | P0 |
-| G2 | Fabrication, Tinker, Detailing stations: host-only in v1.0; guest use with the host performing each action on the shared resources is v1.1 (D21, D24) | P0 (guest use P1) |
+| G2 | Guest uses the garage stations (Part Shredder, research/blueprints, fabrication, garage upgrades, Tinker, Detailing) with the host performing each action on the shared resources (D21; owner 2026-10-22: in v1.0) | P0 |
 | G3 | Story missions, radio transmissions, cutscenes play on the host; guest is a bystander and nothing breaks | P0 |
 | G4 | Story audio and cutscenes for the guest | P1 |
 | G5 | Co-op disables the Chrono Dilator. Pausing is allowed: blocking it crashed the host's pause menu and broke the guest's (owner's playtest 2026-10-21); the host's menu pauses both | P0 |
