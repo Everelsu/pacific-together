@@ -103,6 +103,7 @@ local function upgradeLines()
 end
 
 local done = {} -- guest: spawner full name .. class -> true once installed here
+local failedOnce = {}
 local function applyUpgrades(data)
     local im, sm = managers()
     if not im then return end
@@ -125,9 +126,12 @@ local function applyUpgrades(data)
                         M.applying = true -- stations.lua: this install is the host's, not the guest's own
                         pcall(s.InstallSpecificUpgrade, s, cls, true)
                         M.applying = false
-                        log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
+                        local okNow, after = pcall(installed, s, im, sm)
+                        for _, h in ipairs(okNow and after or {}) do if h == c then present = true end end
+                        if present then log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
+                        elseif not failedOnce[key] then failedOnce[key] = true; log("PT|garage install of %s on %s did not take, retrying", c:match("[^.]+$"), n) end
                     end
-                    if present or (cls and cls:IsValid()) then done[key] = true end
+                    if present then done[key] = true end
                 end
             end
         end

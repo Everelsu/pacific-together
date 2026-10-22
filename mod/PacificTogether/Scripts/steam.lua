@@ -154,8 +154,9 @@ end
 
 local function fail(why)
     log("PT|steam join failed: %s", why)
-    g.phase = "failed"
+    g = nil -- hosting works again (hostTick is skipped while g is set), and so does a new join request
     PTNative_SteamLeaveLobby()
+    session().setJoin(nil)
 end
 
 local function guestTick()
@@ -169,7 +170,7 @@ local function guestTick()
             local to = TEST_LINK and ("127.0.0.1:" .. tostring(PTNative_SteamLobbyData("pt_link"))) or ("steam:" .. g.host)
             log("PT|steam entered lobby=%s host=%s port=%d tunnel=%s peer=%s", g.lobby, g.host, g.port, tostring(linkUp(false)), tostring(PTNative_TunnelPeer(FAKE_HOST, to)))
             g.phase, g.t0 = "warm", os.clock()
-        elseif os.clock() - g.t0 > JOIN_TIMEOUT or (cur == nil and status:match("^entered") and not status:match("response=1")) then
+        elseif os.clock() - g.t0 > JOIN_TIMEOUT or (cur == nil and status and status:match("^entered") and not status:match("response=1")) then
             fail("lobby not entered: " .. tostring(status))
         end
     elseif g.phase == "warm" then
@@ -194,6 +195,7 @@ local function guestTick()
         log("PT|steam left lobby %s", g.lobby)
         PTNative_SteamLeaveLobby()
         g = nil
+        session().setJoin(nil) -- back to a host that listens on its own
     end
 end
 

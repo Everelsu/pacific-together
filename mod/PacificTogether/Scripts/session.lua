@@ -269,6 +269,12 @@ end
 
 -- M6: steam.lua resolved the lobby's host to a tunnel address; from here on we are an ordinary guest
 function M.setJoin(addr)
+    if not addr then -- the Steam join failed or the guest session ended: a host again
+        JOIN, M.join, guestActive = nil, nil, false
+        if PTNative_SetAutoListen then PTNative_SetAutoListen(true) end
+        if PTNative_SetRejoin then PTNative_SetRejoin("") end
+        return
+    end
     JOIN, M.join, guestActive, lastJoin = addr, "via Steam", true, -100
     if PTNative_SetAutoListen then PTNative_SetAutoListen(false) end
     StaticFindObject("/Script/OnlineSubsystemUtils.Default__IpNetDriver").ResolutionConnectionTimeout = CONNECT_TIMEOUT
