@@ -203,11 +203,20 @@ end
 net.on("g.hands.s", function(_, data) remote.state, remote.at = data, os.time() end)
 net.on("g.hands.use", function() remote.useAt = os.clock() end)
 
-local useHooked = false
+-- The press and release input events of the base class (every tool's overridden PrimaryUsePress is called from them); the press
+-- is the one that leaves "Desire Tool Primary Use" set.
+local BASE = "/Game/Gameplay/Inventory/BaseItems/Hand/BP_BaseHandManifestation.BP_BaseHandManifestation_C:InpActEvt_ToolPrimaryUse_K2Node_InputActionEvent_"
+local hooked, useHooked = {}, false
 local function hookUse()
-    useHooked = pcall(RegisterHook, "/Game/Gameplay/Inventory/BaseItems/Hand/BP_BaseHandManifestation.BP_BaseHandManifestation_C:PrimaryUsePress", function()
-        if safety.active() then send("g.hands.use", "") end
-    end)
+    for _, i in ipairs({ 2, 3 }) do
+        if not hooked[i] then
+            hooked[i] = pcall(RegisterHook, BASE .. i, function() end, function(self)
+                local h = self:get()
+                if safety.active() and h["Desire Tool Primary Use"] == true then send("g.hands.use", "") end
+            end)
+        end
+    end
+    useHooked = hooked[2] and hooked[3]
 end
 
 -- a map change frees every object we hold
