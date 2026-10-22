@@ -169,4 +169,60 @@ LoopInGameThreadWithDelay(1000, function()
     end)
     if not ok then log("PT|error up tick %s", tostring(err)) end
 end)
+
+-- car quirks ------------------------------------------------------------------------------------------------------------
+-- Quirks are status effects on the host's car parts; their behaviours work the car manager (doors, lights, horn, wipers, radio,
+-- engine, gearbox), and car.lua / carfeel.lua already carry those states to the guest. The interior light was missing: the
+-- host's value is copied (g.up.i). The guest's own game must not roll quirks of its own: its quirk effects are removed.
+local function first(class)
+    for _, o in ipairs(FindAllOf(class) or {}) do if valid(o) then return o end end
+end
+local intSent, intWant, intAt, intHostAt, lastGuests = nil, nil, 0, 0, 0
+net.on("g.up.i", function(_, data)
+    if mode() == "client" then intWant = data == "1" end
+end)
+local function interiorTick()
+    local cm = first("BP_CarManager_C")
+    if not cm then return end
+    if mode() == "listen" and #net.guests() > 0 then
+        local v = cm.CarTopLightOnOff and "1" or "0"
+        if #net.guests() > lastGuests or v ~= intSent or os.clock() - intHostAt > 3 then
+            if v ~= intSent then log("PT|up interior light sent %s", v) end
+            net.toGuests("g.up.i", v)
+            intSent, intHostAt = v, os.clock()
+        end
+        lastGuests = #net.guests()
+    elseif mode() == "client" and intWant ~= nil and cm.CarTopLightOnOff ~= intWant and os.clock() - intAt > 1 then
+        local car = carCar()
+        if car then
+            intAt = os.clock()
+            pcall(function() car:ToggleInteriorLight() end)
+            log("PT|up interior light %s", tostring(intWant))
+        end
+    end
+end
+
+local QUIRK_EFFECTS = { "SE_Quirk_MixAndMatch_C", "SE_FAF_DoQuirkBehavior_C" }
+local function guestQuirkSweep()
+    local sm = first("BP_StatusEffectManager_C")
+    if not sm then return end
+    for _, class in ipairs(QUIRK_EFFECTS) do
+        for _, e in ipairs(FindAllOf(class) or {}) do
+            if valid(e) and not e:GetFullName():find("Default__", 1, true) then
+                local name = e:GetFullName():sub(-70)
+                pcall(function() sm:RemoveStatusEffect(e) end)
+                log("PT|up guest quirk removed %s", name)
+            end
+        end
+    end
+end
+LoopInGameThreadWithDelay(200, function()
+    local ok, err = pcall(interiorTick)
+    if not ok then log("PT|error up interior %s", tostring(err)) end
+end)
+LoopInGameThreadWithDelay(2000, function()
+    if mode() ~= "client" then return end
+    local ok, err = pcall(guestQuirkSweep)
+    if not ok then log("PT|error up quirk sweep %s", tostring(err)) end
+end)
 return M
