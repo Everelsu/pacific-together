@@ -211,7 +211,7 @@ local function guestQuirkSweep()
     local okS, stations = pcall(require, "stations")
     for _, class in ipairs(QUIRK_EFFECTS) do
         for _, e in ipairs(FindAllOf(class) or {}) do
-            if valid(e) and not e:GetFullName():find("Default__", 1, true)
+            if valid(e) and not e:GetFullName():find("Default__", 1, true) and not e:GetFullName():find("_DIRECTOR_", 1, true)
                 and not (class == "SE_Quirk_MixAndMatch_C" and okS and stations.mirrored and stations.mirrored(e)) then
                 local name = e:GetFullName():sub(-70)
                 pcall(function() sm:RemoveStatusEffect(e) end)
