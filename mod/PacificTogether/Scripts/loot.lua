@@ -37,7 +37,7 @@ local partIds = {} -- wreck part actor full name -> id, both sides (idOf), check
 local reported = {} -- guest: dropped items already told to the host
 local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
-local gotAny, tickN = false, 0
+local gotAny, tickN, hostScanned, fullAt = false, 0, false, nil
 
 -- a big container (a garage's storage can hold hundreds of stacks) does not fit one message (32 KB): its state goes as numbered pieces
 -- "P|id|i|n|keys", put together again on the other side
@@ -377,13 +377,17 @@ local function scanGuest()
     -- pickups the guest's own game makes now (spawners): not the host's. Items the guest dropped lie next to it: they become the host's.
     local pawn = UEHelpers.GetPlayerController().Pawn
     local p = alive(pawn) and pawn:K2_GetActorLocation()
-    -- its own random lootables keep appearing for a while after the join
-    for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
-        if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
-    end
-    for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
-        for _, a in ipairs(FindAllOf(c) or {}) do
+    -- its own random lootables keep appearing for a while after the join; every 2 s: these scans took 300-400 ms of each
+    -- 500 ms tick in a zone and the guest could not even turn its camera (local playtest 2026-10-22, PT|slow loot.lua)
+    -- still 330 ms every 2 s in play, and the game stops spawning its own loot soon after the join: the first 90 s only
+    if tickN % 4 == 0 and (not fullAt or os.clock() - fullAt < 90) then
+        for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
             if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
+        end
+        for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
+            for _, a in ipairs(FindAllOf(c) or {}) do
+                if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
+            end
         end
     end
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
@@ -424,12 +428,15 @@ end
 local function scanChanges()
     for id, e in pairs(ents) do
         local c = e.get()
-        if e.kind == "P" and alive(e.actor) and alive(e.actor.ItemInstance) then
-            -- siphoned fuel, worn durability: the part's item state
-            local s = partKey(e.actor)
-            if s ~= e.last then
-                e.last = s
-                say("S|" .. id .. "|" .. partState(e.actor))
+        if e.kind == "P" then
+            -- a part's full key (fuel, wear, contents) is costly and changes slowly: every 2 s
+            if tickN % 4 == 1 and alive(e.actor) and alive(e.actor.ItemInstance) then
+                -- siphoned fuel, worn durability: the part's item state
+                local s = partKey(e.actor)
+                if s ~= e.last then
+                    e.last = s
+                    say("S|" .. id .. "|" .. partState(e.actor))
+                end
             end
         elseif alive(c) then
             local r = flagsOf(e)
@@ -489,7 +496,7 @@ local function handle(pc, data)
             gotAny = true
             onAdd(id, f[3], tonumber(f[4]), tonumber(f[5]), tonumber(f[6]), tonumber(f[7]), f[8])
         elseif guest and op == "F" then
-            gotAny = true
+            gotAny, fullAt = true, os.clock()
             purge()
         elseif op == "S" and ents[id] then
             log("PT|loot got S %s (%s)", id, f[3]:sub(1, 80))
@@ -531,7 +538,9 @@ local function tick()
     local mode = common.netMode()
     if mode == "listen" then
         if #net.guests() == 0 then return end
-        scanHost()
+        -- discovery every 2 s: it took ~340 ms of each 500 ms tick in a zone (local playtest 2026-10-22); until the guest's
+        -- first full list it runs every tick
+        if tickN % 4 == 2 or not hostScanned then scanHost(); hostScanned = true end
         scanMoves()
     elseif mode == "client" then
         if not ids.alive(UEHelpers.GetPlayerController()) then return end
@@ -544,6 +553,7 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
+    hostScanned, fullAt = false, nil
     ents, byName, claimed, reported, out, gotAny, partial, partIds = {}, {}, {}, {}, {}, false, {}, {}
 end)
 

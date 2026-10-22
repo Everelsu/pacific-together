@@ -536,11 +536,45 @@ local function hookAll()
     pcall(RegisterKeyBind, Key.X, function() exitWanted = true end)
 end
 
+-- F8 on the guest: log what holds the controls, then give them back (camera and walking stayed locked after an exit,
+-- local playtest 2026-10-22, cause not found yet)
+local unstickWanted = false
+pcall(RegisterKeyBind, Key.F8, function() unstickWanted = true end)
+local function unstick()
+    local pc = localPC()
+    local me = pc and pc.Pawn
+    if not valid(me) then return end
+    local s = {}
+    local function probe(k, f) local ok, v = pcall(f); s[#s + 1] = k .. "=" .. (ok and tostring(v) or "?") end
+    probe("look", function() return pc:IsLookInputIgnored() end)
+    probe("move", function() return pc:IsMoveInputIgnored() end)
+    probe("view", function() return pc:GetViewTarget():GetFName():ToString() end)
+    probe("mode", function() return me.CharacterMovement.MovementMode end)
+    probe("tick", function() return me.CharacterMovement:IsComponentTickEnabled() end)
+    probe("parent", function() local p = me:GetAttachParentActor(); return p:IsValid() and p:GetFName():ToString() or "none" end)
+    probe("riding", function() return riding ~= nil end)
+    log("PT|car unstick %s", table.concat(s, " "))
+    if riding and not same(me:GetAttachParentActor(), theCar(false)) then stopRide(me) end
+    if not riding then
+        pcall(function() me:K2_DetachFromActor(1, 1, 1) end)
+        stopRide(me)
+    end
+    pcall(function() pc:ResetIgnoreInputFlags() end)
+    pcall(function() pc:SetViewTargetWithBlend(me, 0, 0, 0, false) end)
+    pcall(function() me:EnableInput(pc) end)
+    pcall(function() StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary"):SetInputMode_GameOnly(pc) end)
+end
+
 local helloFor = nil
 local function guestTick()
     if exitWanted then
         exitWanted = false
         if common.netMode() == "client" and riding then sendExit() end
+    end
+    if unstickWanted then
+        unstickWanted = false
+        local ok, err = pcall(unstick)
+        if not ok then log("PT|error car unstick %s", tostring(err)) end
     end
     local car = theCar(false)
     if not car then return end
