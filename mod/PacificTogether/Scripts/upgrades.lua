@@ -39,6 +39,7 @@ local PROVIDER_PARTS = {
 local DIRECT = {
     { ABIL .. "Abilities_Jump/BP_Attach_Util_Ability_Jump", "BP_Attach_Util_Ability_Jump_C", { "onJumpStart" } },
     { ABIL .. "Abilities_Shields/BP_Attach_Util_Ability_Shield_Base", "BP_Attach_Util_Ability_Shield_Base_C", { "OnAbilityStart", "OnAbilityEnd" } },
+    { ABIL .. "Abilities_Shields/Bracer/BP_Attach_Util_Ability_Shield_Bracer", "BP_Attach_Util_Ability_Shield_Bracer_C", { "OnAbilityStart", "OnAbilityEnd" } },
     { ABIL .. "Abilities_Shields/Impact/BP_Attach_Util_Ability_Shield_Impact", "BP_Attach_Util_Ability_Shield_Impact_C", { "OnAbilityStart", "OnAbilityEnd" } },
     { ABIL .. "Abilities_BubbleShield_01/BP_Attach_Util_Ability_BubbleShield", "BP_Attach_Util_Ability_BubbleShield_C", { "OnAbilityStart", "OnAbilityEnd" } },
     { ABIL .. "Abilities_AntiGravity_01/BP_Attach_Util_Ability_AntiGravity", "BP_Attach_Util_Ability_AntiGravity_C", { "OnStart", "OnStop" } },
@@ -93,7 +94,10 @@ local function installHooks()
     for _, h in ipairs(pending) do
         local ok
         if h[1] == "provider" then ok = hookProvider(h[2], h[3]) else ok = hookDirect(h[2], h[3], h[4]) end
-        if not ok then left[#left + 1] = h end
+        if not ok then
+            left[#left + 1] = h
+            if not h.warned then h.warned = true; log("PT|up hook pending %s %s", tostring(h[2]), tostring(h[4])) end
+        end
     end
     pending = left
     if #left == 0 and not M.hooked then M.hooked = true; log("PT|up hooks installed") end
