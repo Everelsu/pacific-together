@@ -5,7 +5,7 @@
 --   3 off      A presses again: the light is gone
 --   4 switch   A holds a patch kit instead: the mesh follows (a different one), no light
 --   5 use      A presses the patch kit's use input: B sees the use swing (the mannequin has no tool montage, the mirror swings)
---   6 carry    A holds a large item (fuel can): the mirror sits on the chest (spine_03), not the hand
+--   6 carry    A holds a two-handed item (a car door): the mirror sits in front of the chest, not on the hand
 --   7 empty    A empties the hand: the mirror is gone
 -- Run: tools/run-test.ps1 -Scenario hands -Fixture garage -Headless      Mutation nohands: hands.lua inert, B's checks FAIL.
 return function(T)
@@ -14,7 +14,8 @@ return function(T)
     local TOOLS = "/Game/Gameplay/Inventory/Items/Tools/"
     local FLASH = TOOLS .. "Flashlight/Potato/IA_Tool_Toggle_Flashlight.IA_Tool_Toggle_Flashlight"
     local PATCH = TOOLS .. "PatchKit/IA_Tool_Target_Consumable_PatchKit.IA_Tool_Target_Consumable_PatchKit"
-    local CAN = TOOLS .. "FuelCan/FuelCan5G/IA_Tool_Target_FuelCan_5Gal.IA_Tool_Target_FuelCan_5Gal"
+    -- a car part is the two-handed kind (Archetype.Size 1; the fuel can is a one-hand tool)
+    local DOOR = "/Game/Gameplay/Inventory/Items/Car/Doors/Door_Titanium_Basic_01/IA_Attach_Body_Door_Titanium_Basic.IA_Attach_Body_Door_Titanium_Basic"
     local slow = (T.MUTATE == "nohands") and 0.15 or 1
     local function to(s) return math.max(6, math.floor(s * slow)) end
     local function alive(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
@@ -45,6 +46,7 @@ return function(T)
         m.Inventory_PlayerHand:GetSlot(0):RemoveAllItems({})
         if not path then return end
         m:GiveItemToPlayer(arch(path))
+        if m.Inventory_PlayerHand:GetNumItems() > 0 then return end -- a car part goes straight into the hands
         local want = path:match("([^/%.]+)$")
         for i = 0, m.Inventory_Player:GetNumSlots() - 1 do
             local s = m.Inventory_Player:GetSlot(i)
@@ -62,17 +64,15 @@ return function(T)
         return alive(h) and h or nil
     end
     local SMC = StaticFindObject("/Script/Engine.StaticMeshComponent")
-    -- the mesh of our own hand item, found the way the mod does (CurrentItemMesh, else the biggest static mesh)
+    -- the main mesh of our own hand item, found the way the mod does (the biggest visible static mesh, not the VFX bbox tube)
     local function ownMesh()
         local h = handItem()
         if not h then return "none" end
-        local cim = h.CurrentItemMesh
-        if alive(cim) and alive(cim:GetStaticMesh()) then return cim:GetStaticMesh():GetFullName() end
         local best, size = nil, -1
         for _, c in ipairs(h:K2_GetComponentsByClass(SMC)) do
             c = c:get()
-            local sm = alive(c) and c:GetStaticMesh()
-            if alive(sm) and sm:GetBounds().SphereRadius > size then best, size = sm, sm:GetBounds().SphereRadius end
+            local sm = alive(c) and c:IsVisible() and c.StaticMesh
+            if alive(sm) and not sm:GetFullName():find("bboxTube", 1, true) and sm:GetBounds().SphereRadius > size then best, size = sm, sm:GetBounds().SphereRadius end
         end
         return best and best:GetFullName() or "none"
     end
@@ -97,12 +97,15 @@ return function(T)
     end
     local function mirrorMesh()
         local a = mirror()
-        local m = a and a.StaticMeshComponent:GetStaticMesh()
+        local m = a and a.StaticMeshComponent.StaticMesh
         return (m and m:IsValid()) and m:GetFullName() or "none"
     end
+    -- hand_r for one-hand items; "None" with the item 45 uu in front of the character for the two-handed carry
     local function mirrorSocket()
         local a = mirror()
-        return a and a.RootComponent:GetAttachSocketName():ToString() or "none"
+        if not a then return "none" end
+        local s = a.RootComponent:GetAttachSocketName():ToString()
+        return s == "None" and string.format("chest(x=%.0f)", a.RootComponent.RelativeLocation.X) or s
     end
     local function lightAtHead()
         local o = otherC()
@@ -158,7 +161,9 @@ return function(T)
         -- A: act, announce; B: wait for the announcement, check, acknowledge. A waits for the ack before the next step.
         local function phase(n, name, act, observe)
             if I then
-                add({ run = function() act(); say(msg(n), ownMesh()) end })
+                add({ run = function() act() end })
+                add({ wait = 1.5 }) -- the hand item actor appears a frame or two after the inventory move
+                add({ run = function() say(msg(n), ownMesh()) end })
                 add({ check = d.a .. "_phase_" .. name .. "_acked", timeout = to(30), cond = function() return has(msg(n) .. "k") ~= nil end })
             else
                 add({ check = d.b .. "_told_" .. name, timeout = to(60), cond = function() return has(msg(n)) ~= nil end })
@@ -186,10 +191,10 @@ return function(T)
             log("PT|info %s swing=%s", d.b, tostring(swing.last))
             return swing.last ~= nil
         end)
-        phase(6, "carry", function() hold(CAN) end, function(mesh)
+        phase(6, "carry", function() hold(DOOR) end, function(mesh)
             local s, m = mirrorSocket(), mirrorMesh()
             log("PT|info %s carry socket=%s mirror=%s hand=%s", d.b, s, m, mesh)
-            return s == "spine_03" and m == mesh
+            return s == "chest(x=45)" and m == mesh
         end)
         phase(7, "empty", function() hold(nil) end, function() return mirror() == nil end)
     end
