@@ -85,9 +85,10 @@ net.on("g.health.revive", function() revive() end)
 -- the game's own death on the guest (BP_MainCharacterManager:KillPlayer: a door that crushes, CheckForGameOver, ...) would
 -- run the guest's local item penalty, leave PlayerAlive false and wait for a return to the garage. It is our death instead:
 -- the backpack of the last tick (before the penalty) goes to the host's crate, the game's death state is undone.
-local function undoGameDeath(cm)
+local function undoGameDeath(cm, duringOurs)
     pcall(function() StaticFindObject("/Script/Engine.Default__KismetSystemLibrary"):K2_ClearTimer(cm, "OnPlayerDeathReturnTimer") end)
     pcall(function() cm:SetPlayerAlive(true) end)
+    if duringOurs then return end -- HUD, car state, collision and movement belong to our own fade and respawn
     local ch = cm.CharacterActor
     if valid(ch) then
         pcall(function() ch.ALS_MovementMode = 1; ch.CharacterMovement:SetMovementMode(1, 0); ch.CapsuleComponent:SetCollisionEnabled(3) end)
@@ -103,7 +104,7 @@ local killHooked = os.getenv("PT_MUTATE") == "nokillfix" -- the class loads afte
 local function hookKill()
     killHooked = pcall(RegisterHook, "/Game/Systems/Managers/BP_MainCharacterManager.BP_MainCharacterManager_C:KillPlayer", function(self)
         if not safety.guest() then return end
-        if dying then undoGameDeath(self:get()); return end -- a game death after our own: undo it, no second flow
+        if dying then undoGameDeath(self:get(), true); return end -- a game death after our own: undo it, no second flow
         local okb, bp = pcall(require, "backpack")
         local pre = okb and bp.pre and bp.pre() or nil
         undoGameDeath(self:get())
