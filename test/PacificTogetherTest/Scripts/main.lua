@@ -224,7 +224,7 @@ local function hello(mod, protocol)
 end
 -- the shipping host refuses a guest that sends no hello. Its own mod sends one only after a PT_JOIN join; the scenarios
 -- that join with the test's own `open` send the same hello here (body -Mutate nospawn: none, so no character)
-if ROLE == "client" and (os.getenv("PT_JOIN") or "") == "" and SCENARIO ~= "sessionmismatch" and MUTATE ~= "nospawn" then
+if ROLE == "client" and (os.getenv("PT_JOIN") or "") == "" and SCENARIO ~= "sessionmismatch" and SCENARIO ~= "steamsession" and MUTATE ~= "nospawn" then
     RegisterHook("/Script/Engine.PlayerController:ClientSetHUD", function(self)
         local pc = self:get()
         if netMode() == "client" and pc:IsLocalController() then pc:ServerChangeName(hello()); log("PT|info hello sent") end
