@@ -143,7 +143,7 @@ return function(T)
             local m = markOf(name, all)
             T.log("PT|info ping host sees %d markers, guest's at %s", #all, m and string.format("%.0f %.0f %.0f", m.x, m.y, m.z) or "-")
             -- the host's own ping (step 2) may have run out by now (8 s): one or two markers, one per player
-            return m ~= nil and #all <= 2 and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and m.text:find("%d+ m")
+            return m ~= nil and #all <= 2 and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and m.text:find("%d+ m") ~= nil
         end })
         -- 4. nothing more is pinged: the markers go
         local t0
