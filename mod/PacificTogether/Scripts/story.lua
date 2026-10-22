@@ -112,9 +112,12 @@ local function doneTick()
     for _, r in ipairs(R) do if not sentDone[r] then fresh[#fresh + 1] = r; sentDone[r] = true end end
     local first = {}
     chunks(fresh, first)
-    for _, c in ipairs(first) do net.toGuests("g.story.done", c) end
+    -- one chunk per tick, also for the first burst (all of the history is fresh then): the rest waits at the front of the queue
+    local sent = #first > 0
+    if sent then net.toGuests("g.story.done", table.remove(first, 1)) end
+    for i, c in ipairs(first) do table.insert(queue, i, c) end
     if #queue == 0 and os.clock() - lastCycle > 10 then lastCycle = os.clock(); chunks(R, queue) end
-    if #queue > 0 then net.toGuests("g.story.done", table.remove(queue, 1)) end
+    if not sent and #queue > 0 then net.toGuests("g.story.done", table.remove(queue, 1)) end
 end
 
 -- a task only the guest can do (it holds the item, stands at the place): the guest says so, the host completes it for the story

@@ -202,7 +202,13 @@ net.on("g.bp.hi", function(pc)
     local line = readFile(slot(), id) or (stored[id] and encode(stored[id]))
     if not line and old ~= id then
         line = readFile(slot(), old)
-        if line then log("PT|bp host adopts the old backpack of %s for %s", old, id) end
+        if line then
+            log("PT|bp host adopts the old backpack of %s for %s", old, id)
+            -- a second SteamID with the same login name must not adopt it again
+            stored[id] = decode(line)
+            writeFile(slot(), id)
+            if readFile(slot(), id) then os.rename(file(slot(), old), file(slot(), old) .. ".adopted") end
+        end
     end
     if line then stored[id] = decode(line) end
     log("PT|bp host answers %s slot=%d %s", id, slot(), line and (count(stored[id]) .. " items") or "new guest")

@@ -202,13 +202,17 @@ local function interiorTick()
     end
 end
 
+-- The quirk effects stations.lua mirrored from the host's list stay (the cure UI needs them); the guest's own rolls and every
+-- SE_FAF_DoQuirkBehavior (what runs a behaviour) are removed.
 local QUIRK_EFFECTS = { "SE_Quirk_MixAndMatch_C", "SE_FAF_DoQuirkBehavior_C" }
 local function guestQuirkSweep()
     local sm = first("BP_StatusEffectManager_C")
     if not sm then return end
+    local okS, stations = pcall(require, "stations")
     for _, class in ipairs(QUIRK_EFFECTS) do
         for _, e in ipairs(FindAllOf(class) or {}) do
-            if valid(e) and not e:GetFullName():find("Default__", 1, true) then
+            if valid(e) and not e:GetFullName():find("Default__", 1, true) and not e:GetFullName():find("_DIRECTOR_", 1, true)
+                and not (class == "SE_Quirk_MixAndMatch_C" and okS and stations.mirrored and stations.mirrored(e)) then
                 local name = e:GetFullName():sub(-70)
                 pcall(function() sm:RemoveStatusEffect(e) end)
                 log("PT|up guest quirk removed %s", name)
