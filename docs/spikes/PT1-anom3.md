@@ -29,6 +29,31 @@
 - Bunny: hook on `PushFx` (host): a guest pawn inside `PlayerPusher.Radius` takes `PushDamage` (tuning read through `TuningFloatLibrary:Conv_TuningFloatToFloat`) and gets `g.anom3.push`;
   the guest applies a velocity impulse away from the creature.
 
+## Checks (scenario `anomalies3`, fixture zone, mutation `noanom3`)
+
+`guest_has_map_teslas`, `guest_has_items`, `guest_sees_stealer`, `guest_item_stolen`, `pickpocket_hurt_guest`, `stealer_holds_item`, `guest_sees_bunny`, `guest_hurt_by_bunny`,
+`guest_pushed_by_bunny`, `host_not_hurt_by_bunny_on_guest`. Mutation `noanom3` switches the module off in both processes: it fails the pickpocket and bunny checks
+(run `20261022-030909-pt1-anom3-anomalies3-noanom3`: 20/27 with the earlier scenario).
+
+Runs (local/test-results): `20261022-014946` first run 20/24 (before the fixes), `20261022-025820` 20/27, `20261022-030440` 23/27, `20261022-031643` 25/27 (pickpocket and
+bunny all pass), `20261022-032241` 26/27 (only the Tesla firing check failed), `20261022-032723` and `20261022-035511` crashed the host (Tesla experiments, see below).
+
 ## Guesses
 
-## Unknowns
+- Level Teslas are dormant while the host is far away (a `ManagedTick` component, `OnTickChanged`): with the guest 44000 uu from the nearest Tesla and the host elsewhere nothing fired (90 s).
+  Not verified.
+- A discharge at the position of the guest would be forwarded by anomalies.lua like any `DispatchMessageInSphere` damage; the Tesla chose the host (`FindTarget` takes the first actor with the highest tag priority).
+
+## Unknowns / gaps (next session)
+
+- **Spark Tower firing at the guest is not proven.** A map Tesla moved next to the players (`K2_SetActorLocation`) fired within seconds: host hp 100 -> 1 -> 20, the guest stayed at 100
+  for the 5 s seen, then the headless host crashed (access violation, `crash-host-UE4CC...` in `20261022-035511`: most likely the host reaching 0 hp). Teleporting the host 44000 uu to a
+  Tesla (`K2_TeleportTo` on the host character) also crashed it (`20261022-032723`). A clean proof needs the host out of the Tesla`s reach but awake (or `PlayerProtected`/health restore each second) and
+  the guest in its AoE; run-time spawned Teslas destroy themselves at once, so use a map Tesla.
+- Hazards are driven by the HOST character (`PlayerRange`, `ManagedTick`, `CanReachForPlayer`): a guest far from the host (> the hazard's range) gets no pickpocket or Tesla.
+- Pickpocket for the guest is host-side proximity (1200 uu, no LOS, state not 1/3/4), not the game's own reach animation: the stealer does not reach out to the guest, the item
+  just appears in its grab. The guest's held item is not taken (the game's own held-item branch is `Bool(0)`, i.e. off). Car-part theft: unchanged (car.lua mirrors PopOffPartFromCar).
+- A Part Stealer spawned at the car stayed in State 5 for 120 s without taking a part (not guest related).
+- Bunny push: velocity impulse is a guess (`strength / 100` clamped 300..1200, + 200 up), `PushDamage` read from the tuning (1.0 in the run) and `PlayerPusher.Radius` 1500, `ImpulseStrength` 1000 in the run.
+  The bunny only wakes by the host's distance (`IsPlayerInRange`); the test calls `PushFx` directly on the host instead of walking the guest into the creature.
+- Abductor and Can Opener do not exist in this build's classes.
