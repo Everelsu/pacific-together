@@ -58,3 +58,16 @@ Results (`local/test-results/`): `20261022-082957-pt2-story-storyprog` 26/26; mu
 - Which later missions (Q01+) need other task classes was not played; only Q00 and one generic mission were driven.
 - Quest-driven world changes (doors, spawned actors) were not identified; no story props by owner decision.
 - The host's headless dialogue loop (same line every 200 ms) was not root-caused; probably a headless audio artefact.
+
+## Follow-up after the merge (progsync regression)
+
+- `progsync` (zone fixture) failed 21/30 and 14/30 on main with `g.story.done` as first built: the zone host has a long finished list, and the
+  guest was dropped about 3 s after joining (`remotePCs()[1]` nil at progsync.lua:56). `-Mutate nostoryprog` gave 30/30 (`20261022-093113-pt2-story-progsync-nostoryprog`).
+  Cause (derived, not isolated further): a burst of big message chunks plus a burst of synchronous asset loads on the guest in one frame.
+- Fix: the host sends new entries at once and the whole list in 3 KB chunks, one per 500 ms tick, again every 10 s; the guest queues the
+  entries and loads two assets per 250 ms. Done list goes out before the quest row, so the guest knows an objective is finished before the
+  quest row removes it from the active list (the review finding: `StopObjective(o, hostDone)` otherwise abandons it; the done handler would add it
+  to the completed list anyway, so the end state was the same, only the stop event differed).
+- Results: `progsync` 30/30 `20261022-100536-pt2-story-progsync`; `storyprog` 26/26 `20261022-100816-pt2-story-storyprog`.
+  The existing `co:` check in `guest_journal_history_matches_host` covers "the FixCar objective ends in the guest's completed list"; "abandoned vs
+  completed" is not observable in the arrays, so no separate check.
