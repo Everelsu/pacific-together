@@ -18,7 +18,7 @@ return function(T)
     local DOOR = "/Game/Gameplay/Inventory/Items/Car/Doors/Door_Titanium_Basic_01/IA_Attach_Body_Door_Titanium_Basic.IA_Attach_Body_Door_Titanium_Basic"
     local slow = (T.MUTATE == "nohands") and 0.15 or 1
     local function to(s) return math.max(6, math.floor(s * slow)) end
-    local function alive(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
+    local function alive(o) return type(o) == "userdata" and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 
     local got = {}
     local function has(kind)
