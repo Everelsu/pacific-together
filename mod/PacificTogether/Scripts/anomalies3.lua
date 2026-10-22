@@ -86,7 +86,7 @@ LoopInGameThreadWithDelay(250, function()
                 if pawn and pawn:IsValid() then
                     local l = pawn:K2_GetActorLocation()
                     if (l.X - core.X) ^ 2 + (l.Y - core.Y) ^ 2 + (l.Z - core.Z) ^ 2 < REACH ^ 2 then
-                        stealCool[key] = now + 8
+                        stealCool[key] = now + COOL
                         net.toGuest(pc, "g.anom3.steal", key)
                         log("PT|anom3 pickpocket %s reaches for the guest", key)
                         return
