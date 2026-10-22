@@ -162,9 +162,12 @@ return function(T)
         g:AddingAnchorCompleteLogic(lib:CreateItemInstance(g:GetWorld(), a, 0))
     end })
     add({ wait = 4 })
+    -- a nil portal made the screen's OnExitUseComplete crash the guest (suite run 20261022-011955); the portal actors replicate late
+    add({ check = "guest_has_exit_portal", timeout = to(60), cond = function() return portals()[1] ~= nil end })
     add({ run = function()
         local p = portals()[1]
         log("PT|info guest picks gateway %s", T.name(p))
+        if not p then return end -- the check above failed; calling the screen with nil crashes the game
         T.first("BP_Carpart_Internal_GobblerScreen_C"):OnExitUseComplete(p)
     end })
     -- what the guest sees now is the host's car: the repaired door stays repaired, the ARC follows the host, the gateway is picked
