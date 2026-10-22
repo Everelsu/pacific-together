@@ -151,9 +151,23 @@ local function allowed(cn)
         if cn:sub(1, #p) == p then return not cn:find("Part_", 1, true) end
     end
 end
+-- paths go over the wire once ("M" lines: id, path); lines carry the ids. Messages are reliable RPCs (256 outstanding bunches per
+-- channel): a burst overflowed it and closed the guest's connection, so the host sends one small message per tick.
+local ids, nextId, newDefs = {}, 0, {}
+local function intern(path)
+    local id = ids[path]
+    if not id then
+        nextId = nextId + 1
+        id = nextId
+        ids[path] = id
+        newDefs[#newDefs + 1] = id .. "\t" .. path
+    end
+    return id
+end
 local function xform(o)
     local p, r, s = o:K2_GetActorLocation(), o:K2_GetActorRotation(), o:GetActorScale3D()
-    return string.format("%.1f,%.1f,%.1f", p.X, p.Y, p.Z), string.format("%.2f,%.2f,%.2f", r.Pitch, r.Yaw, r.Roll), string.format("%.3f,%.3f,%.3f", s.X, s.Y, s.Z)
+    local sc = (math.abs(s.X - 1) + math.abs(s.Y - 1) + math.abs(s.Z - 1) < 0.001) and "-" or string.format("%.3f,%.3f,%.3f", s.X, s.Y, s.Z)
+    return string.format("%.1f,%.1f,%.1f", p.X, p.Y, p.Z), string.format("%.1f,%.1f,%.1f", r.Pitch, r.Yaw, r.Roll), sc
 end
 local function state(o)
     local t = {}
@@ -177,15 +191,15 @@ local function smaLine(o, name)
         local d = def[i + 1]
         if m and m:IsValid() and d and d.MaterialInterface:IsValid() then
             local mp = fpath(m)
-            if mp ~= fpath(d.MaterialInterface) and not mp:find("/Engine/Transient", 1, true) then ov[#ov + 1] = i .. "=" .. mp end
+            if mp ~= fpath(d.MaterialInterface) and not mp:find("/Engine/Transient", 1, true) then ov[#ov + 1] = i .. "=" .. intern(mp) end
         end
     end
     local l, r, s = xform(o)
-    return table.concat({ "S", name, fpath(mesh), l, r, s, sm:GetCollisionProfileName():ToString(), table.concat(ov, ";") }, "\t")
+    return table.concat({ "S", name:match("(%d+)$") or name, intern(fpath(mesh)), l, r, s, intern(sm:GetCollisionProfileName():ToString()), table.concat(ov, ";") }, "\t")
 end
 local function bpLine(o, cn, name)
     local l, r, s = xform(o)
-    return table.concat({ "B", name, fpath(o:GetClass()), l, r, s, "", state(o) }, "\t")
+    return table.concat({ "B", name, intern(fpath(o:GetClass())), l, r, s, "", state(o) }, "\t")
 end
 
 local cache = {} -- host: actor name -> { addr, line } of static meshes (they never change)
@@ -205,7 +219,7 @@ local function scan()
                     line = sma and smaLine(o, name) or (not sma and bpLine(o, cn, name))
                     if sma then cache[name] = line and { addr = o:GetAddress(), line = line } or nil end
                 end
-                if line then cur[name] = line end
+                if line then cur[line:match("^%a\t([^\t]*)")] = line end
             end
         end
     end
@@ -213,37 +227,46 @@ local function scan()
 end
 
 local sent, queue, lastMap, lastGuests = {}, {}, nil, 0
+local function reset() sent, queue, cache, ids, nextId, newDefs = {}, {}, {}, {}, 0, {} end
 local function propsHost()
     local guests = #net.guests()
     local map = mapName()
     if map ~= lastMap or guests ~= lastGuests or M.hello then
-        sent, queue, cache, lastMap, lastGuests, M.hello = {}, {}, {}, map, guests, nil
+        reset()
+        lastMap, lastGuests, M.hello = map, guests, nil
     end
+    if not M.ready or #queue > 40 then return end -- the guest is still working through the last scan
     local cur = scan()
     local add, del = {}, {}
-    for name, line in pairs(cur) do
-        if sent[name] ~= line then add[#add + 1] = line; sent[name] = line end
+    for key, line in pairs(cur) do
+        if sent[key] ~= line then add[#add + 1] = line; sent[key] = line end
     end
-    for name in pairs(sent) do
-        if not cur[name] then del[#del + 1] = name; sent[name] = nil end
+    for key in pairs(sent) do
+        if not cur[key] then del[#del + 1] = key; sent[key] = nil end
     end
-    -- batches under the message cap (32 KB); a batch is complete in itself
-    local buf, n = {}, 0
-    local function flush() if #buf > 0 then queue[#queue + 1] = "A\n" .. table.concat(buf, "\n"); buf, n = {}, 0 end end
-    for _, line in ipairs(add) do
-        if n + #line > 7000 then flush() end
-        buf[#buf + 1] = line; n = n + #line + 1
+    -- small messages, each complete in itself; definitions first (the queue keeps its order)
+    local function batch(kind, list)
+        local buf, n = {}, 0
+        for _, line in ipairs(list) do
+            if n + #line > 2500 then queue[#queue + 1] = kind .. "\n" .. table.concat(buf, "\n"); buf, n = {}, 0 end
+            buf[#buf + 1] = line; n = n + #line + 1
+        end
+        if #buf > 0 then queue[#queue + 1] = kind .. "\n" .. table.concat(buf, "\n") end
     end
-    flush()
-    for i = 1, #del, 150 do queue[#queue + 1] = "D\n" .. table.concat(del, "\n", i, math.min(i + 149, #del)) end
+    if #add + #del > 0 then log("PT|visual host props add=%d gone=%d defs=%d", #add, #del, #newDefs) end
+    batch("M", newDefs)
+    newDefs = {}
+    batch("A", add)
+    batch("D", del)
 end
-net.on("g.vis.hello", function() M.hello = true end)
+net.on("g.vis.hello", function() M.hello, M.ready = true, true; log("PT|visual hello from the guest") end)
 
-local mine, todo, specs, guestMap = {}, {}, {}, nil -- guest: host actor name -> our copy; lines to apply; the line each copy was made from
+local mine, todo, specs, guestMap = {}, {}, {}, nil -- guest: host actor key -> our copy; lines to apply; the line each copy was made from
+local dict = {} -- guest: id -> path (the host's "M" lines)
 
 local function dropAll()
     for _, a in pairs(mine) do if live(a) then a:K2_DestroyActor() end end
-    mine, todo, specs = {}, {}, {}
+    mine, todo, specs, dict = {}, {}, {}, {}
 end
 
 local function fields(line)
@@ -269,11 +292,12 @@ local function applyState(a, st)
 end
 
 local function make(f)
-    local name, asset, l, r, s = f[2], f[3], f[4], f[5], f[6]
+    local asset, l, r, s = dict[f[3]], f[4], f[5], f[6]
     local x, y, z = nums(l)
     local pi, ya, ro = nums(r)
-    local sx, sy, sz = nums(s)
-    if not (x and pi and sx) then return end
+    local sx, sy, sz = 1, 1, 1
+    if s ~= "-" then sx, sy, sz = nums(s) end
+    if not (x and pi and sx and asset) then return end
     local cls = f[1] == "S" and StaticFindObject("/Script/Engine.StaticMeshActor") or loadObj(asset)
     if not cls then return end
     local mesh = f[1] == "S" and loadObj(asset)
@@ -287,9 +311,9 @@ local function make(f)
         local sm = a.StaticMeshComponent
         sm:SetMobility(2)
         sm:SetStaticMesh(mesh)
-        if f[7] ~= "" then sm:SetCollisionProfileName(FName(f[7]), true) end
-        for i, p in (f[8] or ""):gmatch("(%d+)=([^;]+)") do
-            local m = loadObj(p)
+        if dict[f[7]] then sm:SetCollisionProfileName(FName(dict[f[7]]), true) end
+        for i, id in (f[8] or ""):gmatch("(%d+)=(%d+)") do
+            local m = dict[id] and loadObj(dict[id])
             if m then sm:SetMaterial(tonumber(i), m) end
         end
     else
@@ -322,7 +346,9 @@ end
 net.on("g.vis.p", function(_, data)
     if not M.enabled then return end
     local kind, rest = data:match("^(%a)\n(.*)$")
-    if kind == "A" then
+    if kind == "M" then
+        for id, p in rest:gmatch("(%d+)\t([^\n]+)") do dict[id] = p end
+    elseif kind == "A" then
         for line in rest:gmatch("[^\n]+") do todo[#todo + 1] = line end
     elseif kind == "D" then
         for name in rest:gmatch("[^\n]+") do
@@ -341,6 +367,7 @@ net.on("g.vis.paint", function(_, data) wantPaint = data end)
 local beat, lastLv, lastPaint = 0, nil, nil
 local function hostTick()
     beat = beat + 1
+    if not M.ready then return end
     if beat % 8 == 1 then
         local s = table.concat(levelPackages(), "\n")
         if s ~= lastLv or beat % 40 == 1 then lastLv = s; net.toGuests("g.vis.lv", s) end
@@ -350,36 +377,41 @@ local function hostTick()
         if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
     if beat % 4 == 2 then try("scan", propsHost) end
-    for _ = 1, 4 do
+    if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
-        if not q then break end
-        net.toGuests("g.vis.p", q)
+        if q then net.toGuests("g.vis.p", q) end
     end
 end
 
-local helloFor
+local helloFor, mapSince, lastCopies = nil, 0, -1
 local function guestTick()
     beat = beat + 1
     local map = mapName()
     if map ~= guestMap then
-        guestMap = map
+        guestMap, mapSince = map, os.clock()
         dropAll()
         asked, wantLevels, wantPaint, helloFor = {}, nil, nil, nil
     end
-    if helloFor ~= map and map ~= "" then
+    -- the host waits for this before it sends anything: a guest that is still loading acks late, and the reliable channel overflows
+    if helloFor ~= map and map ~= "" and os.clock() - mapSince > 5 then
         helloFor = map
-        net.toHost("g.vis.hello", "")
+        log("PT|visual hello sent=%s map=%s", tostring(net.toHost("g.vis.hello", "")), map)
     end
     if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
     if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
+    if beat % 20 == 0 then
+        local n = 0
+        for _ in pairs(mine) do n = n + 1 end
+        if n ~= lastCopies or #todo > 0 then lastCopies = n; log("PT|visual guest copies=%d queued=%d", n, #todo) end
+    end
 end
 
 LoopInGameThreadWithDelay(250, function()
     if not M.enabled or not netted() or not safety.active() then
         if next(mine) then dropAll() end
-        guestMap, lastMap, sent, queue = nil, nil, {}, {}
+        guestMap, lastMap, sent, queue, M.ready = nil, nil, {}, {}, false
         return
     end
     if safety.guest() then guestTick() else hostTick() end
