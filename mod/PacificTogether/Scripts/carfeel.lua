@@ -245,7 +245,7 @@ net.on("g.feel.c", function(_, data)
         pcall(function() ca:Call_CarHorn_Active(feel.horn == 1) end)
         log("PT|feel horn %d", feel.horn)
     end
-    if cm and (cm.WiperBladesOnOff and 1 or 0) ~= feel.wip then
+    if cm and (not prev or prev.wip ~= feel.wip) and (cm.WiperBladesOnOff and 1 or 0) ~= feel.wip then
         pcall(function() car:ToggleWiperBlades() end)
         log("PT|feel wipers %d", feel.wip)
     end
@@ -254,7 +254,7 @@ end)
 LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
-        hookAudio()
+        if active() then hookAudio() end
         if role == "client" then refreshGuest() elseif role == "listen" then hostCarTick() end
     end)
     if not ok then log("PT|error feel car tick %s", tostring(err)) end
