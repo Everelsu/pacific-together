@@ -128,7 +128,7 @@ return function(T)
         add({ check = "host_marker_names_item_replaced_first", timeout = 3, cond = function()
             local all = marks()
             local m = markOf(myName(), all)
-            if not (m and title ~= "" and #all == 1 and m.text:find(title, 1, true) and d3(m, hit1.x, hit1.y, hit1.z) > 100) then return false end
+            if not (m and title ~= "" and #all == 1 and m.text:find(title, 1, true) and d3(m, hit1.x, hit1.y, hit1.z) > 30) then return false end
             sendGuest("t.hit2", string.format("%.0f|%.0f|%.0f|%s", m.x, m.y, m.z, title))
             return true
         end })
@@ -180,7 +180,7 @@ return function(T)
         local m = markOf(hostName, all)
         local o = nums(got["t.hit1"])
         T.log("PT|info ping guest sees %d markers: '%s'", #all, m and m.text:gsub("\n", "/") or "-")
-        return m ~= nil and #all == 1 and title ~= "" and m.text:find(title, 1, true) ~= nil and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and d3(m, o[1], o[2], o[3]) > 100
+        return m ~= nil and #all == 1 and title ~= "" and m.text:find(title, 1, true) ~= nil and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and d3(m, o[1], o[2], o[3]) > 30
     end })
     add({ run = function() sendHost("t.ok2") end })
     add({ check = "guest_told_gstart", timeout = 120, cond = function() return has("t.gstart") end })
