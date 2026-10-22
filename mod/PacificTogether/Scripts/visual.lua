@@ -214,6 +214,7 @@ local function kindOf(o)
     local addr = o:GetAddress()
     -- live first: GetClass reads the object, and a sweep's list can hold actors destroyed since (IsValid does not read it)
     if not live(o) then return false, addr end -- and no verdict for a dying actor (its address may come back as a prop)
+    -- the class is read for every actor: skipping it for "not dressing" verdicts lost a removed mesh (visual 2 of 3, 2026-10-23)
     local cls = o:GetClass():GetAddress()
     local e = kinds[addr]
     if e and e[1] == cls then return e[2], addr end
@@ -238,7 +239,7 @@ end
 local sweep
 local function scanStep(budget)
     -- a sweep paused for a while (guest busy) or running long holds stale actors: start over (the verdicts in kinds stay)
-    if sweep and (os.clock() - sweep.at > 5 or os.clock() - sweep.born > 15) then sweep = nil end
+    if sweep and (os.clock() - sweep.at > 5 or os.clock() - sweep.born > 60) then sweep = nil end
     if not sweep then sweep = { list = FindAllOf("Actor") or {}, i = 1, cur = {}, born = os.clock() } end
     sweep.at = os.clock()
     local t0 = os.clock()

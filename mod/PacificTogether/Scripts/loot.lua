@@ -204,7 +204,7 @@ end
 -- (local playtest 2026-10-22); the name is only read for actors not seen before
 -- work per tick for new actors (each costs ~1-2 ms: contents and part state); the rest waits for the next tick. A zone's first
 -- scan or full list in one go took ~260 ms on the host (2026-10-22)
-local BUDGET_HOST = 0.008 -- each of scan and list; a join tick also pays the scan's fixed lookups (a few ms)
+local BUDGET_HOST = 0.008 -- scan or list per call (the backlog loop runs one of them); the scan adds its fixed lookups
 local function scanHost()
     -- the budget is checked first, so a cut scan stops costing at once; it only counts as cut when time ran out
     local t0, cut = os.clock(), false
@@ -240,7 +240,7 @@ local function scanHost()
     -- abandoned cars: the body (B) and each part still on it (P); the guest has neither
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplate") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and not skipped(a, k) and room() and alive(a) and not transient(a, k) then
+        if not byName[k] and room() and alive(a) and not skipped(a, k) and not transient(a, k) then
             local e = register("B" .. nextId, "B", a)
             nextId, byName[k] = nextId + 1, e.id
             say(line(e))
@@ -248,7 +248,7 @@ local function scanHost()
     end
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplatePart") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and not skipped(a, k) and room() and alive(a) and alive(a.ItemInstance) and not transient(a, k) then
+        if not byName[k] and room() and alive(a) and not skipped(a, k) and alive(a.ItemInstance) and not transient(a, k) then
             local e = register("P" .. nextId, "P", a)
             nextId, byName[k] = nextId + 1, e.id
             e.last = partKey(a)
@@ -396,8 +396,10 @@ local function onAdd(id, what, x, y, z, yaw, state)
     -- body took the claimed parts with it (lootsync2, guestparts 2026-10-23)
     elseif kind == "B" then
         a = spawnLootable(what, x, y, z, yaw)
+        made.spawned = made.spawned + 1
     elseif kind == "P" then
         a = spawnPart(what, x, y, z, yaw, state)
+        made.spawned = made.spawned + 1
         if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); return end
     else
         a = claim("BP_WorldItem_C", x, y, z, function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what end)
@@ -691,8 +693,8 @@ LoopInGameThreadWithDelay(50, function()
     if not listening or (hostScanned and not allQueue) then return end
     local ok, err = pcall(function()
         if common.netMode() ~= "listen" or #net.guests() == 0 then return end
-        if not hostScanned then hostScanned = scanHost() end
-        sendSome()
+        -- one of the two per call: each has its own budget, both in one frame went past a frame's worth
+        if not hostScanned then hostScanned = scanHost() else sendSome() end
         if not DEAF then flush() else out = {} end
     end)
     if not ok then log("PT|error loot backlog %s", tostring(err)) end

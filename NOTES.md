@@ -609,6 +609,7 @@ Guesses / unknowns
   4th Lua hot reload in one session (`20261022-223936-repl`). Hot reload is known to be fragile (above); unproven
   whether the new GetPlayerController cache is involved: fresh-launch scenarios decide.
 - Zone props mirror (visual.lua): was off; now on by default (sweep cached by address and spread, guest 8 ms per tick).
+Observations and derived facts, later the same night
 - `stations` on the `C:\PTLanes\main2` pair fails the guest cure the same way with or without the frame-time changes
   (`20261022-174042-main2-stations` before them; `230348`, `231554` after): the guest's own CureCarQuirk returns
   Removed=false. On `C:\PacificTogetherTest` it passes (`183634`, `160312`). Mirror tries do not decide it (40 tries passed
@@ -635,3 +636,6 @@ Guesses / unknowns
   carfeel playlist (headless reshuffle), lootcar when the cargo roll leaves one free slot (needs 2 taken).
 - Wreck bodies and parts are no longer claimed on the guest: the full list now comes after the guest rolled its own
   wrecks, a claimed part sat on an own body, and purging that body took the part (lootsync2 / guestparts 2026-10-23).
+- Code review round 5: keeping "not dressing" verdicts by address without reading the class (cheaper sweep) made
+  `visual` fail guest_removed_mesh_gone in 2 of 3 runs (`20261023-022539`, `022831`); reverted, then 3 of 3 passed
+  (`2033*`). Guess: an address freed by the removed mesh came back as debris and kept a stale verdict.
