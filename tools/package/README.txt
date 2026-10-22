@@ -21,7 +21,8 @@ What works in this build
 - The run: the guest sees the same time of day, weather, instability, storm and gateway as the host, and the host's
   anomalies in the same places (updated a few times a second).
 - Anomaly hits on the guest (explosions, shocks, a Leech's leap, a BombRock blast, a Physics Grabber) hurt the guest,
-  not the host. Tourists stop creeping while either player looks at them. Car parts taken by a Part Stealer vanish for both.
+  not the host. Tourists stop creeping while either player looks at them. A Part Stealer near the guest
+  on foot takes a random backpack item; a Loot Creature's push shoves the guest. Spark Towers on the guest are untested. Car parts taken by a Part Stealer vanish for both.
 - Health: each player sees the other's health under their name tag. The guest takes damage and radiation and heals
   normally. When the guest dies, the screen goes black for a few seconds and they come back at the car with full
   health; the host's run goes on. When the host dies, the run fails for both, as in the normal game.

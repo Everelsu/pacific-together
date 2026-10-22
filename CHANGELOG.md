@@ -31,6 +31,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - The garage stereo and the car radio are shared: either player switches them, changes the volume or skips a track.
 - Riding along feels alive: the guest hears the engine follow the host's driving and sees the speedometer, horn,
   headlights and wipers.
+- Part Stealers go for the guest too: one near the guest on foot takes a random item from their backpack. A Loot
+  Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
 
