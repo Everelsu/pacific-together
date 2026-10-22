@@ -80,7 +80,8 @@ return function(T)
     -- the abilities under test: key, part class, part slot, archetype, ability class, state seen on a copy of the part
     local ABIL = {
         { key = "boost", class = "BP_Attach_Util_Ability_Boost_Base_C", slot = "Attachments.FrontGrill", arch = "IA_Attach_Util_Ability_Boost", ab = "AB_ZoomAbility",
-          state = function(p) return p.BP_AbilityProviderComponent.AbilityIsActive and p.outterFlame:IsVisible() and p["Ak Component"]:IsValid() end },
+          state = function(p) return p.BP_AbilityProviderComponent.AbilityIsActive and p.outterFlame:IsVisible() end,
+          audio = function(p) return p["Ak Component"]:IsValid() end },
         { key = "jump", class = "BP_Attach_Util_Ability_Jump_C", slot = "Attachments.BackSeatRight", arch = "IA_Attach_Util_Ability_Jump", ab = "AB_CarJump",
           state = function(p) return p.jumping:IsPlaying() or p.NS_Sparks:IsActive() end },
         { key = "bracer", class = "BP_Attach_Util_Ability_Shield_Bracer_C", slot = "Attachments.RearTow", arch = "IA_Attach_Util_Ability_Shield_Bracer", ab = "AB_BubbleShield_Bracer",
@@ -144,9 +145,11 @@ return function(T)
             assert(data, "no ability data for " .. a.ab)
             c:ClearAllAbilities()
             c:AddAbility(0, data)
+        end
+        local function press(a)
             send("t.go", a.key)
-            c:SetAbilityPressed(0, false)
-            c:SetAbilityPressed(0, true)
+            container():SetAbilityPressed(0, false)
+            container():SetAbilityPressed(0, true)
         end
         local function release() container():SetAbilityPressed(0, false) end
         for _, a in ipairs(ABIL) do
@@ -154,6 +157,10 @@ return function(T)
             add({ run = function()
                 seen = false
                 fire(a)
+            end })
+            add({ wait = 1 })
+            add({ run = function()
+                press(a)
                 local n = 0
                 local h
                 h = LoopInGameThreadWithDelay(100, function()
@@ -173,6 +180,10 @@ return function(T)
         local dmin, dmax, chronoSeen = 1, 1, false
         add({ run = function()
             fire({ key = "chrono", ab = CHRONO.ab })
+        end })
+        add({ wait = 1 })
+        add({ run = function()
+            press({ key = "chrono" })
             local n = 0
             local h
             h = LoopInGameThreadWithDelay(100, function()
@@ -253,7 +264,7 @@ return function(T)
     add({ run = function() toHost("t.partsok") end })
 
     -- the guest samples each ability's state 50 ms; the host announces (t.go) right before it presses
-    local seen, goAt, firstSeen = {}, {}, {}
+    local seen, goAt, firstSeen, audioSeen = {}, {}, {}, {}
     local sampler
     local function startSampler()
         if sampler then return end
@@ -266,6 +277,7 @@ return function(T)
                     local p = part(a.class)
                     local ok, v = pcall(function() return p and a.state(p) end)
                     if ok and v then seen[a.key], firstSeen[a.key] = true, L.now() end
+                    if a.audio and seen[a.key] and not audioSeen[a.key] and pcall(function() audioSeen[a.key] = p and a.audio(p) or nil end) then end
                 end
             end
         end)
@@ -287,6 +299,7 @@ return function(T)
             log("PT|info guest %s effect %.2f s after the host's press", a.key, dt)
             return dt <= 1.0
         end })
+        if a.audio then add({ check = "guest_" .. a.key .. "_audio_component", timeout = 3, cond = function() return audioSeen[a.key] == true end }) end
         add({ check = "guest_" .. a.key .. "_told_end", timeout = 60, cond = function() local m = got("t.end"); return m ~= nil and m.data == a.key end })
         add({ run = function() toHost("t.done." .. a.key) end })
     end
