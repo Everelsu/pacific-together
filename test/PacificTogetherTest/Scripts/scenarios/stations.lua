@@ -108,6 +108,18 @@ return function(T)
         return n
     end
 
+    -- Tinker: the car's quirks (status effects on the car's soul), as "condition|behavior" names
+    local function sm() return FindFirstOf("BP_StatusEffectManager_C") end
+    local function quirkNames()
+        local r = {}
+        for i = 1, #sm().CarQuirks do
+            local q = sm().CarQuirks[i]
+            if alive(q) and alive(q.QuirkCondition) then r[#r + 1] = q.QuirkCondition:GetClass():GetFName():ToString() .. "|" .. q.QuirkBehavior:GetClass():GetFName():ToString() end
+        end
+        table.sort(r)
+        return table.concat(r, ",")
+    end
+    local function cured() return FindFirstOf("BP_ProgressionManager_C").GlobalWhiteboard:GetTagFloat({ TagName = FName("WB.Statistics.Quirks.QuirksCured") }) end
     local RECIPE = "/Game/Gameplay/Inventory/Items/Tools/FixStatusEffect/FixElectronic/CR_Tool_Target_FixElectronics.CR_Tool_Target_FixElectronics"
     local function tools() return owned()["IA_Tool_Target_FixElectronics"] or 0 end
 
@@ -194,6 +206,23 @@ return function(T)
         add({ check = "host_has_upgrade_installed_once", timeout = 60, cond = L.holds(10, function() return upCount(st.up) == 1 end) })
         add({ check = "guest_shows_upgrade_once", timeout = 60, cond = function() return g("t.upcount") == "1" end })
 
+        -- tinker: a quirk the host's game rolled shows on the guest; the guest cures it (its own CureCarQuirk, what the station UI calls)
+        add({ run = function()
+            sm():DbgActEvt_RollRandomQuirk_Execute()
+            st.q, st.cured0, st.garage0 = quirkNames(), cured(), garageRes()
+            T.log("PT|info host quirk %s cured so far %s", st.q, tostring(st.cured0))
+            toGuest("t.go.quirk")
+        end })
+        add({ check = "host_has_one_quirk", timeout = 10, cond = function() return st.q ~= "" and not st.q:find(",", 1, true) end })
+        add({ check = "guest_shows_the_same_quirk", timeout = 60, cond = function() return g("t.q") == st.q end })
+        add({ run = function() toGuest("t.go.cure") end })
+        add({ check = "guest_cured_it", timeout = 60, cond = function() return g("t.qcured") == "1" end })
+        add({ check = "host_quirk_gone_and_stays_gone", timeout = 60, cond = L.holds(15, function() return quirkNames() == "" end) })
+        add({ check = "host_counts_one_cure_and_paid_nothing_itself", timeout = 20, cond = function()
+            return cured() == st.cured0 + 1 and garageRes() == st.garage0
+        end })
+        add({ check = "guest_quirk_list_empty_too", timeout = 30, cond = function() return g("t.qafter") == "" end })
+
         -- fabrication
         add({ run = function()
             st.fb = owned()
@@ -272,8 +301,30 @@ return function(T)
     end })
     add({ check = "guest_reports_upgrade", timeout = 120, cond = function()
         say("t.upcount", tostring(upCount(st.up)))
-        return has("t.go.craft")
+        return has("t.go.quirk")
     end })
+
+    -- tinker
+    add({ check = "guest_reports_quirks", timeout = 120, cond = function()
+        say("t.q", quirkNames())
+        return has("t.go.cure")
+    end })
+    add({ run = function()
+        local q = sm().CarQuirks[1]
+        local ing
+        q.CureIngredients:ForEach(function(k) ing = k:get() end)
+        local lib = StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary")
+        im().Inventory_Player:AddItem(lib:CreateItemInstance(T.myPawn():GetWorld(), ing, 0), true) -- the cure's ingredient, in the guest's own pack
+        im():SetActiveTier(3, true, true)
+        local o = {}
+        sm():CureCarQuirk(q, o)
+        T.log("PT|info guest cured quirk: %s", tostring(o.Removed))
+        say("t.qcured", o.Removed and "1" or "0")
+    end })
+    add({ check = "guest_reports_quirks_after", timeout = 120, cond = L.holds(15, function()
+        say("t.qafter", quirkNames())
+        return quirkNames() == ""
+    end) })
 
     -- fabrication
     add({ check = "guest_go_craft", timeout = 120, cond = function() return has("t.go.craft") end })

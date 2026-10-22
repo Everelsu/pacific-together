@@ -7,6 +7,7 @@
 --                                OnNodePurchased, which prints the blueprint or upgrade kit); progression.lua then shows it as purchased on the guest
 --   g.st.up     spawner<TAB>cls  Garage upgrade the guest built at a spawner (InstallSpecificUpgrade); the host installs it too, garage.lua shows it back
 -- Guest side, what must NOT happen locally: the shredder's products (they would be a second copy), the research cost (the host pays).
+--   g.st.q / g.st.cure  Tinker: the car's quirks (host list down, guest's cure up), see below
 -- Fabrication (craft, "Craft Recipe Asset") stays local on the guest: its garage materials ride loot.lua's storage sync, the product is the guest's.
 -- Inert in single player (Q7).
 local UEHelpers = require("UEHelpers")
@@ -123,6 +124,7 @@ net.on("g.st.up", function(_, data)
     end
     local c = ids.asset(cls)
     if not (s and c) then log("PT|st up: no spawner or class %s", tostring(data)); return end
+    for _, h in ipairs(garage.installedOn(s)) do if h == cls then return end end -- already there: a level default the guest built too
     s:InstallSpecificUpgrade(c, false)
     log("PT|st up installed %s on %s", cls:match("[^.]+$"), name)
     ov.post(ov.other() .. " built " .. cls:match("[^.]+$"):gsub("^UP_Garage_", ""), "good", "st.up")
@@ -133,9 +135,130 @@ local function upHook(self, cls)
     local c = cls:get()
     if not valid(c) then return end
     local path = fullpath(c)
+    -- the guest's own level-default installs (and what the host already has) are not its work; the host's list must have arrived
+    if garage.hostHas(self:get():GetFName():ToString(), path) ~= false then return end
     log("PT|st up intent %s on %s", path:match("[^.]+$"), self:get():GetFName():ToString())
     net.toHost("g.st.up", self:get():GetFName():ToString() .. "\t" .. path)
 end
+
+
+-- Tinker: the car's quirks ----------------------------------------------------------------------------------------------------
+-- Quirks are SE_Quirk_MixAndMatch status effects on the car's soul item, rolled at random on each side. The host's list is the truth:
+-- g.st.q lines "cond<TAB>beh<TAB>diagnosed<TAB>ingredient" (class paths); the guest builds the same ones with the game's own
+-- BFL_StatusEffectQuirkUtils.BuildAndApplyQuirk (re-rolled until the cure ingredient matches, SetQuirkRank picks it at random) and drops the rest.
+-- A cure the guest does in its own UI (CureCarQuirk, paid from its backpack and the synced garage) is sent as g.st.cure cond|beh; the host does the
+-- rest of the cure (bounty XP, graveyard, remove, stats) WITHOUT paying again. Hints (anchor juice) are not synced.
+-- shortcut: identity is condition+behavior (two identical quirks on a car are treated as one); hints and the logbook are not mirrored.
+local function qmgr() local m = FindFirstOf("BP_StatusEffectManager_C"); return valid(m) and m or nil end
+local function qKey(q) return q.QuirkCondition:GetClass():GetFullName():match("^%S+ (.+)$") .. "|" .. q.QuirkBehavior:GetClass():GetFullName():match("^%S+ (.+)$") end
+local function qIng(q)
+    local t = {}
+    q.CureIngredients:ForEach(function(k, v) t[#t + 1] = fullpath(k:get()) .. "=" .. v:get() end)
+    table.sort(t)
+    return table.concat(t, ",")
+end
+local function quirks(sm)
+    local r = {}
+    for i = 1, #sm.CarQuirks do
+        local q = sm.CarQuirks[i]
+        if valid(q) and valid(q.QuirkCondition) and valid(q.QuirkBehavior) then r[#r + 1] = q end
+    end
+    return r
+end
+
+local lastQ, lastQAt = nil, 0
+local function hostQuirks()
+    local sm = qmgr()
+    if not sm then return end
+    local L = {}
+    for _, q in ipairs(quirks(sm)) do
+        L[#L + 1] = table.concat({ qKey(q):gsub("|", "\t"), q.Diagnosed and "1" or "0", qIng(q) }, "\t")
+    end
+    table.sort(L)
+    local data = table.concat(L, "\n")
+    if data ~= lastQ or os.clock() - lastQAt > 6 then
+        lastQ, lastQAt = data, os.clock()
+        net.toGuests("g.st.q", data == "" and "-" or data)
+    end
+end
+
+local wantQ, cured = nil, {} -- guest: the host's last list; key -> os.clock of the guest's own cure
+net.on("g.st.q", function(_, data) if guest() then wantQ = data end end)
+
+local byAddr = {} -- guest: quirk object address -> key (the cured quirk is already gone when CureCarQuirk's hook runs)
+local function guestQuirks()
+    local sm, cm, bfl = qmgr(), FindFirstOf("BP_CarManager_C"), FindObject("BFL_StatusEffectQuirkUtils_C", "Default__BFL_StatusEffectQuirkUtils_C")
+    if not (wantQ and sm and cm and valid(bfl)) then return end
+    local want = {}
+    for line in wantQ:gmatch("[^\n]+") do
+        local c, b, d, ing = line:match("^([^\t]*)\t([^\t]*)\t([01])\t?(.*)$")
+        if c then want[c .. "|" .. b] = { c = c, b = b, d = d == "1", ing = ing } end
+    end
+    local have = {}
+    for _, q in ipairs(quirks(sm)) do
+        local k = qKey(q)
+        byAddr[q:GetAddress()] = k
+        local w = want[k]
+        if w and not have[k] then
+            have[k] = q
+            if q.Diagnosed ~= w.d then q.Diagnosed = w.d end
+        else
+            pcall(function() sm:RemoveStatusEffect(q) end) -- the host has no such quirk (cured there, or a random one of this side)
+            log("PT|st quirk dropped %s", k:match("[^|]+$"))
+        end
+    end
+    for k, w in pairs(want) do
+        if not have[k] and not (cured[k] and os.clock() - cured[k] < 12) then
+            local cc, bc = ids.asset(w.c), ids.asset(w.b)
+            if cc and bc then
+                for try = 1, 40 do
+                    bfl:BuildAndApplyQuirk(cc, bc, cm)
+                    local list = quirks(sm)
+                    local q = list[#list]
+                    if q and qKey(q) == k and (qIng(q) == w.ing or try == 40) then
+                        q.Diagnosed = w.d
+                        log("PT|st quirk mirrored %s after %d tries, ingredient match=%s", k:match("[^|]+$"), try, tostring(qIng(q) == w.ing))
+                        break
+                    end
+                    if q then pcall(function() sm:RemoveStatusEffect(q) end) end
+                end
+            end
+        end
+    end
+end
+
+local function cureHook(self, quirk, removed)
+    if not guest() or not removed:get() then return end
+    local k = byAddr[quirk:get():GetAddress()]
+    if not k then return end
+    cured[k] = os.clock()
+    log("PT|st cure intent %s", k:match("[^|]+$"))
+    net.toHost("g.st.cure", k)
+end
+
+net.on("g.st.cure", function(_, data)
+    if not host() then return end
+    local sm, im = qmgr(), FindFirstOf("BP_InventoryManager_C")
+    if not (sm and valid(im)) then return end
+    for _, q in ipairs(quirks(sm)) do
+        if qKey(q) == data then
+            local xp = {}
+            q:GetMechBounty(xp)
+            local ca = StaticFindObject("/Game/Gameplay/StatusEffects/Quirks/CA_MechXP.CA_MechXP")
+            if xp.XP and valid(ca) then im:CurrencyAdjust(ca, xp.XP) end
+            sm:SendQuirkToGraveyard(q, false)
+            sm:RemoveStatusEffect(q)
+            local pm = FindFirstOf("BP_ProgressionManager_C")
+            if valid(pm) then pcall(function() pm.GlobalWhiteboard:IncrementTagFloat({ TagName = FName("WB.Statistics.Quirks.QuirksCured") }, 1.0, true) end) end
+            local qm = FindFirstOf("BP_QuestManager_C")
+            if valid(qm) then pcall(function() qm:OnCuredQuirk() end) end
+            log("PT|st cure %s: removed on the host", data:match("[^|]+$"))
+            ov.post(ov.other() .. " cured a car quirk", "good", "st.cure")
+            return
+        end
+    end
+    log("PT|st cure: host has no quirk %s", data)
+end)
 
 -- hooks: the Blueprint classes load after the main menu, so they are retried ------------------------------------------------------
 
@@ -143,6 +266,7 @@ local HOOKS = {
     { SHRED .. ":ShredItem", nil, shredHook },
     { "/Script/PenDriverPro.BaseGenericGraphState:PurchaseNode", buyPre, buyPost },
     { "/Script/PenDriverInventory.InventoryRecipe:ExecuteRecipe", execPre },
+    { "/Game/Systems/Managers/BP_StatusEffectManager.BP_StatusEffectManager_C:CureCarQuirk", nil, cureHook },
     { "/Game/Gameplay/CarGarage/BP_GarageInstallation_Spawner.BP_GarageInstallation_Spawner_C:InstallSpecificUpgrade", nil, upHook },
 }
 local done = {}
@@ -167,12 +291,15 @@ LoopInGameThreadWithDelay(500, function()
     if common.netMode() == "client" then
         local ok, err = pcall(hookAll)
         if not ok then log("PT|error stations hook %s", tostring(err)) end
+        local ok2, err2 = pcall(guestQuirks)
+        if not ok2 then log("PT|error stations quirks %s", tostring(err2)) end
         if #shredded > 0 and os.clock() - shredAt > 0.4 then
             net.toHost("g.st.shred", table.concat(shredded, "\n"))
             log("PT|st shred intent %d items", #shredded)
             shredded = {}
         end
     elseif host() then
+        pcall(hostQuirks)
         local ok, err = pcall(hostShredder)
         if not ok then log("PT|error stations host %s", tostring(err)) end
     end
