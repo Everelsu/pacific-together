@@ -79,7 +79,6 @@ end
 
 -- journal history: the objectives and missions the host has finished (the journal's "completed" list reads these arrays).
 -- Paths drop the ".Name" suffix (the asset name repeats it) so a long game still fits the message cap; chunked, add-only on the guest.
-local lastDone, lastDoneSent = "", 0
 local function doneRows()
     local q = quests()
     if not q then return {} end
@@ -95,17 +94,27 @@ local function doneRows()
     table.sort(R)
     return R
 end
+-- Small chunks, one per tick: a long list sent in one frame overflows the reliable channel and drops the guest (seen in the zone fixture).
+-- New entries go out at once (before the quest row that removed the objective from the active list); the whole list again every 10 s.
+local sentDone, queue, lastCycle = {}, {}, 0
+local CHUNK = 3000
+local function chunks(R, out)
+    local i = 1
+    while i <= #R do
+        local buf, len = {}, 0
+        while i <= #R and (len == 0 or len + #R[i] + 1 <= CHUNK) do buf[#buf + 1] = R[i]; len = len + #R[i] + 1; i = i + 1 end
+        out[#out + 1] = table.concat(buf, "\n")
+    end
+end
 local function doneTick()
     local R = doneRows()
-    local h = table.concat(R, "\n")
-    if h == lastDone and os.clock() - lastDoneSent < 5 then return end
-    lastDone, lastDoneSent = h, os.clock()
-    local i = 1
-    repeat
-        local buf, len = {}, 0
-        while i <= #R and len + #R[i] + 1 <= 28000 do buf[#buf + 1] = R[i]; len = len + #R[i] + 1; i = i + 1 end
-        net.toGuests("g.story.done", table.concat(buf, "\n"))
-    until i > #R
+    local fresh = {}
+    for _, r in ipairs(R) do if not sentDone[r] then fresh[#fresh + 1] = r; sentDone[r] = true end end
+    local first = {}
+    chunks(fresh, first)
+    for _, c in ipairs(first) do net.toGuests("g.story.done", c) end
+    if #queue == 0 and os.clock() - lastCycle > 10 then lastCycle = os.clock(); chunks(R, queue) end
+    if #queue > 0 then net.toGuests("g.story.done", table.remove(queue, 1)) end
 end
 
 -- a task only the guest can do (it holds the item, stands at the place): the guest says so, the host completes it for the story
@@ -342,8 +351,8 @@ LoopInGameThreadWithDelay(500, function()
         if PROG then try("report", reportTasks) end
         return
     end
+    if PROG then try("done", doneTick) end -- the finished list first: the guest stops an objective as finished only if it knows the host finished it
     try("host", hostTick)
-    if PROG then try("done", doneTick) end
     try("cut", cutsceneTick)
     try("props", propsTick)
 end)
