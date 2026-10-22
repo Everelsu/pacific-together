@@ -122,7 +122,9 @@ local function applyUpgrades(data)
                     local cls = StaticFindObject(c)
                     if not (cls and cls:IsValid()) then cls = LoadAsset(c) end
                     if not present and cls and cls:IsValid() then
-                        s:InstallSpecificUpgrade(cls, true)
+                        M.applying = true -- stations.lua: this install is the host's, not the guest's own
+                        pcall(s.InstallSpecificUpgrade, s, cls, true)
+                        M.applying = false
                         log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
                     end
                     if present or (cls and cls:IsValid()) then done[key] = true end
