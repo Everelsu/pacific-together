@@ -608,7 +608,7 @@ Guesses / unknowns
 - The guest crashed (AV 0xffffffffffffffff, depth 0, last finished call Controller:IsPlayerController) seconds after its
   4th Lua hot reload in one session (`20261022-223936-repl`). Hot reload is known to be fragile (above); unproven
   whether the new GetPlayerController cache is involved: fresh-launch scenarios decide.
-- Zone props mirror (visual.lua) still off: host scan walks all Actors each second, guest mesh loads up to 30 ms a batch.
+- Zone props mirror (visual.lua): was off; now on by default (sweep cached by address and spread, guest 8 ms per tick).
 - `stations` on the `C:\PTLanes\main2` pair fails the guest cure the same way with or without the frame-time changes
   (`20261022-174042-main2-stations` before them; `230348`, `231554` after): the guest's own CureCarQuirk returns
   Removed=false. On `C:\PacificTogetherTest` it passes (`183634`, `160312`). Mirror tries do not decide it (40 tries passed
@@ -620,3 +620,18 @@ Guesses / unknowns
   baseline worktree, p2 failed 2, p6 3 (`pt-base/local/test-results/20261022-2331*`, `2334*`, `2349*`...). With the
   frame-time changes p2 failed about 5 of 11. Both are "the game never highlighted" the target: an interaction-path flake,
   not loot sync (the host's full list completes in every run, `PT|loot full list sent`).
+- UE4SS Lua `IsValid` (UE4SS `LuaUObject.hpp:761`) does not read the object: the pointer must be in a set that a delete
+  listener keeps (`is_object_in_global_unreal_object_map`), then `IsUnreachable`. A freed object reads as invalid; a NEW
+  object at the same address reads as valid. So cached wrappers are safe from freed memory, not from address reuse:
+  the controller/world/singleton caches (common.lua) are dropped on every map load, props verdicts (visual.lua) and the
+  loot transient skip carry the class address.
+- Open (code review 2026-10-23, not done): net.lua has no per-guest "ready" gate; loot waits for the guest's H and visual
+  for its hello, the other modules still send to a loading guest (a burst could overflow its reliable channel the same way).
+- Suite on the frame-time code (2026-10-23 night, one pair, 2 clients, mirror ON from shard 1's second half): shard 1/3
+  11/14, 2/3 13/14, 3/3 12/14; after the wreck-claim fix: session 40/40, lootsync2 33/33, lootcar 24/24, visual 26/26,
+  zonejoin 14/14, sessiontravel 54/54 (no rejoin crash this time), mapmark 22/22, stations 50/50. Remaining fails are
+  known flakes or gaps, each seen before tonight: playpath p2/p6 (baseline too), dropfall guest_drop_on_host_ground
+  (20261021, 20261022-2005), lootsync tacklebox 6th item, guestparts host_dropped_by_guest_cutter (3 of 15 before),
+  carfeel playlist (headless reshuffle), lootcar when the cargo roll leaves one free slot (needs 2 taken).
+- Wreck bodies and parts are no longer claimed on the guest: the full list now comes after the guest rolled its own
+  wrecks, a claimed part sat on an own body, and purging that body took the part (lootsync2 / guestparts 2026-10-23).

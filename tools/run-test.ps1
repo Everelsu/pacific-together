@@ -147,7 +147,7 @@ function Start-Side($s, $life) {
     if ($SteamMod -contains $Scenario) { $env:PT_STEAM = "1"; $env:PT_STEAM_INBOX = Join-Path $Root "steam-inbox.txt" }
     # one account cannot message itself across processes (X6): the two-client test carries the tunnel over loopback UDP, the real two-account scenarios over Steam
     if ($Scenario -eq "steamsession") { $env:PT_STEAM_UDP = "$($Port + 1000)" }
-    $env:PT_VISUAL_ZONE = if ($Scenario -eq "visual") { "1" } else { $null }  # the zone props mirror is off by default (visual.lua)
+    $env:PT_VISUAL_ZONE = if ($Scenario -eq "visual") { "1" } else { $null }  # the zone props mirror is on by default (visual.lua); null keeps it on, "0" would turn it off
     try {
         $env:PT_ROLE = $s.Role
         $env:PT_JOIN = if ($s.Role -eq "client" -and $AutoJoin -contains $Scenario) { "127.0.0.1:$Port" } else { "" }

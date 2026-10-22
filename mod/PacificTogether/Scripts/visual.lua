@@ -205,21 +205,24 @@ local function bpLine(o, cn, name)
 end
 
 local cache = {} -- host: actor name -> { addr, line } of static meshes (they never change)
--- host: actor address -> false (not dressing) or { class, name }. Reading class, flags and name of all ~2600 actors every second
--- cost 30-60 ms per scan (playtest 2026-10-22); each actor is read once.
--- shortcut: an address freed and reused by a new prop keeps the old verdict until the next map; fine while dressing is spawned once
+-- host: actor address -> { class address, verdict }, verdict false (not dressing) or { class, name }. Reading class, flags and
+-- name of all ~2600 actors every second cost 30-60 ms per scan (playtest 2026-10-22); each actor is read once. The class
+-- address is checked every time: a freed address reused by an actor of another class is read again.
+-- shortcut: reuse by an actor of the same class keeps the old name and cached mesh line until the next map
 local kinds = {}
 local function kindOf(o)
     local addr = o:GetAddress()
-    local k = kinds[addr]
-    if k == nil then
-        k = false
-        if live(o) and not o:HasAnyFlags(RF_WasLoaded) then
-            local cn = o:GetClass():GetFName():ToString()
-            if (cn == "StaticMeshActor" or allowed(cn)) and not fpath(o):find("/Engine/Transient", 1, true) then k = { cn, o:GetFName():ToString() } end
-        end
-        kinds[addr] = k
+    -- live first: GetClass reads the object, and a sweep's list can hold actors destroyed since (IsValid does not read it)
+    if not live(o) then return false, addr end -- and no verdict for a dying actor (its address may come back as a prop)
+    local cls = o:GetClass():GetAddress()
+    local e = kinds[addr]
+    if e and e[1] == cls then return e[2], addr end
+    local k = false
+    if not o:HasAnyFlags(RF_WasLoaded) then
+        local cn = o:GetClass():GetFName():ToString()
+        if (cn == "StaticMeshActor" or allowed(cn)) and not fpath(o):find("/Engine/Transient", 1, true) then k = { cn, o:GetFName():ToString() } end
     end
+    kinds[addr] = { cls, k }
     return k, addr
 end
 local function lineOf(o, k, addr)
@@ -234,15 +237,16 @@ end
 -- one sweep over the actors, spread over ticks (a few ms each); returns the lines once a sweep is complete
 local sweep
 local function scanStep(budget)
-    -- a sweep paused for a while (guest busy) holds stale actors: start over (the verdicts in kinds stay)
-    if sweep and os.clock() - sweep.at > 5 then sweep = nil end
-    if not sweep then sweep = { list = FindAllOf("Actor") or {}, i = 1, cur = {}, at = os.clock() } end
+    -- a sweep paused for a while (guest busy) or running long holds stale actors: start over (the verdicts in kinds stay)
+    if sweep and (os.clock() - sweep.at > 5 or os.clock() - sweep.born > 15) then sweep = nil end
+    if not sweep then sweep = { list = FindAllOf("Actor") or {}, i = 1, cur = {}, born = os.clock() } end
+    sweep.at = os.clock()
     local t0 = os.clock()
     while sweep.i <= #sweep.list and os.clock() - t0 < budget do
         local o = sweep.list[sweep.i]
         sweep.i = sweep.i + 1
         local k, addr = kindOf(o)
-        if k and live(o) then
+        if k then
             local line = lineOf(o, k, addr)
             if line then sweep.cur[line:match("^%a\t([^\t]*)")] = line end
         end

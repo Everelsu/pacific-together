@@ -38,7 +38,7 @@ local reported = {} -- guest: dropped items already told to the host
 local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
 local tickN, hostScanned, fullAt = 0, false, nil
-local skip = {} -- host: actor addresses that never qualify (an /Engine/Transient template), so their names are not read again
+local skip = {} -- host: address -> class address of an actor that never qualifies (an /Engine/Transient template): its name is not read again
 local listening = false -- host with a guest (the 500 ms tick sets it; the 50 ms backlog loop reads it)
 -- host: the guest controller that asked for the full list (H) = loaded and acking. Nothing goes out before: a loading guest acks
 -- late, and lines sent meanwhile overflowed its reliable channel and dropped it (lootsync 2026-10-22, NumOutRec 254). The full
@@ -204,7 +204,7 @@ end
 -- (local playtest 2026-10-22); the name is only read for actors not seen before
 -- work per tick for new actors (each costs ~1-2 ms: contents and part state); the rest waits for the next tick. A zone's first
 -- scan or full list in one go took ~260 ms on the host (2026-10-22)
-local BUDGET_HOST = 0.015
+local BUDGET_HOST = 0.008 -- each of scan and list; a join tick also pays the scan's fixed lookups (a few ms)
 local function scanHost()
     -- the budget is checked first, so a cut scan stops costing at once; it only counts as cut when time ran out
     local t0, cut = os.clock(), false
@@ -215,9 +215,11 @@ local function scanHost()
     end
     local function transient(a, k)
         if not a:GetFullName():find("/Engine/Transient", 1, true) then return false end
-        skip[k] = true
+        skip[k] = a:GetClass():GetAddress()
         return true
     end
+    -- an address that comes back as an actor of another class is read again
+    local function skipped(a, k) return skip[k] ~= nil and skip[k] == a:GetClass():GetAddress() end
     for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
         local k = a:GetAddress()
         if not byName[k] and room() and alive(a) and alive(a.InventoryContainer) then
@@ -238,7 +240,7 @@ local function scanHost()
     -- abandoned cars: the body (B) and each part still on it (P); the guest has neither
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplate") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and not skip[k] and room() and alive(a) and not transient(a, k) then
+        if not byName[k] and not skipped(a, k) and room() and alive(a) and not transient(a, k) then
             local e = register("B" .. nextId, "B", a)
             nextId, byName[k] = nextId + 1, e.id
             say(line(e))
@@ -246,7 +248,7 @@ local function scanHost()
     end
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplatePart") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and not skip[k] and room() and alive(a) and alive(a.ItemInstance) and not transient(a, k) then
+        if not byName[k] and not skipped(a, k) and room() and alive(a) and alive(a.ItemInstance) and not transient(a, k) then
             local e = register("P" .. nextId, "P", a)
             nextId, byName[k] = nextId + 1, e.id
             e.last = partKey(a)
@@ -287,6 +289,7 @@ end
 
 -- the full list for a guest that asks (H), sent over several ticks like the scan; "F" ends it
 local allQueue
+local fullSentAt = -math.huge
 local function sendAll()
     allQueue = {}
     for id in pairs(ents) do allQueue[#allQueue + 1] = id end
@@ -302,7 +305,7 @@ local function sendSome()
         elseif e and alive(e.actor) then say(line(e)) end
     end
     -- F only once the host has registered everything: the guest purges what the list does not hold
-    if #allQueue == 0 and hostScanned then allQueue = nil; say("F"); log("PT|loot full list sent") end
+    if #allQueue == 0 and hostScanned then allQueue, fullSentAt = nil, os.clock(); say("F"); log("PT|loot full list sent") end
 end
 
 -- guest -----------------------------------------------------------------------------------------------------------
@@ -388,12 +391,13 @@ local function onAdd(id, what, x, y, z, yaw, state)
     if kind == "L" then
         a = claim("BP_Lootable_Base_C", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
             or spawnLootable(what, x, y, z, yaw)
+    -- wrecks are rolled per side, so a guest's own body or part is never the host's: always a fresh copy. Claiming them
+    -- (the full list now comes after the guest's own wrecks spawned) took parts attached to an own body, and purging that
+    -- body took the claimed parts with it (lootsync2, guestparts 2026-10-23)
     elseif kind == "B" then
-        a = claim("LootableTemplate", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
-            or spawnLootable(what, x, y, z, yaw)
+        a = spawnLootable(what, x, y, z, yaw)
     elseif kind == "P" then
-        a = claim("LootableTemplatePart", x, y, z, function(o) return alive(o.ItemInstance) and ids.path2(o:GetClass()) == what end)
-            or spawnPart(what, x, y, z, yaw, state)
+        a = spawnPart(what, x, y, z, yaw, state)
         if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); return end
     else
         a = claim("BP_WorldItem_C", x, y, z, function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what end)
@@ -583,12 +587,13 @@ local function handle(l, guest)
     end
     if op == nil then
     elseif op == "H" and not guest then
-        if not allQueue then sendAll() end -- a list under way is not restarted by the guest asking again
+        -- a list under way is not restarted by the guest asking again, nor one just finished (its H crossed our F)
+        if not allQueue and os.clock() - fullSentAt > 10 then sendAll() end
     elseif guest and op == "A" then
         onAdd(id, f[3], tonumber(f[4]), tonumber(f[5]), tonumber(f[6]), tonumber(f[7]), f[8])
     elseif guest and op == "F" then
-        fullAt = os.clock()
-        purge()
+        -- the purge (a sweep over every lootable) runs for the first full list only
+        if not fullAt then fullAt = os.clock(); purge() end
     elseif op == "S" and ents[id] then
         log("PT|loot got S %s (%s)", id, f[3]:sub(1, 80))
         local before = ents[id].n
@@ -650,7 +655,7 @@ local function tick()
     if mode == "listen" then
         local here = false
         for _, pc in ipairs(net.guests()) do here = here or pc:GetAddress() == readyFor end
-        if not here then readyFor, allQueue = nil, nil end
+        if not here then readyFor, allQueue, fullSentAt = nil, nil, -math.huge end
         listening = #net.guests() > 0
         if not listening then return end
         -- discovery every 2 s: it took ~340 ms of each 500 ms tick in a zone (local playtest 2026-10-22); until the guest's
@@ -670,7 +675,7 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
-    hostScanned, fullAt, allQueue, readyFor, lastRx = false, nil, nil, nil, -math.huge
+    hostScanned, fullAt, allQueue, readyFor, lastRx, fullSentAt = false, nil, nil, nil, -math.huge, -math.huge
     ents, byName, claimed, reported, out, partial, partIds, skip = {}, {}, {}, {}, {}, {}, {}, {}
     inbox, head, cands, made = {}, 1, {}, { claimed = 0, spawned = 0 }
 end)

@@ -10,7 +10,7 @@ function M.log(fmt, ...) print("[PacificTogether] " .. string.format(fmt, ...) .
 -- UEHelpers.GetPlayerController/GetWorld run FindAllOf("PlayerController") per call (0.26 ms in a zone, measured 2026-10-22),
 -- and every module calls them per item and per tick: keep the local controller and its world while they stay valid.
 -- A new map makes new ones, so the old ones fail IsValid and are looked up again.
-local rawPC, cachedPC, cachedWorld = UEHelpers.GetPlayerController, nil, nil
+local cachedPC, cachedWorld = nil, nil
 local function live(pc) return pc and pc:IsValid() and not pc:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 -- the stock helper returns the first player controller, on a host possibly a guest's: the local one is looked for here
 function UEHelpers.GetPlayerController()
@@ -18,7 +18,7 @@ function UEHelpers.GetPlayerController()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
         if live(pc) and pc:IsLocalController() then cachedPC, cachedWorld = pc, nil; return pc end
     end
-    return rawPC()
+    return CreateInvalidObject() -- no local controller yet (travel): not a guest's
 end
 local rawWorld = UEHelpers.GetWorld
 function UEHelpers.GetWorld()
