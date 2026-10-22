@@ -57,3 +57,4 @@ bunny all pass), `20261022-032241` 26/27 (only the Tesla firing check failed), `
 - Bunny push: velocity impulse is a guess (`strength / 100` clamped 300..1200, + 200 up), `PushDamage` read from the tuning (1.0 in the run) and `PlayerPusher.Radius` 1500, `ImpulseStrength` 1000 in the run.
   The bunny only wakes by the host's distance (`IsPlayerInRange`); the test calls `PushFx` directly on the host instead of walking the guest into the creature.
 - Abductor and Can Opener do not exist in this build's classes.
+- Final runs: normal 25/26 (20261022-040137, only guest_pushed_by_bunny failed: the guest's peak speed check is timing-flaky, it passed in 20261022-032241), noanom3 21/26 (20261022-040447: fails the 5 pickpocket and bunny checks).
