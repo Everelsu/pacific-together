@@ -6,6 +6,8 @@
 #include <Windows.h>
 
 #include <cstddef>
+#include <deque>
+#include <mutex>
 #include <string>
 
 #include "transport.hpp"
@@ -48,6 +50,16 @@ struct FriendGameInfo
     uint16_t port, query_port;
     uint64_t lobby;
 };
+// callbacks the game pumps with its own RunCallbacks: GameLobbyJoinRequested_t (333), GameRichPresenceJoinRequested_t (337), LobbyEnter_t (504)
+struct GameLobbyJoin
+{
+    uint64_t lobby, friend_id;
+};
+struct RichJoin
+{
+    uint64_t friend_id;
+    char connect[256];
+};
 static_assert(sizeof(LobbyCreated) == 16 && sizeof(LobbyEnter) == 24 && sizeof(FriendGameInfo) == 24 && offsetof(Message, id64) == 24);
 
 static struct
@@ -83,12 +95,40 @@ static struct
     void (*Release)(Message*);
     int (*GetRelayNetworkStatus)(void*, void*);
     void (*InitRelayNetworkAccess)(void*);
+    const char* (*GetPersonaName)(void*);
+    void (*RegisterCallback)(void*, int);
 } s;
 static void *g_user{}, *g_friends{}, *g_mm{}, *g_utils{}, *g_msgs{}, *g_netutils{};
 static bool g_on{}, g_resolved{};
 static uint64_t g_call{}, g_lobby{};
 static int g_call_kind{};
 static std::string g_lobby_status = "none";
+
+// Steam's CCallbackBase (SDK 1.5x layout: two Run overloads and the size, then flags and id). Run only queues; Lua polls.
+static std::mutex g_ev_mx;
+static std::deque<std::string> g_events;
+static int g_ev_count[3]; // callbacks seen so far: 333, 337, 504
+struct Callback
+{
+    virtual void Run(void* p) { push(p); }
+    virtual void Run(void* p, bool, uint64_t) { push(p); }
+    virtual int GetCallbackSizeBytes() { return size; }
+    uint8_t flags = 0;
+    int id = 0;
+    int size = 0;
+    auto push(void* p) -> void
+    {
+        char b[400];
+        if (id == 333) snprintf(b, sizeof(b), "join_lobby %llu %llu", static_cast<GameLobbyJoin*>(p)->lobby, static_cast<GameLobbyJoin*>(p)->friend_id);
+        else if (id == 337) snprintf(b, sizeof(b), "join_connect %llu %.255s", static_cast<RichJoin*>(p)->friend_id, static_cast<RichJoin*>(p)->connect);
+        else snprintf(b, sizeof(b), "lobby_enter %llu", static_cast<LobbyEnter*>(p)->lobby);
+        std::lock_guard lock(g_ev_mx);
+        ++g_ev_count[id == 333 ? 0 : id == 337 ? 1 : 2];
+        if (g_events.size() < 64) g_events.push_back(b);
+    }
+};
+static Callback g_cb_lobby_join{}, g_cb_rich_join{}, g_cb_enter{};
+static bool g_cb_registered{};
 
 template <class F> static auto resolve(HMODULE dll, F& slot, const char* name) -> bool
 {
@@ -134,6 +174,8 @@ static auto resolve_all() -> bool
     ok &= resolve(dll, s.Release, "SteamAPI_SteamNetworkingMessage_t_Release");
     ok &= resolve(dll, s.GetRelayNetworkStatus, "SteamAPI_ISteamNetworkingUtils_GetRelayNetworkStatus");
     ok &= resolve(dll, s.InitRelayNetworkAccess, "SteamAPI_ISteamNetworkingUtils_InitRelayNetworkAccess");
+    ok &= resolve(dll, s.GetPersonaName, "SteamAPI_ISteamFriends_GetPersonaName");
+    ok &= resolve(dll, s.RegisterCallback, "SteamAPI_RegisterCallback");
     if (!ok) return false;
     g_user = s.SteamUser(), g_friends = s.SteamFriends(), g_mm = s.SteamMatchmaking();
     g_utils = s.SteamUtils(), g_msgs = s.SteamNetworkingMessages(), g_netutils = s.SteamNetworkingUtils();
@@ -217,6 +259,19 @@ auto steam_register(const Lua& lua) -> void
             s.InitRelayNetworkAccess(g_netutils);
             pt_log("PT|native steam on appid=%u", app);
             if (app != APP_ID) pt_log("PT|error steam appid %u is not %u", app, APP_ID), g_on = false;
+            if (g_on && !g_cb_registered)
+            {
+                g_cb_registered = true;
+                g_cb_lobby_join.id = 333, g_cb_lobby_join.size = sizeof(GameLobbyJoin);
+                g_cb_rich_join.id = 337, g_cb_rich_join.size = sizeof(RichJoin);
+                g_cb_enter.id = 504, g_cb_enter.size = sizeof(LobbyEnter);
+                for (auto* c : {&g_cb_lobby_join, &g_cb_rich_join, &g_cb_enter})
+                {
+                    c->flags = 0;
+                    s.RegisterCallback(c, c->id);
+                    pt_log("PT|native steam callback %d registered flags=%u", c->id, c->flags);
+                }
+            }
         }
         l.set_bool(g_on);
         return 1;
@@ -224,6 +279,31 @@ auto steam_register(const Lua& lua) -> void
     lua.register_function("PTNative_SteamId", [](const Lua& l) -> int {
         STEAM_ON();
         push_id(l, s.GetSteamID(g_user));
+        return 1;
+    });
+    // PTNative_SteamPersona() -> our Steam name
+    lua.register_function("PTNative_SteamPersona", [](const Lua& l) -> int {
+        STEAM_ON();
+        auto n = s.GetPersonaName(g_friends);
+        l.set_string(n ? n : "");
+        return 1;
+    });
+    // PTNative_SteamEvent() -> "join_lobby <lobby> <friend>" | "join_connect <friend> <connect string>" | "lobby_enter <lobby>", or nil
+    lua.register_function("PTNative_SteamEvent", [](const Lua& l) -> int {
+        STEAM_ON();
+        std::lock_guard lock(g_ev_mx);
+        if (g_events.empty()) return l.set_nil(), 1;
+        l.set_string(g_events.front());
+        g_events.pop_front();
+        return 1;
+    });
+    // PTNative_SteamEventStats() -> "333=<n> 337=<n> 504=<n>": how many of each callback arrived (tests; the mod drains the queue itself)
+    lua.register_function("PTNative_SteamEventStats", [](const Lua& l) -> int {
+        STEAM_ON();
+        std::lock_guard lock(g_ev_mx);
+        char b[64];
+        snprintf(b, sizeof(b), "333=%d 337=%d 504=%d", g_ev_count[0], g_ev_count[1], g_ev_count[2]);
+        l.set_string(b);
         return 1;
     });
     // PTNative_SteamRelayStatus() -> ESteamNetworkingAvailability (100 = current, <0 = failed)
@@ -293,8 +373,9 @@ auto steam_register(const Lua& lua) -> void
             l.set_bool(true);
             return 1;
         }
+        bool read_only = l.get_stack_size() == 1; // PTNative_SteamRichPresence(key): only read our own value back
         auto key = lua_str_arg(l), value = lua_str_arg(l);
-        bool ok = s.SetRichPresence(g_friends, key.c_str(), value.c_str());
+        bool ok = read_only || s.SetRichPresence(g_friends, key.c_str(), value.c_str());
         auto back = s.GetFriendRichPresence(g_friends, s.GetSteamID(g_user), key.c_str());
         l.set_bool(ok);
         l.set_string(back ? back : "");

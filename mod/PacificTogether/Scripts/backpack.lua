@@ -178,9 +178,12 @@ local function slot()
     return ok and tonumber(s) or 0
 end
 local function file(s, id) return string.format("../../Saved/SaveGames/odsave%d.pt-%s.txt", s, id) end
+-- S2: a guest that said hello with a SteamID is keyed by it; the key before Steam was the login name (second result)
 local function idOf(pc)
-    local name = valid(pc.PlayerState) and pc.PlayerState:GetPlayerName():ToString() or "Guest"
-    return (name:gsub("[^%w_%-]", "_"))
+    local info = package.loaded["session"] and package.loaded["session"].guestInfo(pc)
+    local name = info and info.login or (valid(pc.PlayerState) and pc.PlayerState:GetPlayerName():ToString() or "Guest")
+    local old = name:gsub("[^%w_%-]", "_")
+    return info and info.sid or old, old
 end
 local function writeFile(s, id)
     local f = io.open(file(s, id), "w")
@@ -195,8 +198,12 @@ local function readFile(s, id)
 end
 
 net.on("g.bp.hi", function(pc)
-    local id = idOf(pc)
+    local id, old = idOf(pc)
     local line = readFile(slot(), id) or (stored[id] and encode(stored[id]))
+    if not line and old ~= id then
+        line = readFile(slot(), old)
+        if line then log("PT|bp host adopts the old backpack of %s for %s", old, id) end
+    end
     if line then stored[id] = decode(line) end
     log("PT|bp host answers %s slot=%d %s", id, slot(), line and (count(stored[id]) .. " items") or "new guest")
     net.toGuest(pc, "g.bp.rec", line or "none")

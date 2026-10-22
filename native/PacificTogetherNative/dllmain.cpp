@@ -221,6 +221,11 @@ class PacificTogetherNative : public CppUserModBase
                 l.set_integer(game_build());
                 return 1;
             });
+            // PTNative_CommandLine() -> the process's command line (Steam appends "+connect_lobby <id>" for Join Game)
+            l->register_function("PTNative_CommandLine", [](const LuaMadeSimple::Lua& l) -> int {
+                l.set_string(GetCommandLineA());
+                return 1;
+            });
             // PTNative_SetAutoListen(bool): while on, every non-menu map the host loads (not a client join) listens. Returns whether LoadMap is patched.
             l->register_function("PTNative_SetAutoListen", [](const LuaMadeSimple::Lua& l) -> int {
                 g_auto_listen = l.get_bool();
