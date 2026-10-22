@@ -16,6 +16,9 @@ function M.alpha(d) return math.max(0, math.min(1, (M.FAR - d) / (M.FAR - M.NEAR
 
 local tags, others, pc, nextScan = {}, {}, nil, 0
 
+-- the other players' characters as of the last scan (mapmark.lua shares them)
+function M.others() return others end
+
 -- grows with distance past 4 m, so the name keeps about the same size on screen
 local function fitSize(tag, d)
     local size = math.floor(16 * math.max(1, d / 400))
