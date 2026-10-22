@@ -13,6 +13,7 @@ local M = { LIFE = tonumber(os.getenv("PT_PING_LIFE") or "") or 8, REACH = 30000
 local OFF = os.getenv("PT_MUTATE") == "noping" -- tests only
 local MAT = "/Engine/EngineMaterials/AntiAliasedTextMaterialTranslucent.AntiAliasedTextMaterialTranslucent"
 local SOUND = "hud_log_entry_new_appear" -- the game's own short HUD blip (UMG_LogBook_Notification)
+local SOUND_PATH = "/Game/WwiseAudio/Events/UI/ui_hud/" .. SOUND .. "." .. SOUND
 local ITEM_NEAR = 90 -- uu: an item or container this close to the view ray counts as aimed at
 
 local marks = {} -- player name -> { actor, text, loc, name, label, t0 }
@@ -77,7 +78,10 @@ end
 local function sound()
     pcall(function()
         local ak = StaticFindObject("/Script/AkAudio.Default__AkGameplayStatics")
-        ak:PostEventAtLocationByName(FString(SOUND), { X = 0, Y = 0, Z = 0 }, { Pitch = 0, Yaw = 0, Roll = 0 }, UEHelpers.GetWorldContextObject())
+        local ev = StaticFindObject(SOUND_PATH)
+        local zero, rot = { X = 0, Y = 0, Z = 0 }, { Pitch = 0, Yaw = 0, Roll = 0 }
+        if ev:IsValid() then ak:PostEventAtLocation(ev, zero, rot, "", UEHelpers.GetWorldContextObject())
+        else ak:PostEventAtLocationByName(SOUND, zero, rot, UEHelpers.GetWorldContextObject()) end
     end)
 end
 
@@ -91,6 +95,7 @@ local function spawn(x, y, z)
     local gs = UEHelpers.GetGameplayStatics()
     local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = x, Y = y, Z = z }, Scale3D = { X = 1, Y = 1, Z = 1 } }
     local a = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(UEHelpers.GetWorldContextObject(), StaticFindObject("/Script/Engine.TextRenderActor"), xf, 1, nil), xf)
+    a:K2_SetActorLocation({ X = x, Y = y, Z = z }, false, {}, true) -- the spawn transform alone left it at the origin
     local t = a.TextRender
     t:SetHorizontalAlignment(1)
     t:SetVerticalAlignment(2) -- EVRTA_TextBottom: the last line ("v") sits on the point
@@ -192,6 +197,8 @@ local function bind(k)
 end
 local ok = bind(KEY)
 if not ok and KEY ~= "G" then KEY = "G"; ok = bind(KEY) end
+-- the test mod is another Lua state: its scenario presses the key through the console ("ptping"), same handler
+pcall(RegisterConsoleCommandHandler, "ptping", function() ExecuteInGameThread(function() pcall(M.press) end) return true end)
 log("PT|ping key %s bound=%s", KEY, tostring(ok))
 
 return M
