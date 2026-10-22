@@ -87,7 +87,7 @@ P0 = needed for v1.0. P1 = v1.x. P2 = later, maybe. Won't = out of scope.
 | P5 | Guest backpack persists between sessions, stored next to the host's save slot per guest SteamID, saved whenever the host saves and when the guest leaves; a new guest starts empty (D7). Must not change the game's own save format | P0 |
 | P6 | Voice/text chat | Won't (Steam has it) |
 | P7 | Steam name tag over the other player, fading with distance (D17) | P0 |
-| P8 | The other player shown on the ARC map (D17; deferred by D24) | P1 |
+| P8 | The other player shown on the ARC map and as a HUD marker with distance past 30 m (D17; built in `mapmark.lua`, scenario `mapmark`, not yet seen in an image) | P1 |
 
 ### Car
 
