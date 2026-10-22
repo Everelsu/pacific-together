@@ -122,7 +122,9 @@ local function applyUpgrades(data)
                     local cls = StaticFindObject(c)
                     if not (cls and cls:IsValid()) then cls = LoadAsset(c) end
                     if not present and cls and cls:IsValid() then
-                        s:InstallSpecificUpgrade(cls, true)
+                        M.applying = true -- stations.lua: this install is the host's, not the guest's own
+                        pcall(s.InstallSpecificUpgrade, s, cls, true)
+                        M.applying = false
                         log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
                     end
                     if present or (cls and cls:IsValid()) then done[key] = true end
@@ -149,6 +151,18 @@ local function hostTick()
 end
 
 local want, wantUp
+-- stations.lua: the upgrade classes installed on a spawner on this side / in the host's last list (guest)
+function M.installedOn(s) local im, sm = managers(); return im and installed(s, im, sm) or {} end
+function M.hostHas(name, cls)
+    if not wantUp then return nil end
+    for line in wantUp:gmatch("[^\n]+") do
+        local n, classes = line:match("^([^\t]+)\t(.*)$")
+        if n == name then
+            for c in classes:gmatch("[^,]+") do if c == cls then return true end end
+        end
+    end
+    return false
+end
 net.on("g.garage.sw", function(_, data) want = data end)
 net.on("g.garage.up", function(_, data) wantUp = data end)
 
