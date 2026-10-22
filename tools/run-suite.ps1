@@ -1,6 +1,6 @@
 # Full regression, one scenario at a time on one test pair (docs/LANES.md: run once on main after the lanes merge).
 # tools\run-suite.ps1 [-Only a,b] [-Root ...] [-Port ...]; writes local\test-results\suite-<stamp>.txt, exit 1 if any failed.
-param([string[]]$Only = @(), [string]$Root = "C:\PacificTogetherTest", [int]$Port = 7700)
+param([string[]]$Only = @(), [string]$Root = "C:\PacificTogetherTest", [int]$Port = 7700, [string]$Shard = "")  # -Shard 1/2: every 2nd scenario from the 1st, for two pairs in parallel
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $Only = @($Only | ForEach-Object { $_ -split "," } | Where-Object { $_ })  # -File passes "a,b" as one string
 # scenario = fixture ("" = none); the fixture each one needs comes from its lane's report
@@ -14,8 +14,11 @@ $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run 
 }
 $out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss).txt"
 $failed = @(); $ran = 0
+$i = -1
 foreach ($s in $Suite.Keys) {
+    $i++
     if ($Only.Count -and $Only -notcontains $s) { continue }
+    if ($Shard -match "^(\d+)/(\d+)$" -and ($i % [int]$Matches[2]) -ne ([int]$Matches[1] - 1)) { continue }
     $ran++
     $a = @("-Scenario", $s, "-Root", $Root, "-Port", $Port, "-Headless")
     if ($Suite[$s]) { $a += @("-Fixture", $Suite[$s]) }
