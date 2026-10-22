@@ -61,21 +61,30 @@ return function(T)
         add({ wait = 8 })
         add({ run = function() gpc = L.remotePCs()[1] end })
 
-        -- spark tower: the discharge reaches the guest
+        -- spark tower: a map Tesla (a hazard created at run time destroys itself at once when spawned by hand) and the guest next to it
         local tesla
         add({ run = function()
             poll(); guestHp0, hostHp0 = guestHp, health()
-            tesla = spawn(CLS.tesla, nearGuest(700, 0))
-            T.log("PT|info spawned tesla %s guestHp=%.0f hostHp=%.0f remoteRole=%s replicates=%s", T.name(tesla), guestHp0, hostHp0, tostring(tesla.RemoteRole), tostring(tesla.bReplicates))
+            local gl, best = L.guestChar():K2_GetActorLocation(), nil
+            for _, o in ipairs(FindAllOf("BP_Hazard_Tesla_C") or {}) do
+                if T.inWorld(o) and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) then
+                    local l = o:K2_GetActorLocation()
+                    local d = (l.X - gl.X) ^ 2 + (l.Y - gl.Y) ^ 2
+                    if not best or d < best.d then best = { o = o, d = d, l = l } end
+                end
+            end
+            tesla = best.o
+            PTNative_MsgToGuest(gpc:GetAddress(), "t.tp", string.format("%.0f	%.0f	%.0f", best.l.X + 350, best.l.Y, best.l.Z + 150))
+            T.log("PT|info tesla %s, guest sent next to it (%.0f uu away from the guest) guestHp=%.0f hostHp=%.0f", T.name(tesla), math.sqrt(best.d), guestHp0, hostHp0)
         end })
         sees("tesla")
-        add({ check = "guest_hurt_by_tesla", timeout = 60, cond = function()
+        add({ check = "guest_hurt_by_tesla", timeout = 90, cond = function()
             poll()
             T.log("PT|info tesla: guest hp=%.0f (was %.0f) host hp=%.0f", guestHp, guestHp0, health())
             return guestHp < guestHp0 - 3
         end })
-        add({ run = function() if tesla and tesla:IsValid() then tesla:K2_DestroyActor() end end })
-
+        add({ run = function() PTNative_MsgToGuest(gpc:GetAddress(), "t.home", "1") end })
+        add({ wait = 5 })
         -- pickpocket: a Part Stealer within reach of the guest takes a backpack item (the game only reaches for the host's character)
         local stealer
         add({ check = "guest_has_items", timeout = 30, cond = function() poll(); return guestBag >= 1 end })
@@ -131,7 +140,7 @@ return function(T)
             if me and me:IsValid() then local v = me:GetVelocity(); peak = math.max(peak, math.sqrt(v.X ^ 2 + v.Y ^ 2)) end
         end)
     end)
-    local given = false
+    local home
     local WATCHL = { "BP_Hazard_Tesla_C", "BP_Hazard_PartStealer_C", "BP_Boon_LootCreature_C" }
     LoopInGameThreadWithDelay(1000, function()
         pcall(function()
@@ -166,6 +175,12 @@ return function(T)
                 local kind, data = PTNative_MsgPoll("t.")
                 if not kind then break end
                 if kind == "t.end" then finished = true end
+                if kind == "t.tp" and me and me:IsValid() then
+                    home = home or me:K2_GetActorLocation()
+                    local x, y, z = data:match("^(%-?[%d%.]+)	(%-?[%d%.]+)	(%-?[%d%.]+)$")
+                    me:K2_SetActorLocation({ X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }, false, {}, true)
+                end
+                if kind == "t.home" and home and me and me:IsValid() then me:K2_SetActorLocation(home, false, {}, true) end
             end
         end)
     end)

@@ -10,7 +10,7 @@ local safety = require("safety")
 local ov = require("overlay")
 local log = common.log
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", debug = true, pushed = 0, applied = 0 } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", debug = os.getenv("PT_ANOM_DEBUG") ~= nil, pushed = 0, applied = 0 } -- the test mutation switches the module off
 local function try(what, fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then log("PT|error anomalies3 %s %s", what, tostring(err)) end
@@ -111,7 +111,7 @@ net.on("g.anom3.steal", function(_, key) -- guest
         end
         if #have == 0 then return end
         local a = have[math.random(#have)]
-        local p = a:GetFullName():match("^%S+ (.+)$")
+        local p = (a:GetFullName():match("^%S+ (.+)$"):gsub("%.[^%./]+$", "")) -- the package path, what ids.archetype takes
         c:RemoveItemsOfType(a, 1)
         hurtSelf(3)
         net.toHost("g.anom3.stolen", key .. "\t" .. p)
