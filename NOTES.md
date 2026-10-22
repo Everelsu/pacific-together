@@ -548,3 +548,9 @@ Known gaps (rare, not chased per the owner's priority rule)
 - A lootable can stay one snapshot behind on the guest (race between the host's snapshot and a content change). Look at
   that container's `S|L` lines in both logs if a player reports it.
 - Full-trunk stack counts can drift by one item (`ids.apply` on a full container, lootsync2 area).
+- The guest crashes intermittently on its native rejoin after a run failure (`sessiontravel -Fixture garage`): 5 of 8
+  runs overnight (pt1-travel, folders `20261022-03*-pt1-travel-sessiontravel`), AV at varying addresses, crash marker depth 0,
+  right after `native rejoin browse` + `loadmap post` with pawn=none. Not tonight's modules: it still crashed with garage,
+  guestparts, carfeel, guestswap removed and most modules reverted to 11e3841, and it already crashed on 2026-10-21
+  (`20261021-173735-m2gaps-sessiontravel`). Next: measure the flake rate on main vs 11e3841 (about 5 runs each), then look
+  at the native rejoin (browse into the same map while the old world tears down).
