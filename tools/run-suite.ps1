@@ -12,7 +12,7 @@ $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run 
     anomalies = "zone"; anomalies2 = "zone"; anomalies3 = "zone"; safety = ""; nametag = ""; sessiontravel = "garage"; sessionrejoin = ""
     zonejoin = ""
 }
-$out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss).txt"
+$out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss)$(if ($Shard) { '-' + ($Shard -replace '/', 'of') }).txt"
 $failed = @(); $ran = 0
 $i = -1
 foreach ($s in $Suite.Keys) {
