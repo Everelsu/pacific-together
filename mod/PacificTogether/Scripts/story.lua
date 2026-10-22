@@ -14,6 +14,7 @@ local log = common.log
 local ov = require("overlay")
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "nostory" } -- the test mutation switches the mirror off (the guest stays a bystander)
+local PROG = os.getenv("PT_MUTATE") ~= "nostoryprog" -- nostoryprog: no journal history, no guest-done tasks (the pt2-story additions)
 
 local function live(o) return o and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 local function try(what, fn, ...)
@@ -32,6 +33,9 @@ end
 local function quests() local q = FindFirstOf("BP_QuestManager_C") return live(q) and q or nil end
 local function dialogue() local d = FindFirstOf("BP_DialogueManager_C") return live(d) and d or nil end
 
+local hostDone = { o = {}, m = {} } -- what the host finished (paths without the asset-name suffix)
+local hostMask = {}                  -- objective path -> the host's completed-task mask
+local GUEST_TASKS -- set below (the host handler needs it too)
 local applying = false -- true only while this module starts something on the guest
 
 -- G3: the guest's own game starts nothing. A pre-hook cannot cancel a call, so the mission is nulled (unguarded, StartMission on a guest crashes).
@@ -43,6 +47,15 @@ for _, fn in ipairs({ "StartMission", "StartObjective", "AdvanceObjective" }) do
 end
 
 -- ---------------------------------------------------------------- host
+
+local function activeOn(q, objPath)
+    local a = q.ActiveObjectives
+    for i = 1, a:GetArrayNum() do
+        local s = a[i]
+        if live(s.Objective) and path(s.Objective) == objPath then return s end
+    end
+end
+
 
 local lastQuest, lastSent = "", 0
 
@@ -62,6 +75,58 @@ local function questState()
     end
     return table.concat(L, "\n")
 end
+
+
+-- journal history: the objectives and missions the host has finished (the journal's "completed" list reads these arrays).
+-- Paths drop the ".Name" suffix (the asset name repeats it) so a long game still fits the message cap; chunked, add-only on the guest.
+local lastDone, lastDoneSent = "", 0
+local function doneRows()
+    local q = quests()
+    if not q then return {} end
+    local R = {}
+    for i = 1, q.CompletedObjectives:GetArrayNum() do
+        local o = q.CompletedObjectives[i]
+        if live(o) then R[#R + 1] = "o" .. path(o):gsub("%.[^./]+$", "") end
+    end
+    for i = 1, q.CompletedMissions:GetArrayNum() do
+        local o = q.CompletedMissions[i]
+        if live(o) then R[#R + 1] = "m" .. path(o):gsub("%.[^./]+$", "") end
+    end
+    table.sort(R)
+    return R
+end
+local function doneTick()
+    local R = doneRows()
+    local h = table.concat(R, "\n")
+    if h == lastDone and os.clock() - lastDoneSent < 5 then return end
+    lastDone, lastDoneSent = h, os.clock()
+    local i = 1
+    repeat
+        local buf, len = {}, 0
+        while i <= #R and len + #R[i] + 1 <= 28000 do buf[#buf + 1] = R[i]; len = len + #R[i] + 1; i = i + 1 end
+        net.toGuests("g.story.done", table.concat(buf, "\n"))
+    until i > #R
+end
+
+-- a task only the guest can do (it holds the item, stands at the place): the guest says so, the host completes it for the story
+GUEST_TASKS = { BPMT_HasItem_PlayerInventory_C = true, BPMT_HasItem_HandSlot_C = true, BPMT_InRangeOfTag_C = true }
+net.on("g.story.task", function(_, data)
+    if not (PROG and M.enabled) or safety.guest() then return end
+    try("task", function()
+        local obj, mis, idx = data:match("^([^	]+)	([^	]+)	(%d+)$")
+        local q = quests()
+        if not (q and obj) then return end
+        local s = activeOn(q, obj)
+        local ms = s and s.ActiveMissionState
+        idx = tonumber(idx)
+        if not (live(ms) and live(ms.Data) and path(ms.Data) == mis) then return end
+        local t = ms.Tasks[idx]
+        if live(t) and GUEST_TASKS[t:GetClass():GetFName():ToString()] and not ms.TaskStates[idx].bCompleted then
+            ms:ForceCompleteTask(t)
+            log("PT|story host completes task %d of %s for the guest", idx, mis)
+        end
+    end)
+end)
 
 local lastSay
 local function hostTick()
@@ -120,36 +185,35 @@ end
 
 -- ---------------------------------------------------------------- guest
 
-local function activeOn(q, objPath)
-    local a = q.ActiveObjectives
-    for i = 1, a:GetArrayNum() do
-        local s = a[i]
-        if live(s.Objective) and path(s.Objective) == objPath then return s end
-    end
-end
-
 local function applyQuest(data)
     local q = quests()
     if not q then return end
     local want = {}
+    hostMask = {}
     for line in data:gmatch("[^\n]+") do
         local _, obj, mis, mask = line:match("^(o)\t([^\t]+)\t([^\t]+)\t([01]*)$")
         if obj then
             want[obj] = true
+            hostMask[obj] = mask
             local st = activeOn(q, obj)
             local o, m = load(obj), load(mis)
             if o and m then
-                applying = true
+                -- "applying" covers only our own two starts: what the guest's story script does in answer (it starts the next
+                -- objective by itself) stays nulled, the host's rows start it
                 local ok, err = pcall(function()
                     if not st then
+                        applying = true
                         q:StartObjective(o, true, false)
+                        applying = false
                         st = activeOn(q, obj)
                         log("PT|story guest start objective %s mission %s", obj, mis)
                         ov.post("New objective", "good", "story")
                     end
                     local cur = st and st.ActiveMissionState
                     if st and not (live(cur) and live(cur.Data) and path(cur.Data) == mis) then
+                        applying = true
                         st:StartNextMission(m)
+                        applying = false
                         log("PT|story guest mission -> %s", mis)
                         ov.post("Mission updated", "good", "story")
                     end
@@ -174,25 +238,80 @@ local function applyQuest(data)
         if live(s.Objective) and not want[path(s.Objective)] then drop[#drop + 1] = s.Objective end
     end
     for _, o in ipairs(drop) do
-        applying = true
-        pcall(q.StopObjective, q, o, true)
-        applying = false
+        pcall(q.StopObjective, q, o, hostDone.o[(path(o):gsub("%.[^./]+$", ""))] == true)
         log("PT|story guest stop objective %s", path(o))
     end
 end
+
+local lastReported = {} -- "objective|mission|index" the guest already told the host about
+
+-- tasks the guest completed on its own (it holds the item, stands at the place) that the host's mask does not have yet
+local function reportTasks()
+    local q = quests()
+    if not q then return end
+    local a = q.ActiveObjectives
+    for i = 1, a:GetArrayNum() do
+        local s = a[i]
+        local ms = s.ActiveMissionState
+        if live(s.Objective) and live(ms) and live(ms.Data) then
+            local op, mp = path(s.Objective), path(ms.Data)
+            local mask = hostMask[op] or ""
+            for j = 1, ms.TaskStates:GetArrayNum() do
+                local t = ms.Tasks[j]
+                if ms.TaskStates[j].bCompleted and mask:sub(j, j) == "0" and live(t) and GUEST_TASKS[t:GetClass():GetFName():ToString()] then
+                    local ok, car = pcall(function() return t.CheckCar or t.CheckZETI end) -- those two read the shared trunk: not the guest's doing
+                    local key = op .. "|" .. mp .. "|" .. j
+                    if not (ok and car) and not lastReported[key] then
+                        lastReported[key] = true
+                        net.toHost("g.story.task", string.format("%s\t%s\t%d", op, mp, j))
+                        log("PT|story guest reports task %d of %s", j, mp)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- the journal's history: add what the host finished (the arrays are plain data; 25 assets per message keeps a late join smooth)
+net.on("g.story.done", function(_, data)
+    if not (PROG and M.enabled) or not safety.guest() then return end
+    try("done", function()
+        local q = quests()
+        if not q then return end
+        local have = { o = {}, m = {} }
+        for i = 1, q.CompletedObjectives:GetArrayNum() do local o = q.CompletedObjectives[i]; if live(o) then have.o[(path(o):gsub("%.[^./]+$", ""))] = true end end
+        for i = 1, q.CompletedMissions:GetArrayNum() do local o = q.CompletedMissions[i]; if live(o) then have.m[(path(o):gsub("%.[^./]+$", ""))] = true end end
+        local n = 0
+        for line in data:gmatch("[^\n]+") do
+            local k, p = line:sub(1, 1), line:sub(2)
+            hostDone[k][p] = true
+            if not have[k][p] and n < 25 then
+                local o = load(p .. "." .. p:match("[^/]+$"))
+                if o then
+                    local arr = k == "o" and q.CompletedObjectives or q.CompletedMissions
+                    arr[arr:GetArrayNum() + 1] = o
+                    n = n + 1
+                end
+            end
+        end
+        if n > 0 then log("PT|story guest journal history +%d", n) end
+    end)
+end)
 
 net.on("g.story.quest", function(_, data)
     if not M.enabled or not safety.guest() then return end
     try("quest", applyQuest, data)
 end)
 
+local lastSayAt = {} -- a line the host replays within seconds is played once
 net.on("g.story.say", function(_, data)
     if not M.enabled or not safety.guest() then return end
     try("say", function()
         local p, pr = data:match("^([^\t]+)\t(%d+)$")
         local d, seq = dialogue(), p and load(p)
         if not (d and seq) then return end
-        if d.CurrentlyPlayingSequence == seq then return end
+        if d.CurrentlyPlayingSequence == seq or (lastSayAt[p] and os.clock() - lastSayAt[p] < 6) then return end
+        lastSayAt[p] = os.clock()
         applying = true
         d:PlaySequence(seq, tonumber(pr), nil)
         applying = false
@@ -218,8 +337,13 @@ end)
 
 LoopInGameThreadWithDelay(500, function()
     if not M.enabled or not safety.active() then return end
-    if safety.guest() then try("props", guestProps) return end
+    if safety.guest() then
+        try("props", guestProps)
+        if PROG then try("report", reportTasks) end
+        return
+    end
     try("host", hostTick)
+    if PROG then try("done", doneTick) end
     try("cut", cutsceneTick)
     try("props", propsTick)
 end)

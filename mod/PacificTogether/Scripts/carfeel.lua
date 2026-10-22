@@ -264,7 +264,7 @@ end)
 LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
-        if role == "client" or role == "listen" then hookAudio() else unhookAudio() end
+        if active() then hookAudio() else unhookAudio() end
         if role == "client" then refreshGuest() elseif role == "listen" then hostCarTick() end
     end)
     if not ok then log("PT|error feel car tick %s", tostring(err)) end

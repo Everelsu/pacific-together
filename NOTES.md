@@ -554,3 +554,7 @@ Known gaps (rare, not chased per the owner's priority rule)
   guestparts, carfeel, guestswap removed and most modules reverted to 11e3841, and it already crashed on 2026-10-21
   (`20261021-173735-m2gaps-sessiontravel`). Next: measure the flake rate on main vs 11e3841 (about 5 runs each), then look
   at the native rejoin (browse into the same map while the old world tears down).
+- `anomalies3` check `guest_pushed_by_bunny` is flaky (about 1 in 3 runs fails: the guest's speed reports come once per
+  poll and miss the short shove). Peak speed over the whole step can't replace it: the test's own moves reach 639 uu/s
+  without any push (`20261022-082408-anomalies3-noanom3`) against 549 with it. The bunny's damage on the guest
+  (`guest_hurt_by_bunny`) is the reliable proof.

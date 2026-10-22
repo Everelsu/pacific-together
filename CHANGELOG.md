@@ -6,6 +6,7 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 ## [0.0.5] - unreleased
 
 ### Added
+- You see where the other player is: a marker on the ARC map in the car, and a blue marker with their name and distance on the HUD once they are more than 30 m away (closer, the name tag shows).
 - A proper launcher app (PacificTogether.exe) replaces the small window: pick Host or Join, install, uninstall, open the
   log folder, collect your logs into one zip on the Desktop, and read what's new, what is not done yet and how to connect.
 - An in-game overlay: "Pacific Together" and its version at the bottom right, the session status with ping, and a short
@@ -35,6 +36,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
+- Ping: look at something and press the middle mouse button. Both players see a marker there for about 8 seconds with
+  your name, the distance and, for an item or container, its name, and hear a short HUD sound. One ping per player.
 
 ### Fixed
 - The host's game crashed when the host pressed Esc with a guest connected (with "Pause game while in menus" on or off).
