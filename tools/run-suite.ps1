@@ -2,6 +2,7 @@
 # tools\run-suite.ps1 [-Only a,b] [-Root ...] [-Port ...]; writes local\test-results\suite-<stamp>.txt, exit 1 if any failed.
 param([string[]]$Only = @(), [string]$Root = "C:\PacificTogetherTest", [int]$Port = 7700)
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
+$Only = @($Only | ForEach-Object { $_ -split "," } | Where-Object { $_ })  # -File passes "a,b" as one string
 # scenario = fixture ("" = none); the fixture each one needs comes from its lane's report
 $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run still covers them
     session = ""; playpath = "zone"; carsync = "garage"; carenter = "garage"; lootsync = "zone"; lootsync2 = "zone"
