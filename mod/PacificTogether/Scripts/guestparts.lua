@@ -139,7 +139,7 @@ LoopInGameThreadWithDelay(200, function()
         if hooked then log("PT|guestparts hooked") end
     end
     -- only undo our lift: a host-synced health that arrived meanwhile stays
-    for _, h in pairs(held) do if valid(h.hc) and healthOf(h.hc) == h.max then h.hc:SetHealth(h.hp) end end
+    for _, h in pairs(held) do if valid(h.hc) and math.abs(healthOf(h.hc) - h.max) < 0.5 then h.hc:SetHealth(h.hp) end end
     held = {}
     for key, e in pairs(acc) do
         log("PT|parts send %s %.2f", (key:gsub("\t", " ")), e.dmg)

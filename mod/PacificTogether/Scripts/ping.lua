@@ -66,6 +66,11 @@ function M.trace()
     local e = { X = o.X + dir.X * M.REACH, Y = o.Y + dir.Y * M.REACH, Z = o.Z + dir.Z * M.REACH }
     local ignore = {}
     if valid(pc.Pawn) then ignore[1] = pc.Pawn end
+    -- from inside the car the ray starts in the car (the Pawn is the character, the car is what it sits in)
+    local okc, car = pcall(function() return require("car").theCar(common.netMode() == "listen") end)
+    if okc and valid(car) then ignore[#ignore + 1] = car end
+    local okh, ch = pcall(function() return FindFirstOf("BP_MainCharacterManager_C").CharacterActor end)
+    if okh and valid(ch) then ignore[#ignore + 1] = ch end
     local hit = {}
     local ok = UEHelpers.GetKismetSystemLibrary():LineTraceSingle(UEHelpers.GetWorldContextObject(), o, e, 0, false, ignore, 0, hit, true,
         { R = 0, G = 0, B = 0, A = 0 }, { R = 0, G = 0, B = 0, A = 0 }, 0)
@@ -107,29 +112,30 @@ local function spawn(x, y, z)
 end
 
 -- show (or replace) the marker of one player
-function M.show(name, x, y, z, label)
+function M.show(key, name, x, y, z, label)
     if OFF or not safety.active() then return end
-    drop(name)
+    drop(key)
     local a, t = spawn(x, y, z)
-    marks[name] = { actor = a, text = t, loc = { X = x, Y = y, Z = z }, name = name, label = label or "", t0 = os.clock(), shown = nil, size = nil }
+    marks[key] = { actor = a, text = t, loc = { X = x, Y = y, Z = z }, name = name, label = label or "", t0 = os.clock(), shown = nil, size = nil }
     sound()
     log("PT|ping show %s %.0f %.0f %.0f '%s'", name, x, y, z, label or "")
 end
 
 -- host: a ping from a guest (or from ourselves) goes to everyone
-local function everyone(name, line)
+local function everyone(key, name, line)
     local x, y, z, label = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t?(.*)$")
     x, y, z = tonumber(x), tonumber(y), tonumber(z)
     if not (x and y and z) then return end
-    M.show(name, x, y, z, label)
-    net.toGuests("g.ping.show", name .. "\t" .. x .. "\t" .. y .. "\t" .. z .. "\t" .. label)
+    M.show(key, name, x, y, z, label)
+    net.toGuests("g.ping.show", key .. "\t" .. name .. "\t" .. x .. "\t" .. y .. "\t" .. z .. "\t" .. label)
 end
 
-net.on("g.ping.send", function(pc, data) if common.netMode() == "listen" then everyone(nameOf(pc), data) end end)
+net.on("g.ping.send", function(pc, data) if common.netMode() == "listen" then everyone(tostring(pc:GetAddress()), nameOf(pc), data) end end)
 net.on("g.ping.show", function(_, data)
-    local name, x, y, z, label = data:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t?(.*)$")
+    if common.netMode() ~= "client" then return end
+    local key, name, x, y, z, label = data:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t?(.*)$")
     x, y, z = tonumber(x), tonumber(y), tonumber(z)
-    if name and x and y and z then M.show(name, x, y, z, label) end
+    if key and x and y and z then M.show(key, name, x, y, z, label) end
 end)
 
 -- what the key does; returns the hit used (nil when nothing was aimed at or no session)
@@ -141,7 +147,7 @@ function M.press()
     if not h then return end
     local line = string.format("%.0f\t%.0f\t%.0f\t%s", h.x, h.y, h.z, h.label or "")
     log("PT|ping press %s", line:gsub("\t", " "))
-    if mode == "listen" then everyone(nameOf(localPC()), line) else net.toHost("g.ping.send", line) end
+    if mode == "listen" then everyone("host", nameOf(localPC()), line) else net.toHost("g.ping.send", line) end
     return h
 end
 
@@ -150,7 +156,7 @@ function M.markers()
     local r = {}
     for k, m in pairs(marks) do
         if valid(m.actor) then
-            r[#r + 1] = { name = k, actor = m.actor, text = m.text, label = m.label, x = m.loc.X, y = m.loc.Y, z = m.loc.Z, age = os.clock() - m.t0 }
+            r[#r + 1] = { name = m.name, actor = m.actor, text = m.text, label = m.label, x = m.loc.X, y = m.loc.Y, z = m.loc.Z, age = os.clock() - m.t0 }
         end
     end
     return r

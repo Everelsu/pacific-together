@@ -172,9 +172,16 @@ local function fresh() return feel ~= nil and now() - feel.at < 2.5 end
 -- controller, which is off on the guest's car. Post hooks never fire for these Blueprint ticks, so the host takes the exact
 -- values the game hands to Wwise and the guest swaps them in at the same call (and in the speedometer arm's rotation call).
 local hookedAudio = false
+local RTPC, ARM = "/Script/AkAudio.AkGameplayStatics:SetRTPCValue", "/Script/Engine.SceneComponent:K2_SetRelativeLocationAndRotation"
+local hookIds = {}
+local function unhookAudio()
+    if not hookedAudio then return end
+    for fn, ids in pairs(hookIds) do pcall(UnregisterHook, fn, ids[1], ids[2]) end
+    hookIds, hookedAudio = {}, false
+end
 local function hookAudio()
     if hookedAudio then return end
-    local ok, err = pcall(RegisterHook, "/Script/AkAudio.AkGameplayStatics:SetRTPCValue", function(_, rtpc, val)
+    local ok, id1, id2 = pcall(RegisterHook, RTPC, function(_, rtpc, val)
         if role ~= "client" and role ~= "listen" then return end
         local okc, e = pcall(function()
             local n = rtpc:get():GetFName():ToString()
@@ -189,15 +196,17 @@ local function hookAudio()
         end)
         if not okc then log("PT|error feel rtpc hook %s", tostring(e)) end
     end)
-    if not ok then log("PT|error feel hook SetRTPCValue %s", tostring(err)); return end
-    ok, err = pcall(RegisterHook, "/Script/Engine.SceneComponent:K2_SetRelativeLocationAndRotation", function(self, _, rot)
+    if not ok then log("PT|error feel hook SetRTPCValue %s", tostring(id1)); return end
+    hookIds[RTPC] = { id1, id2 }
+    ok, id1, id2 = pcall(RegisterHook, ARM, function(self, _, rot)
         if role ~= "client" or not valid(gsp) or not fresh() then return end
         local okc, e = pcall(function()
             if self:get():GetAddress() == gsp.SpeedArm:GetAddress() then rot:set(feel.arm) end
         end)
         if not okc then log("PT|error feel arm hook %s", tostring(e)) end
     end)
-    if not ok then log("PT|error feel hook speedometer %s", tostring(err)); return end
+    if not ok then log("PT|error feel hook speedometer %s", tostring(id1)); return end
+    hookIds[ARM] = { id1, id2 }
     hookedAudio = true
 end
 
@@ -231,21 +240,22 @@ local function refreshGuest()
     gsp = gcar and ownedBy("BP_CarPart_Internal_Speedometer_C", gcar) or nil
 end
 
+local hornApplied, wiperAt = nil, -10
 net.on("g.feel.c", function(_, data)
     if mode() ~= "client" then return end
     local f = {}
     for x in (data .. "	"):gmatch("([^	]*)	") do f[#f + 1] = tonumber(x) end
     if #f < 9 then log("PT|error feel car message incomplete"); return end
-    local prev = feel
     feel = { load = f[1], cs = f[2], dir = f[3], acc = f[4], arm = { Pitch = f[5], Yaw = f[6], Roll = f[7] }, horn = f[8], wip = f[9], at = now() }
     local car = carCar()
     if not car then return end
     local ca, cm = ownedBy("AC_CarAudio_C", car), first("BP_CarManager_C")
-    if ca and (not prev or prev.horn ~= feel.horn) then
-        pcall(function() ca:Call_CarHorn_Active(feel.horn == 1) end)
+    if ca and hornApplied ~= feel.horn then
+        if pcall(function() ca:Call_CarHorn_Active(feel.horn == 1) end) then hornApplied = feel.horn end
         log("PT|feel horn %d", feel.horn)
     end
-    if cm and (not prev or prev.wip ~= feel.wip) and (cm.WiperBladesOnOff and 1 or 0) ~= feel.wip then
+    if cm and (cm.WiperBladesOnOff and 1 or 0) ~= feel.wip and feel.at - wiperAt >= 1 then
+        wiperAt = feel.at
         pcall(function() car:ToggleWiperBlades() end)
         log("PT|feel wipers %d", feel.wip)
     end
@@ -254,7 +264,7 @@ end)
 LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
-        if active() then hookAudio() end
+        if active() then hookAudio() else unhookAudio() end
         if role == "client" then refreshGuest() elseif role == "listen" then hostCarTick() end
     end)
     if not ok then log("PT|error feel car tick %s", tostring(err)) end
@@ -269,7 +279,7 @@ LoopInGameThreadWithDelay(16, function()
     end
 end)
 LoopInGameThreadWithDelay(200, function()
-    if mode() == "standalone" or mode() == "none" then last, plSent, lastGuests, feel = {}, nil, 0, nil; return end
+    if mode() == "standalone" or mode() == "none" then last, plSent, lastGuests, feel, hornApplied = {}, nil, 0, nil, nil; return end
     local ok, err = pcall(radioTick)
     if not ok then log("PT|error feel radio tick %s", tostring(err)) end
 end)

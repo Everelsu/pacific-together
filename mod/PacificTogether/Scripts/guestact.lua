@@ -217,12 +217,12 @@ end
 -- the blowtorch (BP_Tool_Target_Healer_Basic) and the repair tools of the cure family heal their TargetedActor the same way
 local function healsWith(comp)
     for _, p in ipairs(FindAllOf("BP_ToolSpawn_PatchKitPaste_C") or {}) do
-        if valid(p) and same(p.HealthComp, comp) then return true end
+        if valid(p) and same(p.HealthComp, comp) then return p, "HealthComp", comp end
     end
     local owner = comp:GetOwner()
     for _, class in ipairs({ "BP_Tool_Target_Healer_Basic_C", "BP_BaseStatusEffectCureManifestation_C" }) do
         for _, t in ipairs(FindAllOf(class) or {}) do
-            if valid(t) and same(t.TargetedActor, owner) then return true end
+            if valid(t) and same(t.TargetedActor, owner) then return t, "TargetedActor", owner end
         end
     end
 end
@@ -232,14 +232,16 @@ local function pasteHeal(comp, amount)
     local addr, t = comp:GetAddress(), now()
     local c = healCache[addr]
     if not c or t - c.at > 0.5 then
-        c = { ok = healsWith(comp) or false, at = t }
+        local tool, field, target = healsWith(comp)
+        c = { ok = tool ~= nil, tool = tool, field = field, target = target, at = t }
         if c.ok then
             c.slot = carSlotOf(comp)
             if not c.slot then c.id = require("loot").idOf(comp:GetOwner()) end
         end
         healCache[addr] = c
     end
-    if not c.ok then return end
+    -- the lookup is cached, but the tool must still be aimed at the component now (a heal by anything else does not count)
+    if not c.ok or not (valid(c.tool) and same(c.tool[c.field], c.target)) then return end
     if not (c.slot or c.id) then return end -- neither a car part nor a wreck part: the old note path decides
     if amount and amount > 0.005 then
         local key = c.slot or c.id
