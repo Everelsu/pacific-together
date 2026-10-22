@@ -27,6 +27,7 @@ auto pt_register_net(const LuaMadeSimple::Lua& lua) -> void;   // net.cpp
 auto pt_register_mute(const LuaMadeSimple::Lua& lua) -> void;  // mute.cpp
 auto pt_register_blackbox(const LuaMadeSimple::Lua& lua) -> void; // blackbox.cpp
 auto pt_register_msg(const LuaMadeSimple::Lua& lua) -> void;   // msg.cpp
+auto pt_register_find(const LuaMadeSimple::Lua& lua) -> void;  // find.cpp
 auto pt_blackbox_install() -> void;
 auto pt_blackbox_set_game_thread() -> void;
 auto pt_background_install() -> void; // background.cpp
@@ -198,6 +199,7 @@ class PacificTogetherNative : public CppUserModBase
             pt_register_mute(*l);
             pt_register_blackbox(*l);
             pt_register_msg(*l);
+            pt_register_find(*l);
             pt_guard::register_lua(*l);
             l->register_function("PTNative_Version", [](const LuaMadeSimple::Lua& l) -> int {
                 l.set_string(NATIVE_VERSION);

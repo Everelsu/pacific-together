@@ -37,7 +37,15 @@ local partIds = {} -- wreck part actor full name -> id, both sides (idOf), check
 local reported = {} -- guest: dropped items already told to the host
 local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
-local gotAny, tickN, hostScanned, fullAt = false, 0, false, nil
+local tickN, hostScanned, fullAt = 0, false, nil
+local skip = {} -- host: actor addresses that never qualify (an /Engine/Transient template), so their names are not read again
+local listening = false -- host with a guest (the 500 ms tick sets it; the 50 ms backlog loop reads it)
+-- host: the guest controller that asked for the full list (H) = loaded and acking. Nothing goes out before: a loading guest acks
+-- late, and lines sent meanwhile overflowed its reliable channel and dropped it (lootsync 2026-10-22, NumOutRec 254). The full
+-- list it asks for carries everything registered before.
+-- shortcut: one ready guest (PLAN D1: 2 players); per-guest readiness before 3-4 players
+local readyFor
+local lastRx = -math.huge -- guest: when the host's last loot line came in
 
 -- a big container (a garage's storage can hold hundreds of stacks) does not fit one message (32 KB): its state goes as numbered pieces
 -- "P|id|i|n|keys", put together again on the other side
@@ -58,8 +66,10 @@ local function say(line)
     out[#out + 1] = line
 end
 local partial = {} -- id -> { piece index -> text } (guest and host)
+local inbox, head = {}, 1 -- lines from the other side, worked off a few ms per frame (below)
 local function flush()
     if #out == 0 then return end
+    if common.netMode() == "listen" and not readyFor then out = {}; return end
     local buf, size = {}, 0
     local function send()
         if #buf == 0 then return end
@@ -192,10 +202,25 @@ end
 
 -- known actors by address: a GetFullName of every lootable, item and wreck part per scan took 370-720 ms in a zone
 -- (local playtest 2026-10-22); the name is only read for actors not seen before
+-- work per tick for new actors (each costs ~1-2 ms: contents and part state); the rest waits for the next tick. A zone's first
+-- scan or full list in one go took ~260 ms on the host (2026-10-22)
+local BUDGET_HOST = 0.015
 local function scanHost()
+    -- the budget is checked first, so a cut scan stops costing at once; it only counts as cut when time ran out
+    local t0, cut = os.clock(), false
+    local function room()
+        if os.clock() - t0 < BUDGET_HOST then return true end
+        cut = true
+        return false
+    end
+    local function transient(a, k)
+        if not a:GetFullName():find("/Engine/Transient", 1, true) then return false end
+        skip[k] = true
+        return true
+    end
     for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and alive(a) and alive(a.InventoryContainer) then
+        if not byName[k] and room() and alive(a) and alive(a.InventoryContainer) then
             local e = register("L" .. nextId, "L", a)
             nextId, byName[k] = nextId + 1, e.id
             e.last, e.n = stateOf(e), e.get():GetNumItems()
@@ -204,7 +229,7 @@ local function scanHost()
     end
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and alive(a) and alive(a.Instance) and not a:GetAttachParentActor():IsValid() then
+        if not byName[k] and room() and alive(a) and alive(a.Instance) and not a:GetAttachParentActor():IsValid() then
             local e = register("W" .. nextId, "W", a)
             nextId, byName[k] = nextId + 1, e.id
             say(line(e))
@@ -213,7 +238,7 @@ local function scanHost()
     -- abandoned cars: the body (B) and each part still on it (P); the guest has neither
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplate") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and alive(a) and not a:GetFullName():find("/Engine/Transient", 1, true) then
+        if not byName[k] and not skip[k] and room() and alive(a) and not transient(a, k) then
             local e = register("B" .. nextId, "B", a)
             nextId, byName[k] = nextId + 1, e.id
             say(line(e))
@@ -221,7 +246,7 @@ local function scanHost()
     end
     for _, a in ipairs(not NO2 and FindAllOf("LootableTemplatePart") or {}) do
         local k = a:GetAddress()
-        if not byName[k] and alive(a) and alive(a.ItemInstance) and not a:GetFullName():find("/Engine/Transient", 1, true) then
+        if not byName[k] and not skip[k] and room() and alive(a) and alive(a.ItemInstance) and not transient(a, k) then
             local e = register("P" .. nextId, "P", a)
             nextId, byName[k] = nextId + 1, e.id
             e.last = partKey(a)
@@ -257,14 +282,27 @@ local function scanHost()
             byName[e.addr], ents[id] = nil, nil
         end
     end
+    return not cut
 end
 
+-- the full list for a guest that asks (H), sent over several ticks like the scan; "F" ends it
+local allQueue
 local function sendAll()
-    for id, e in pairs(ents) do
-        if e.kind == "I" then say("S|" .. id .. "|" .. (stateOf(e) or "-;"))
-        elseif alive(e.actor) then say(line(e)) end
+    allQueue = {}
+    for id in pairs(ents) do allQueue[#allQueue + 1] = id end
+    log("PT|loot full list for the guest: %d entities", #allQueue)
+end
+local function sendSome()
+    if not allQueue then return end
+    local t0 = os.clock()
+    while #allQueue > 0 and os.clock() - t0 < BUDGET_HOST do
+        local id = table.remove(allQueue)
+        local e = ents[id]
+        if e and e.kind == "I" then say("S|" .. id .. "|" .. (stateOf(e) or "-;"))
+        elseif e and alive(e.actor) then say(line(e)) end
     end
-    say("F")
+    -- F only once the host has registered everything: the guest purges what the list does not hold
+    if #allQueue == 0 and hostScanned then allQueue = nil; say("F"); log("PT|loot full list sent") end
 end
 
 -- guest -----------------------------------------------------------------------------------------------------------
@@ -274,10 +312,34 @@ local function near(a, x, y, z)
     return (l.X - x) ^ 2 + (l.Y - y) ^ 2 + (l.Z - z) ^ 2 < MATCH ^ 2
 end
 
-local function claim(actors, test)
+-- the guest's own actors of a class with their spots, read once for a burst of claims: the full list on a join claims ~300
+-- entities, and reading every candidate's name and class per claim kept the guest busy for over 30 s (2026-10-22)
+local cands = {} -- class -> { at = os.clock(), list = { { actor, x, y, z } } }
+local function candidates(actors)
+    local c = cands[actors]
+    if c and os.clock() - c.at < 5 then return c.list end
+    local list = {}
     for _, a in ipairs(FindAllOf(actors) or {}) do
-        if alive(a) and not claimed[a:GetFullName()] and test(a) then claimed[a:GetFullName()] = true; return a end
+        if alive(a) then local l = a:K2_GetActorLocation(); list[#list + 1] = { a, l.X, l.Y, l.Z } end
     end
+    cands[actors] = { at = os.clock(), list = list }
+    return list
+end
+local made = { claimed = 0, spawned = 0 } -- guest: how its copies came about (a spawned copy where the game had its own is a miss)
+local function claim(actors, x, y, z, test)
+    for pass = 1, 2 do
+        for _, c in ipairs(candidates(actors)) do
+            local a = c[1]
+            -- the cached spot only narrows the search (items may still be settling); the live spot decides
+            if (c[2] - x) ^ 2 + (c[3] - y) ^ 2 + (c[4] - z) ^ 2 < (10 * MATCH) ^ 2 and alive(a) and near(a, x, y, z) then
+                local n = a:GetFullName()
+                if not claimed[n] and test(a) then claimed[n] = true; made.claimed = made.claimed + 1; return a end
+            end
+        end
+        -- a miss reads the guest's actors again (its own loot keeps appearing after the load); FindAllOf is cheap
+        if pass == 1 and os.clock() - cands[actors].at > 0.25 then cands[actors] = nil else break end
+    end
+    made.spawned = made.spawned + 1
 end
 
 local function spawnLootable(class, x, y, z, yaw)
@@ -324,17 +386,17 @@ local function onAdd(id, what, x, y, z, yaw, state)
     local kind = id:sub(1, 1)
     local a
     if kind == "L" then
-        a = claim("BP_Lootable_Base_C", function(o) return ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
+        a = claim("BP_Lootable_Base_C", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
             or spawnLootable(what, x, y, z, yaw)
     elseif kind == "B" then
-        a = claim("LootableTemplate", function(o) return ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
+        a = claim("LootableTemplate", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
             or spawnLootable(what, x, y, z, yaw)
     elseif kind == "P" then
-        a = claim("LootableTemplatePart", function(o) return alive(o.ItemInstance) and ids.path2(o:GetClass()) == what and near(o, x, y, z) end)
+        a = claim("LootableTemplatePart", x, y, z, function(o) return alive(o.ItemInstance) and ids.path2(o:GetClass()) == what end)
             or spawnPart(what, x, y, z, yaw, state)
         if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); return end
     else
-        a = claim("BP_WorldItem_C", function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what and near(o, x, y, z) end)
+        a = claim("BP_WorldItem_C", x, y, z, function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what end)
             or spawnItem(what, x, y, z, yaw)
     end
     if not a then log("PT|loot could not make %s %s", id, what); return end
@@ -356,7 +418,8 @@ local function purge()
             if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor(); n = n + 1 end
         end
     end
-    log("PT|loot guest purged %d own actors, %d host actors", n, (function() local c = 0; for _ in pairs(ents) do c = c + 1 end; return c end)())
+    log("PT|loot guest purged %d own actors, %d host actors (claimed %d, spawned %d)", n, (function() local c = 0; for _ in pairs(ents) do c = c + 1 end; return c end)(),
+        made.claimed, made.spawned)
 end
 
 local function scanGuest()
@@ -372,17 +435,19 @@ local function scanGuest()
             ents[id] = nil
         elseif e.pending then applyState(e, e.pending) end
     end
-    if not gotAny then
-        if tickN % 6 == 0 then say("H") end
-        return
-    end
+    -- ask for the full list until one has come through to its end (F): a host that was not ready yet sent nothing. Not while
+    -- lines still come in or wait in the inbox (a second list would flood the channel)
+    if not fullAt and head > #inbox and ((tickN % 6 == 0 and os.clock() - lastRx > 5) or tickN % 20 == 0) then say("H") end
+    -- the sweeps below destroy or report what no entity claims: only once the whole list is applied (code review 2026-10-23:
+    -- with the list spread over seconds they turned unclaimed own items into drops, duplicates on the host)
+    if not fullAt then return end
     -- pickups the guest's own game makes now (spawners): not the host's. Items the guest dropped lie next to it: they become the host's.
     local pawn = UEHelpers.GetPlayerController().Pawn
     local p = alive(pawn) and pawn:K2_GetActorLocation()
     -- its own random lootables keep appearing for a while after the join; every 2 s: these scans took 300-400 ms of each
     -- 500 ms tick in a zone and the guest could not even turn its camera (local playtest 2026-10-22, PT|slow loot.lua)
     -- still 330 ms every 2 s in play, and the game stops spawning its own loot soon after the join: the first 90 s only
-    if tickN % 4 == 0 and (not fullAt or os.clock() - fullAt < 90) then
+    if tickN % 4 == 0 and os.clock() - fullAt < 90 then
         for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
             if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
         end
@@ -426,13 +491,41 @@ local function scanMoves()
     end
 end
 
+-- where this side's players stand (own pawn; on the host also the guests')
+local function playerSpots()
+    local spots = {}
+    local pcs = net.guests()
+    pcs[#pcs + 1] = UEHelpers.GetPlayerController()
+    for _, pc in ipairs(pcs) do
+        local pawn = alive(pc) and pc.Pawn
+        if alive(pawn) then spots[#spots + 1] = pawn:K2_GetActorLocation() end
+    end
+    return spots
+end
+local REACH = 3000 -- uu: a wreck part changes only by a player's hands or tools, so farther ones are not read
+local function inReach(a, spots)
+    local l = a:K2_GetActorLocation()
+    for _, p in ipairs(spots) do
+        if (l.X - p.X) ^ 2 + (l.Y - p.Y) ^ 2 + (l.Z - p.Z) ^ 2 < REACH ^ 2 then return true end
+    end
+    return false
+end
+
 -- both: contents changed here since we last looked (the game moved items in or out)
 local function scanChanges()
+    local spots = tickN % 4 == 1 and playerSpots()
+    local far = 10 -- the other parts, round robin: each one at least every ~10 s, a few per tick
     for id, e in pairs(ents) do
         local c = e.get()
         if e.kind == "P" then
-            -- a part's full key (fuel, wear, contents) is costly and changes slowly: every 2 s
-            if tickN % 4 == 1 and alive(e.actor) and alive(e.actor.ItemInstance) then
+            -- a part's full key (fuel, wear, contents) is costly (~0.4 ms) and changes slowly: every 2 s near a player
+            -- (all 206 parts of a zone took 60-250 ms per check, 2026-10-22)
+            local ok = alive(e.actor) and alive(e.actor.ItemInstance)
+            local close = ok and spots and inReach(e.actor, spots)
+            local due = close or (ok and far > 0 and os.clock() - (e.at or 0) > 10)
+            if due and not close then far = far - 1 end
+            if due then
+                e.at = os.clock()
                 -- siphoned fuel, worn durability: the part's item state
                 local s = partKey(e.actor)
                 if s ~= e.last then
@@ -471,80 +564,102 @@ end
 
 -- messages --------------------------------------------------------------------------------------------------------
 
-local function handle(pc, data)
-    if DEAF then return end
-    local guest = common.netMode() == "client"
-    for l in data:gmatch("[^\n]+") do
-        local f = {}
-        for p in (l .. "|"):gmatch("([^|]*)|") do f[#f + 1] = p end
-        local op, id = f[1], f[2]
-        if op == "P" then
-            local buf = partial[id] or {}
-            partial[id] = buf
-            buf[tonumber(f[3])] = f[5] or ""
-            local n = 0
-            for _ in pairs(buf) do n = n + 1 end
-            if n < tonumber(f[4]) then op = nil
-            else
-                partial[id] = nil
-                local s = table.concat(buf, ",")
-                op, f, l = "S", { "S", id, s }, "S|" .. id .. "|" .. s
-            end
-        end
-        if op == nil then
-        elseif op == "H" and not guest then
-            sendAll()
-        elseif guest and op == "A" then
-            gotAny = true
-            onAdd(id, f[3], tonumber(f[4]), tonumber(f[5]), tonumber(f[6]), tonumber(f[7]), f[8])
-        elseif guest and op == "F" then
-            gotAny, fullAt = true, os.clock()
-            purge()
-        elseif op == "S" and ents[id] then
-            log("PT|loot got S %s (%s)", id, f[3]:sub(1, 80))
-            local before = ents[id].n
-            applyState(ents[id], f[3])
-            announce(ents[id], before)
-            -- the guest's change: the host applies it and the other players see it
-            if not guest then say(l) end
-        elseif op == "S" and guest then
-            gotAny = true
-            -- a container of the game's that the guest has not registered yet
-            local name = id:match("^I:(.+)$")
-            log("PT|loot got new container %s (%d bytes)", id, #f[3])
-            if name then applyState(register(id, "I", nil, name), f[3]) end
-        elseif op == "D" and guest and ents[id] then
-            local e = ents[id]
-            ents[id] = nil
-            if alive(e.actor) then e.actor:K2_DestroyActor() end
-            if e.kind == "W" and ov.settled() then ov.post(ov.other() .. " picked up an item", "info", "pick") end
-        elseif op == "M" and guest and ents[id] and alive(ents[id].actor) then
-            pcall(function()
-                ents[id].actor:K2_SetActorLocationAndRotation({ X = tonumber(f[3]), Y = tonumber(f[4]), Z = tonumber(f[5]) }, { Pitch = tonumber(f[7]) or 0, Yaw = tonumber(f[6]), Roll = tonumber(f[8]) or 0 }, false, {}, true)
-            end)
-        elseif op == "N" and not guest then
-            spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
-        elseif op == "T" and not guest and ents[id] then
-            local e = ents[id]
-            ents[id], byName[e.addr] = nil, nil
-            if alive(e.actor) then e.actor:K2_DestroyActor() end
-            if e.kind == "W" then ov.post(ov.other() .. " picked up an item", "info", "pick") end
-            say("D|" .. id)
+local function handle(l, guest)
+    local f = {}
+    for p in (l .. "|"):gmatch("([^|]*)|") do f[#f + 1] = p end
+    local op, id = f[1], f[2]
+    if op == "P" then
+        local buf = partial[id] or {}
+        partial[id] = buf
+        buf[tonumber(f[3])] = f[5] or ""
+        local n = 0
+        for _ in pairs(buf) do n = n + 1 end
+        if n < tonumber(f[4]) then op = nil
+        else
+            partial[id] = nil
+            local s = table.concat(buf, ",")
+            op, f, l = "S", { "S", id, s }, "S|" .. id .. "|" .. s
         end
     end
+    if op == nil then
+    elseif op == "H" and not guest then
+        if not allQueue then sendAll() end -- a list under way is not restarted by the guest asking again
+    elseif guest and op == "A" then
+        onAdd(id, f[3], tonumber(f[4]), tonumber(f[5]), tonumber(f[6]), tonumber(f[7]), f[8])
+    elseif guest and op == "F" then
+        fullAt = os.clock()
+        purge()
+    elseif op == "S" and ents[id] then
+        log("PT|loot got S %s (%s)", id, f[3]:sub(1, 80))
+        local before = ents[id].n
+        applyState(ents[id], f[3])
+        announce(ents[id], before)
+        -- the guest's change: the host applies it and the other players see it
+        if not guest then say(l) end
+    elseif op == "S" and guest then
+        -- a container of the game's that the guest has not registered yet
+        local name = id:match("^I:(.+)$")
+        log("PT|loot got new container %s (%d bytes)", id, #f[3])
+        if name then applyState(register(id, "I", nil, name), f[3]) end
+    elseif op == "D" and guest and ents[id] then
+        local e = ents[id]
+        ents[id] = nil
+        if alive(e.actor) then e.actor:K2_DestroyActor() end
+        if e.kind == "W" and ov.settled() then ov.post(ov.other() .. " picked up an item", "info", "pick") end
+    elseif op == "M" and guest and ents[id] and alive(ents[id].actor) then
+        pcall(function()
+            ents[id].actor:K2_SetActorLocationAndRotation({ X = tonumber(f[3]), Y = tonumber(f[4]), Z = tonumber(f[5]) }, { Pitch = tonumber(f[7]) or 0, Yaw = tonumber(f[6]), Roll = tonumber(f[8]) or 0 }, false, {}, true)
+        end)
+    elseif op == "N" and not guest then
+        spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
+    elseif op == "T" and not guest and ents[id] then
+        local e = ents[id]
+        ents[id], byName[e.addr] = nil, nil
+        if alive(e.actor) then e.actor:K2_DestroyActor() end
+        if e.kind == "W" then ov.post(ov.other() .. " picked up an item", "info", "pick") end
+        say("D|" .. id)
+    end
 end
-net.on("g.loot.b", handle)
+
+-- lines from the other side wait here and are worked off a few ms per frame: the host's full list on a join is hundreds of
+-- lines and took 470-590 ms in one go (the guest froze, 2026-10-22)
+net.on("g.loot.b", function(pc, data)
+    if DEAF then return end
+    lastRx = os.clock()
+    for l in data:gmatch("[^\n]+") do
+        if l == "H" then readyFor = pc:GetAddress() end
+        inbox[#inbox + 1] = l
+    end
+end)
+local BUDGET = 0.004
+LoopInGameThreadWithDelay(16, function()
+    if head > #inbox then return end
+    local guest, t = common.netMode() == "client", os.clock()
+    while head <= #inbox and os.clock() - t < BUDGET do
+        local l = inbox[head]
+        inbox[head], head = nil, head + 1
+        local ok, err = pcall(handle, l, guest)
+        if not ok then log("PT|error loot line %s %s", l:sub(1, 40), tostring(err)) end
+    end
+    if head > #inbox then inbox, head = {}, 1 end
+end)
 
 local function tick()
     tickN = tickN + 1
     local mode = common.netMode()
     if mode == "listen" then
-        if #net.guests() == 0 then return end
+        local here = false
+        for _, pc in ipairs(net.guests()) do here = here or pc:GetAddress() == readyFor end
+        if not here then readyFor, allQueue = nil, nil end
+        listening = #net.guests() > 0
+        if not listening then return end
         -- discovery every 2 s: it took ~340 ms of each 500 ms tick in a zone (local playtest 2026-10-22); until the guest's
         -- first full list it runs every tick
-        if tickN % 4 == 2 or not hostScanned then scanHost(); hostScanned = true end
+        if tickN % 4 == 2 or not hostScanned then hostScanned = scanHost() end
+        sendSome()
         scanMoves()
     elseif mode == "client" then
+        listening = false
         if not ids.alive(UEHelpers.GetPlayerController()) then return end
         scanGuest()
     else
@@ -555,13 +670,27 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
-    hostScanned, fullAt = false, nil
-    ents, byName, claimed, reported, out, gotAny, partial, partIds = {}, {}, {}, {}, {}, false, {}, {}
+    hostScanned, fullAt, allQueue, readyFor, lastRx = false, nil, nil, nil, -math.huge
+    ents, byName, claimed, reported, out, partial, partIds, skip = {}, {}, {}, {}, {}, {}, {}, {}
+    inbox, head, cands, made = {}, 1, {}, { claimed = 0, spawned = 0 }
 end)
 
 LoopInGameThreadWithDelay(500, function()
     local ok, err = pcall(tick)
     if not ok then log("PT|error loot %s", tostring(err)) end
+end)
+
+-- host: a backlog (the first scan, a full list) is worked off every 50 ms instead of every 500 ms, so a joining guest gets
+-- the world in about a second without a long frame
+LoopInGameThreadWithDelay(50, function()
+    if not listening or (hostScanned and not allQueue) then return end
+    local ok, err = pcall(function()
+        if common.netMode() ~= "listen" or #net.guests() == 0 then return end
+        if not hostScanned then hostScanned = scanHost() end
+        sendSome()
+        if not DEAF then flush() else out = {} end
+    end)
+    if not ok then log("PT|error loot backlog %s", tostring(err)) end
 end)
 
 -- for guestparts.lua: the shared id of a wreck part's actor, and the actor of an id

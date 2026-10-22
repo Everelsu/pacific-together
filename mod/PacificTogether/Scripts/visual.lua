@@ -15,7 +15,7 @@ local safety = require("safety")
 local log = common.log
 
 local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual" } -- the test mutation switches the module off
-M.zone = os.getenv("PT_VISUAL_ZONE") == "1" -- the zone props mirror is OFF by default: it broke playpath, lootsync, lootcar, backpacksync (guest load, collisions); set 1 to try it
+M.zone = os.getenv("PT_VISUAL_ZONE") ~= "0" -- the zone props mirror: on (2026-10-23, host sweep cached and spread, guest 8 ms per tick); PT_VISUAL_ZONE=0 turns it off
 
 local RF_WasLoaded = 0x00080000 -- placed in the map file: the guest has it already
 
@@ -205,31 +205,56 @@ local function bpLine(o, cn, name)
 end
 
 local cache = {} -- host: actor name -> { addr, line } of static meshes (they never change)
-local function scan()
-    local cur = {}
-    for _, o in ipairs(FindAllOf("Actor") or {}) do
+-- host: actor address -> false (not dressing) or { class, name }. Reading class, flags and name of all ~2600 actors every second
+-- cost 30-60 ms per scan (playtest 2026-10-22); each actor is read once.
+-- shortcut: an address freed and reused by a new prop keeps the old verdict until the next map; fine while dressing is spawned once
+local kinds = {}
+local function kindOf(o)
+    local addr = o:GetAddress()
+    local k = kinds[addr]
+    if k == nil then
+        k = false
         if live(o) and not o:HasAnyFlags(RF_WasLoaded) then
             local cn = o:GetClass():GetFName():ToString()
-            local sma = cn == "StaticMeshActor"
-            if sma or allowed(cn) then
-                local name = o:GetFName():ToString()
-                local c = cache[name]
-                local line
-                if sma and c and c.addr == o:GetAddress() then
-                    line = c.line
-                elseif not fpath(o):find("/Engine/Transient", 1, true) then
-                    line = sma and smaLine(o, name) or (not sma and bpLine(o, cn, name))
-                    if sma then cache[name] = line and { addr = o:GetAddress(), line = line } or nil end
-                end
-                if line then cur[line:match("^%a\t([^\t]*)")] = line end
-            end
+            if (cn == "StaticMeshActor" or allowed(cn)) and not fpath(o):find("/Engine/Transient", 1, true) then k = { cn, o:GetFName():ToString() } end
+        end
+        kinds[addr] = k
+    end
+    return k, addr
+end
+local function lineOf(o, k, addr)
+    local cn, name = k[1], k[2]
+    if cn ~= "StaticMeshActor" then return bpLine(o, cn, name) end
+    local c = cache[name]
+    if c and c.addr == addr then return c.line end
+    local line = smaLine(o, name)
+    cache[name] = line and { addr = addr, line = line } or nil
+    return line
+end
+-- one sweep over the actors, spread over ticks (a few ms each); returns the lines once a sweep is complete
+local sweep
+local function scanStep(budget)
+    -- a sweep paused for a while (guest busy) holds stale actors: start over (the verdicts in kinds stay)
+    if sweep and os.clock() - sweep.at > 5 then sweep = nil end
+    if not sweep then sweep = { list = FindAllOf("Actor") or {}, i = 1, cur = {}, at = os.clock() } end
+    local t0 = os.clock()
+    while sweep.i <= #sweep.list and os.clock() - t0 < budget do
+        local o = sweep.list[sweep.i]
+        sweep.i = sweep.i + 1
+        local k, addr = kindOf(o)
+        if k and live(o) then
+            local line = lineOf(o, k, addr)
+            if line then sweep.cur[line:match("^%a\t([^\t]*)")] = line end
         end
     end
+    if sweep.i <= #sweep.list then return nil end
+    local cur = sweep.cur
+    sweep = nil
     return cur
 end
 
 local sent, queue, lastMap, lastGuests = {}, {}, nil, 0
-local function reset() sent, queue, cache, ids, nextId, newDefs = {}, {}, {}, {}, 0, {} end
+local function reset() sent, queue, cache, ids, nextId, newDefs, kinds, sweep = {}, {}, {}, {}, 0, {}, {}, nil end
 local function propsHost()
     local guests = #net.guests()
     local map = mapName()
@@ -238,7 +263,8 @@ local function propsHost()
         lastMap, lastGuests, M.hello = map, guests, nil
     end
     if not M.ready or #queue > 40 then return end -- the guest is still working through the last scan
-    local cur = scan()
+    local cur = scanStep(0.004)
+    if not cur then return end -- the sweep goes on next tick
     local add, del = {}, {}
     for key, line in pairs(cur) do
         if sent[key] ~= line then add[#add + 1] = line; sent[key] = line end
@@ -369,7 +395,7 @@ end
 function applyBatch()
     local t0 = os.clock() -- a time budget per tick: loading a mesh package can take long, spawns are cheap
     for _ = 1, 200 do
-        if os.clock() - t0 > 0.03 then return end
+        if os.clock() - t0 > 0.008 then return end -- 30 ms here was a visible hitch every few ticks (PT|slow visual.lua, 2026-10-22)
         local line = table.remove(todo, 1)
         if not line then return end
         local f = fields(line)
@@ -433,7 +459,7 @@ local function hostTick()
         local p = paintLines()
         if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
-    if M.zone and beat % 4 == 2 then try("scan", propsHost) end
+    if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
         if q then net.toGuests("g.vis.p", q) end
@@ -476,5 +502,4 @@ LoopInGameThreadWithDelay(250, function()
     if safety.guest() then guestTick() else hostTick() end
 end)
 
-M.scan = scan
 return M

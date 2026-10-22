@@ -30,8 +30,9 @@ local function netted() local m = common.netMode(); return m == "listen" or m ==
 -- MoveDoorPosition is the call the state machine makes every tick; here it runs over MoveDuration seconds.
 -- shortcut: no obstruction check (the machine reverses a rear door that hits something); add one if players get crushed.
 local lastDrive = os.clock()
+local doors, doorsAt = {}, -math.huge
 local quietUntil = 0 -- doors are torn down across a map load: reading them then returned garbage property types (suite 2026-10-22)
-RegisterLoadMapPreHook(function() quietUntil = math.huge end)
+RegisterLoadMapPreHook(function() quietUntil, doors, doorsAt = math.huge, {}, -math.huge end)
 RegisterLoadMapPostHook(function() quietUntil = os.clock() + 3 end)
 local function driveDoors()
     local now = os.clock()
@@ -40,7 +41,9 @@ local function driveDoors()
     if now < quietUntil then return end
     local g = gi()
     if not g then return end
-    for _, d in ipairs(FindAllOf("BP_GarageDoor_C") or {}) do
+    -- the doors are placed in the map: the list is read again every 2 s, not every 50 ms
+    if now - doorsAt > 2 then doors, doorsAt = FindAllOf("BP_GarageDoor_C") or {}, now end
+    for _, d in ipairs(doors) do
         if live(d) and not d:GetFullName():find("/Engine/Transient", 1, true) then
             local a = asset(d.IsFrontGarageDoor and SW[1][1] or SW[2][1])
             if a:IsValid() then

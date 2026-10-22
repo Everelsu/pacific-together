@@ -58,9 +58,14 @@ local function gone(c)
     local p = c:K2_GetActorLocation()
     return p.X == 0 and p.Y == 0 and p.Z == 0
 end
+-- read several times per tick by several modules (665 lookups a minute on a guest, PT|perf 2026-10-22): reused for 100 ms,
+-- each car is still checked on every call
+local carList, carAt = {}, -1
+RegisterLoadMapPreHook(function() carList, carAt = {}, -1 end)
 local function cars()
+    if os.clock() - carAt > 0.1 then carList, carAt = FindAllOf("BP_PlayerCarNew_C") or {}, os.clock() end
     local r = {}
-    for _, c in ipairs(FindAllOf("BP_PlayerCarNew_C") or {}) do
+    for _, c in ipairs(carList) do
         if inWorld(c) and not gone(c) then r[#r + 1] = c end
     end
     return r

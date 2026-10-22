@@ -23,11 +23,37 @@ log("PT|boot version=%s protocol=%d", common.MOD_VERSION, common.PROTOCOL_VERSIO
 -- hitch finder (playtest 2026-10-22: both games froze every 2-3 s): a loop or hook body over 30 ms is logged with where it was registered
 -- An error escaping a hook went back into UE4SS and the guest's game closed without a crash report (host dropped items next to
 -- the guest, local playtest 2026-10-22): caught here and logged with where the hook was registered.
+-- Paper-style timings: per loop site the total and worst time of the last minute, logged as PT|perf (heaviest first)
+local perf, perfAt = {}, os.clock()
+local function account(where, d)
+    local p = perf[where] or { total = 0, max = 0, n = 0 }
+    perf[where] = p
+    p.total, p.n = p.total + d, p.n + 1
+    if d > p.max then p.max = d end
+    if os.clock() - perfAt < 60 then return end
+    local rows = {}
+    for w, q in pairs(perf) do rows[#rows + 1] = { w, q } end
+    table.sort(rows, function(a, b) return a[2].total > b[2].total end)
+    for i = 1, math.min(8, #rows) do
+        local w, q = rows[i][1], rows[i][2]
+        log("PT|perf %s total=%.0f ms max=%.0f ms n=%d", w, q.total * 1000, q.max * 1000, q.n)
+    end
+    rows = {}
+    for fn, byClass in pairs(common.lookups) do
+        for class, q in pairs(byClass) do rows[#rows + 1] = { fn .. " " .. tostring(class), q } end
+    end
+    table.sort(rows, function(a, b) return a[2].n > b[2].n end)
+    for i = 1, math.min(8, #rows) do
+        log("PT|perf lookup %s total=%.0f ms n=%d", rows[i][1], rows[i][2].total * 1000, rows[i][2].n)
+    end
+    perf, perfAt, common.lookups = {}, os.clock(), {}
+end
 local function timed(fn, where)
     return function(...)
         local t = os.clock()
         local r = table.pack(pcall(fn, ...))
         local d = os.clock() - t
+        account(where, d)
         if d > 0.03 then log("PT|slow %s %.0f ms", where, d * 1000) end
         if not r[1] then log("PT|error in %s: %s", where, tostring(r[2])); return end
         return table.unpack(r, 2, r.n)

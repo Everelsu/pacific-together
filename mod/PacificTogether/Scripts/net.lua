@@ -18,10 +18,19 @@ local function localPC()
     return pc and pc:IsValid() and pc or nil
 end
 
+-- every send and every received message looked the controllers up (1340 times a minute on a host, PT|perf 2026-10-22):
+-- the list is reused for 100 ms; a sender not in it looks again
+local pcs, pcsAt = {}, -1
+RegisterLoadMapPreHook(function() pcs, pcsAt = {}, -1 end)
+local function controllers(fresh)
+    if fresh or os.clock() - pcsAt > 0.1 then pcs, pcsAt = FindAllOf("PlayerController") or {}, os.clock() end
+    return pcs
+end
+
 -- the host's controllers for its guests
 function M.guests()
     local list = {}
-    for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
+    for _, pc in ipairs(controllers()) do
         if pc:IsValid() and not pc:IsLocalController() then list[#list + 1] = pc end
     end
     return list
@@ -43,8 +52,10 @@ function M.toGuests(kind, data)
 end
 
 local function sender(address)
-    for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
-        if pc:IsValid() and pc:GetAddress() == address then return pc end
+    for _, fresh in ipairs({ false, true }) do
+        for _, pc in ipairs(controllers(fresh)) do
+            if pc:IsValid() and pc:GetAddress() == address then return pc end
+        end
     end
 end
 

@@ -3,6 +3,19 @@
 What changed in Pacific Together, in plain words. Newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Builds before 1.0 are previews for the developers and friends.
 
+## [Unreleased]
+
+### Fixed
+- Both games stuttered every second or two in a zone (the host's loot check alone took 200-300 ms, the guest froze for
+  half a second on joining). The mod now remembers what it looked up instead of searching again, checks far-away wreck
+  parts a few at a time, and spreads the big jobs (a guest's first copy of the zone's loot) over many frames. The host's
+  loot check now takes a few milliseconds.
+- A guest joining a zone could be thrown out and rejoin right away: the host sent the zone's loot before the guest's game
+  had finished loading. The host now waits until the guest asks for it.
+
+### Added
+- The guest sees the zone's buildings and props (houses, gas station, walls, doors, fences, crates) like the host.
+
 ## [0.0.6] - 2026-10-22
 
 ### Added

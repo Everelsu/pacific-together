@@ -47,7 +47,12 @@ local function assets(a, p)
     end
     return t
 end
-local function bfl() return FindObject("BFL_ItemPropertyUtilityFns_C", "Default__BFL_ItemPropertyUtilityFns_C") end
+-- FindObject walks the objects (0.18 ms) and spec() needs it per item: keep it
+local bflObj
+local function bfl()
+    if not (bflObj and bflObj:IsValid()) then bflObj = FindObject("BFL_ItemPropertyUtilityFns_C", "Default__BFL_ItemPropertyUtilityFns_C") end
+    return bflObj
+end
 local function lib() return StaticFindObject("/Script/PenDriverInventory.Default__InventoryBlueprintLibrary") end
 
 -- "path:d12:f7.5" for one item

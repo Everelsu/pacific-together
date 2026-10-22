@@ -583,3 +583,40 @@ Known gaps (rare, not chased per the owner's priority rule)
   poll and miss the short shove). Peak speed over the whole step can't replace it: the test's own moves reach 639 uu/s
   without any push (`20261022-082408-anomalies3-noanom3`) against 549 with it. The bunny's damage on the guest
   (`guest_hurt_by_bunny`) is the reliable proof.
+
+## 2026-10-22 night: frame-time pass (where the stutter came from)
+Observations (two rendered games on one PC, zone fixture, `pacific-game` eval with os.clock, ~1 ms resolution)
+- UE4SS uses the engine's own per-class hash tables here (`[HashTables] Self test passed` in UE4SS.log), so `FindAllOf`
+  is cheap: 0.2 ms for PlayerController / BP_Lootable_Base_C (40) / LootableTemplatePart (206), 3 ms for Actor (2620).
+  The "FindAllOf ~35 ms" guess from the evening playtest is wrong.
+- `UEHelpers.GetWorld()` 0.26 ms and `GetPlayerController()` about the same: both run FindAllOf("PlayerController") and
+  a loop per call. `FindObject(class, shortName)` 0.18 ms (walks objects). `ids.spec` called both per item:
+  136 ms for the 206 wreck parts of a zone, contents encode 75 ms for 40 lootables. This was the 200-300 ms loot tick.
+- `StaticFindObject(path)` and `RegisterHook(path)` of a path that is NOT loaded: 25-45 ms each. UE4SS falls back to a
+  scan of every object by full name when the hash misses (`UObjectGlobals.cpp:248`). Hits cost ~0. Every
+  "retry the hook until the class loads" loop (anomalies3, guestact, stations, upgrades, garage) paid this per try.
+- Guest join: the host's full loot list (~300 lines) applied in one dispatch, 470-590 ms. `claim()` read the name and
+  class of every local candidate for every line (O(n²)).
+Derived (fixes, measured in the same session)
+- Cache the local controller + world (common.lua), the BFL object (ids.lua): host loot tick 250 ms -> 50-70 ms.
+- `PTNative_Find` (find.cpp, hash tables only) behind global StaticFindObject/RegisterHook wrappers (common.lua): the
+  retry spikes are gone and the same hooks register (`guestact hooked 3-7`, `stations hooked 2-5`, guestswap, guestparts).
+- Wreck parts re-read only within 30 m of a player; loot lines drained 4 ms per frame; claim candidates indexed by
+  position once per 5 s; host first scan and full list 15 ms per 50 ms. Guest takes 300 host actors in ~3 s with no frame
+  over 30 ms. `PT|perf` (main.lua) logs per-loop totals and worst times every 60 s.
+Guesses / unknowns
+- The guest crashed (AV 0xffffffffffffffff, depth 0, last finished call Controller:IsPlayerController) seconds after its
+  4th Lua hot reload in one session (`20261022-223936-repl`). Hot reload is known to be fragile (above); unproven
+  whether the new GetPlayerController cache is involved: fresh-launch scenarios decide.
+- Zone props mirror (visual.lua) still off: host scan walks all Actors each second, guest mesh loads up to 30 ms a batch.
+- `stations` on the `C:\PTLanes\main2` pair fails the guest cure the same way with or without the frame-time changes
+  (`20261022-174042-main2-stations` before them; `230348`, `231554` after): the guest's own CureCarQuirk returns
+  Removed=false. On `C:\PacificTogetherTest` it passes (`183634`, `160312`). Mirror tries do not decide it (40 tries passed
+  in `095944`). Guess: that pair's saves (garage storage, progression) differ. Unknown: what the cure lacks there.
+- Loot join: before the guest asked for the full list (H), the host's lines overflowed a loading guest's reliable channel
+  (`20261022-225808-lootsync`: `Reliable partial bunch overflows reliable buffer! NumOutRec: 254`, connection closed,
+  rejoin). Fix: the host sends loot only after that guest's H (loot.lua readyFor); the full list carries the rest.
+- playpath p2 (guest opens a crate) and p6 (guest picks up a far world item) fail on unmodified e47ef32 too: 5 runs on a
+  baseline worktree, p2 failed 2, p6 3 (`pt-base/local/test-results/20261022-2331*`, `2334*`, `2349*`...). With the
+  frame-time changes p2 failed about 5 of 11. Both are "the game never highlighted" the target: an interaction-path flake,
+  not loot sync (the host's full list completes in every run, `PT|loot full list sent`).
