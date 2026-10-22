@@ -3,7 +3,7 @@
 --                            on its view ray; the guest has a marker named after the host within 1 m of the same point, with a distance line
 --   host ping at an item     the host drops a steel item and looks at it: the new ping REPLACES the first (one marker per player, moved), and the
 --                            marker, on both sides, names the item (its archetype title)
---   guest ping               the guest looks down and pings: the host gets a marker named after the guest within 1 m; one marker per player (2 in all)
+--   guest ping               the guest looks down and pings: the host gets a marker named after the guest within 1 m; one marker per player
 --   expiry                   with no further ping both sides end with no markers, about 8 s after the last ping (not earlier)
 -- Run: tools/run-test.ps1 -Scenario ping -Fixture garage -Headless      Mutation noping: ping.lua inert (no marker anywhere): every check FAILS.
 return function(T)
@@ -142,7 +142,8 @@ return function(T)
             local all = marks()
             local m = markOf(name, all)
             T.log("PT|info ping host sees %d markers, guest's at %s", #all, m and string.format("%.0f %.0f %.0f", m.x, m.y, m.z) or "-")
-            return m ~= nil and #all == 2 and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and m.text:find("%d+ m")
+            -- the host's own ping (step 2) may have run out by now (8 s): one or two markers, one per player
+            return m ~= nil and #all <= 2 and d3(m, tonumber(x), tonumber(y), tonumber(z)) < 100 and m.text:find("%d+ m")
         end })
         -- 4. nothing more is pinged: the markers go
         local t0
