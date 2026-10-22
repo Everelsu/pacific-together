@@ -33,7 +33,7 @@ end
 local function loadObj(path) -- "/Game/x/Y.Y_C" -> object, loading the package when needed
     local o = StaticFindObject(path)
     if not (o and o:IsValid()) then
-        pcall(LoadAsset, (path:gsub("%..*$", "")))
+        pcall(LoadAsset, path)
         o = StaticFindObject(path)
     end
     return (o and o:IsValid()) and o or nil
@@ -151,6 +151,7 @@ local function allowed(cn)
         if cn:sub(1, #p) == p then return not cn:find("Part_", 1, true) end
     end
 end
+local function nums(s) local a, b, c = (s or ""):match("^([^,]+),([^,]+),([^,]+)$"); return tonumber(a), tonumber(b), tonumber(c) end
 -- paths go over the wire once ("M" lines: id, path); lines carry the ids. Messages are reliable RPCs (256 outstanding bunches per
 -- channel): a burst overflowed it and closed the guest's connection, so the host sends one small message per tick.
 local ids, nextId, newDefs = {}, 0, {}
@@ -195,7 +196,7 @@ local function smaLine(o, name)
         end
     end
     local l, r, s = xform(o)
-    return table.concat({ "S", name:match("(%d+)$") or name, intern(fpath(mesh)), l, r, s, intern(sm:GetCollisionProfileName():ToString()), table.concat(ov, ";") }, "\t")
+    return table.concat({ "S", (name:gsub("^StaticMeshActor_", "#")), intern(fpath(mesh)), l, r, s, intern(sm:GetCollisionProfileName():ToString()), table.concat(ov, ";") }, "\t")
 end
 local function bpLine(o, cn, name)
     local l, r, s = xform(o)
@@ -244,6 +245,22 @@ local function propsHost()
     for key in pairs(sent) do
         if not cur[key] then del[#del + 1] = key; sent[key] = nil end
     end
+    -- what is near the players first (the guest builds slowly: every new mesh is a synchronous asset load)
+    local at = {}
+    for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
+        local p = live(pc) and live(pc.Pawn) and pc.Pawn:K2_GetActorLocation()
+        if p then at[#at + 1] = p end
+    end
+    if #at > 0 and #add > 1 then
+        local key = {}
+        for _, line in ipairs(add) do
+            local x, y, z = nums(line:match("^%a\t[^\t]*\t[^\t]*\t([^\t]*)"))
+            local d = math.huge
+            for _, p in ipairs(at) do d = math.min(d, (p.X - (x or 0)) ^ 2 + (p.Y - (y or 0)) ^ 2) end
+            key[line] = d
+        end
+        table.sort(add, function(a, b) return key[a] < key[b] end)
+    end
     -- small messages, each complete in itself; definitions first (the queue keeps its order)
     local function batch(kind, list)
         local buf, n = {}, 0
@@ -274,20 +291,28 @@ local function fields(line)
     for x in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = x end
     return f
 end
-local function nums(s) local a, b, c = s:match("^([^,]+),([^,]+),([^,]+)$"); return tonumber(a), tonumber(b), tonumber(c) end
 
 local function applyState(a, st)
     if st:find("br=1", 1, true) then
-        pcall(function() if not a.IsBroken then a:ComplexBreak() end end)
+        pcall(function() -- crates and fences are "complex", cones and signs "simple" destructibles; both take the break impulse
+            local z = vec(0, 0, 0)
+            if not a.IsBroken and not pcall(function() a:ComplexBreak(z, a.BaseMesh) end) then a:SimpleBreak(z) end
+        end)
     end
     local s = tonumber(st:match("st=(%d+)"))
     if s then
-        pcall(function()
-            if a.CurrentState ~= s then
-                a.CurrentState = s
-                a["Set Door from State"](a)
-            end
-        end)
+        pcall(function() if a.CurrentState ~= s then a["Set Door from State"](a, s) end end) -- 0 closed, 1 and 2 open (either way), 3 and up shut
+    end
+end
+
+-- the host's actor is gone: a destructible that broke there breaks here (debris, sound), then goes; everything else just goes
+local function dispose(a)
+    if not live(a) then return end
+    if a:GetClass():GetFName():ToString():find("^BP_Destruct_") then
+        applyState(a, "br=1")
+        ExecuteInGameThreadWithDelay(8000, function() if live(a) then a:K2_DestroyActor() end end)
+    else
+        a:K2_DestroyActor()
     end
 end
 
@@ -297,14 +322,14 @@ local function make(f)
     local pi, ya, ro = nums(r)
     local sx, sy, sz = 1, 1, 1
     if s ~= "-" then sx, sy, sz = nums(s) end
-    if not (x and pi and sx and asset) then return end
+    if not (x and pi and sx and asset) then return nil, "line" end
     local cls = f[1] == "S" and StaticFindObject("/Script/Engine.StaticMeshActor") or loadObj(asset)
-    if not cls then return end
+    if not cls then return nil, "class " .. asset end
     local mesh = f[1] == "S" and loadObj(asset)
-    if f[1] == "S" and not mesh then return end
+    if f[1] == "S" and not mesh then return nil, "mesh " .. asset end
     local rot = { Pitch = pi, Yaw = ya, Roll = ro }
     local a = world():SpawnActor(cls, vec(x, y, z), rot)
-    if not live(a) then return end
+    if not live(a) then return nil, "spawn " .. asset end
     a:K2_SetActorLocationAndRotation(vec(x, y, z), rot, false, {}, true) -- the spawn may have nudged it off a blocker
     a:SetActorScale3D(vec(sx, sy, sz))
     if f[1] == "S" then
@@ -323,7 +348,9 @@ local function make(f)
 end
 
 local function applyProps()
-    for _ = 1, 30 do
+    local t0 = os.clock() -- a time budget per tick: loading a mesh package can take long, spawns are cheap
+    for _ = 1, 200 do
+        if os.clock() - t0 > 0.03 then return end
         local line = table.remove(todo, 1)
         if not line then return end
         local f = fields(line)
@@ -335,10 +362,14 @@ local function applyProps()
             applyState(a, f[8] or "") -- only the door state or the broken flag changed
         else
             if live(a) then a:K2_DestroyActor() end
-            local ok, na = pcall(make, f)
+            local ok, na, why = pcall(make, f)
             mine[name] = ok and na or nil
             specs[name] = ok and na and line or nil
-            if not ok then log("PT|error visual make %s %s", f[3] or "?", tostring(na)) end
+            if not ok then log("PT|error visual make %s %s", f[3] or "?", tostring(na))
+            elseif not na then
+                M.failed = (M.failed or 0) + 1
+                if M.failed <= 5 then log("PT|visual could not make %s: %s", f[2], tostring(why)) end
+            end
         end
     end
 end
@@ -349,10 +380,10 @@ net.on("g.vis.p", function(_, data)
     if kind == "M" then
         for id, p in rest:gmatch("(%d+)\t([^\n]+)") do dict[id] = p end
     elseif kind == "A" then
-        for line in rest:gmatch("[^\n]+") do todo[#todo + 1] = line end
+        for line in rest:gmatch("[^\n]+") do todo[#todo + 1] = line; M.rx = (M.rx or 0) + 1 end
     elseif kind == "D" then
         for name in rest:gmatch("[^\n]+") do
-            if live(mine[name]) then mine[name]:K2_DestroyActor() end
+            dispose(mine[name])
             mine[name], specs[name] = nil, nil
         end
     end
@@ -393,7 +424,9 @@ local function guestTick()
         asked, wantLevels, wantPaint, helloFor = {}, nil, nil, nil
     end
     -- the host waits for this before it sends anything: a guest that is still loading acks late, and the reliable channel overflows
-    if helloFor ~= map and map ~= "" and os.clock() - mapSince > 5 then
+    local pc = UEHelpers.GetPlayerController()
+    local pawn = (pc and pc:IsValid()) and pc.Pawn or nil
+    if helloFor ~= map and map ~= "" and map ~= "RB_MainMenu" and live(pawn) and os.clock() - mapSince > 5 then
         helloFor = map
         log("PT|visual hello sent=%s map=%s", tostring(net.toHost("g.vis.hello", "")), map)
     end
@@ -404,7 +437,7 @@ local function guestTick()
     if beat % 20 == 0 then
         local n = 0
         for _ in pairs(mine) do n = n + 1 end
-        if n ~= lastCopies or #todo > 0 then lastCopies = n; log("PT|visual guest copies=%d queued=%d", n, #todo) end
+        if n ~= lastCopies or #todo > 0 then lastCopies = n; log("PT|visual guest copies=%d queued=%d received=%d failed=%d", n, #todo, M.rx or 0, M.failed or 0) end
     end
 end
 
