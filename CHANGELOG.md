@@ -35,6 +35,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
+- Ping: look at something and press the middle mouse button. Both players see a marker there for about 8 seconds with
+  your name, the distance and, for an item or container, its name, and hear a short HUD sound. One ping per player.
 
 ### Fixed
 - The host's game crashed when the host pressed Esc with a guest connected (with "Pause game while in menus" on or off).
