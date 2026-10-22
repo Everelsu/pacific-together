@@ -59,6 +59,8 @@ return function(T)
         return false
     end
 
+    -- flying: a character teleported 50 m away would fall through terrain the guest has not got collision for
+    local fly = { run = function() me().CharacterMovement:SetMovementMode(5, 0) end }
     local ref -- where the other stood when the step began
     local function mark() return { run = function() ref = real end } end
     -- the markers for the other player match its real position; wantShown: the HUD marker must be visible (past 30 m);
@@ -102,6 +104,8 @@ return function(T)
         add({ check = "host_listen", timeout = 120, cond = function() return T.netMode() == "listen" and T.listening() and T.map() == mapName end })
         add({ check = "host_guest_in", timeout = 240, cond = function() return L.guestChar() ~= nil end })
         add({ wait = 8 })
+        add(fly)
+        add({ wait = 3 })
         add(markCheck("host_marks_guest_near", false))
         add(mark())
         add({ run = function() away(L.guestChar()) end }) -- the guest moves 50 m
@@ -122,6 +126,7 @@ return function(T)
         T.onMap("RB_MainMenu", 90),
         { check = "client_in_zone", timeout = 400, cond = function() return T.netMode() == "client" and T.map() == mapName and T.cls(T.myPawn()) == T.CHAR end },
         { wait = 12 },
+        fly,
         markCheck("client_marks_host_near", false),
         mark(),
         markCheck("client_marks_host_after_guest_moved", true), -- the host moves us 50 m away from it
