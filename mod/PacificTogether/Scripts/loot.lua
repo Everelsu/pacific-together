@@ -33,6 +33,7 @@ local MATCH = 60 -- uu: a local actor this close to the host's, same class, is t
 
 local M = {}
 local ents, byName, nextId = {}, {}, 1 -- id -> entity; actor full name -> id (host)
+local partIds = {} -- wreck part actor full name -> id, both sides (idOf), checked on lookup
 local reported = {} -- guest: dropped items already told to the host
 local claimed = {} -- guest: local actors that are some entity's copy
 local out = {} -- lines for the other side, sent at the end of the tick
@@ -163,6 +164,7 @@ local function register(id, kind, actor, invName)
     else e.get = function() return nil end end
     e.rolled = flagsOf(e)
     ents[id] = e
+    if kind == "P" then partIds[e.name] = id end
     return e
 end
 
@@ -412,7 +414,7 @@ local function scanMoves()
             elseif (l.X - p[1]) ^ 2 + (l.Y - p[2]) ^ 2 + (l.Z - p[3]) ^ 2 > 9 then
                 e.pos = { l.X, l.Y, l.Z }
                 local r = e.actor:K2_GetActorRotation()
-                say(string.format("M|%s|%.1f|%.1f|%.1f|%.0f", id, l.X, l.Y, l.Z, r.Yaw))
+                say(string.format("M|%s|%.1f|%.1f|%.1f|%.0f|%.0f|%.0f", id, l.X, l.Y, l.Z, r.Yaw, r.Pitch, r.Roll))
             end
         end
     end
@@ -509,7 +511,7 @@ local function handle(pc, data)
             if e.kind == "W" and ov.settled() then ov.post(ov.other() .. " picked up an item", "info", "pick") end
         elseif op == "M" and guest and ents[id] and alive(ents[id].actor) then
             pcall(function()
-                ents[id].actor:K2_SetActorLocationAndRotation({ X = tonumber(f[3]), Y = tonumber(f[4]), Z = tonumber(f[5]) }, { Pitch = 0, Yaw = tonumber(f[6]), Roll = 0 }, false, {}, true)
+                ents[id].actor:K2_SetActorLocationAndRotation({ X = tonumber(f[3]), Y = tonumber(f[4]), Z = tonumber(f[5]) }, { Pitch = tonumber(f[7]) or 0, Yaw = tonumber(f[6]), Roll = tonumber(f[8]) or 0 }, false, {}, true)
             end)
         elseif op == "N" and not guest then
             spawnItem(f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5]), tonumber(f[6]))
@@ -542,7 +544,7 @@ local function tick()
 end
 
 RegisterLoadMapPostHook(function()
-    ents, byName, claimed, reported, out, gotAny, partial = {}, {}, {}, {}, {}, false, {}
+    ents, byName, claimed, reported, out, gotAny, partial, partIds = {}, {}, {}, {}, {}, false, {}, {}
 end)
 
 LoopInGameThreadWithDelay(500, function()
@@ -553,7 +555,9 @@ end)
 -- for guestparts.lua: the shared id of a wreck part's actor, and the actor of an id
 function M.idOf(a)
     local n = alive(a) and a:GetFullName()
-    for id, e in pairs(ents) do if e.kind == "P" and alive(e.actor) and e.actor:GetFullName() == n then return id end end
+    local id = n and partIds[n]
+    local e = id and ents[id]
+    if e and e.kind == "P" and e.name == n and alive(e.actor) then return id end
 end
 function M.actorOf(id)
     local e = ents[id]
