@@ -39,8 +39,10 @@ What works in this build
 - The ARC device sits behind the front seats: the driver reaches the starter key, the passenger turns round to use the ARC.
 - Progress: while joined, the guest's game shows the host's garage upgrades, research, route and logbook. A failed run
   costs the guest items the same way it costs the host.
-- Story: the guest sees the host's active mission and objectives on the HUD and in the journal, and hears the host's
-  radio and voice lines with subtitles. Only the host's actions move the story on.
+- Story: the guest sees the host's active mission, objectives and finished missions on the HUD and in the journal, and
+  hears the host's radio and voice lines with subtitles. A quest item the guest picks up counts for the host.
+- Finding each other: the other player shows on the ARC map, and as a HUD marker with name and distance past 30 m.
+  Ping: look at something and press the middle mouse button; both see a marker there for 8 seconds.
 - An overlay at the bottom right shows the mod version and, during a session, who is connected and the ping, plus a short
   feed of what the other player does (joined, got in the car, took items from the trunk, ...).
 - The guest's own saves are never written while joined. Only the host's save game is used.
@@ -57,8 +59,7 @@ Not done yet (expect oddities)
 - Gas pump handles, lockboxes and anchors lying in the world aren't synced yet. Smashing map props with a hammer or
   prybar as the guest is the guest's own; the cure effects of repair tools (dirt, seal, bulb, electronics) too.
 - The guest's backpack is stored per player name and per host save slot; a different slot starts the guest fresh.
-- Story cutscenes and story props may not show for the guest yet, and the journal's history of finished missions is
-  the guest's own.
+- Only the host's progress counts for the story; quest tasks that check the guest's own car or health don't count.
 - Car paint and cosmetics, tutorials and expedition progress are the guest's own, not the host's. A map screen that is
   already open may need reopening to show the host's route.
 - The overlay uses the engine's plain font, stays visible over the pause menu, is English only, and its lines vanish without fading. A host map change
@@ -87,6 +88,9 @@ Play
 - Host: load your save. The game now accepts one guest on UDP port 7777.
 - Guest: just start the game. At the main menu it connects to the host by itself.
 - Both players need the same zip. A mismatch is refused with a message saying what differs.
+- Joining through Steam (new, not tested between two PCs yet): both players install as the HOST (no IP). The host loads
+  a save; the guest opens the Steam friends list and picks "Join game" on the host, or accepts the host's invite. Names
+  then come from Steam. If it doesn't connect, use the IP way below and tell us.
 - You need a network path between you. The easiest is Tailscale (tailscale.com, free): both install it and sign in,
   and the guest uses the host's 100.x.x.x address. Port forwarding UDP 7777 on the host's router also works.
 - On the first host session Windows asks whether Pacific Drive may use the network: allow it. If the guest still

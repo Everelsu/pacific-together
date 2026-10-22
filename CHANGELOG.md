@@ -36,6 +36,9 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
   Creature's push hurts and shoves the guest.
 - The guest sees the host's garage stations (fax machine, Part Shredder, Destabilizer and the rest), and the garage
   doors open and close for both players, from either player's button press.
+- Join through Steam: the host's game opens a friends-only lobby, the guest uses "Join game" in the friends list or
+  an invite, and names come from Steam (not tested between two PCs yet; joining by IP works as before).
+- The guest's journal lists the host's finished missions, and a quest item the guest picks up counts for the host.
 - Ping: look at something and press the middle mouse button. Both players see a marker there for about 8 seconds with
   your name, the distance and, for an item or container, its name, and hear a short HUD sound. One ping per player.
 
