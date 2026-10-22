@@ -48,19 +48,18 @@ What works in this build
 - You see what the other player holds (tool, item, flashlight beam, carried part) and their tool swings.
 - The guest uses the garage stations through the host: Part Shredder, research, garage upgrades, fabrication and car
   quirk cures. Both players see the same car quirks; car upgrades (boost, jump racks, shields) show for the guest.
-- In a zone the guest now sees the host's buildings, doors, fences and crates (before, the guest's zone was nearly
-  empty), plus the garage's Fig decorations and the car's paint.
+- The guest sees the garage's Fig decorations and the car's paint as the host does.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - The Chrono Dilator doesn't slow time while a guest is connected. When the host opens the pause menu, the game pauses
   for both players.
 
 Not done yet (expect oddities)
-- When a zone loads, the guest's world fills in over the first minute or two and may hitch meanwhile. Doors the guest
-  opens and crates the guest smashes stay on the guest's screen only. The host's car wheels don't turn for the guest.
+- In a zone the guest is missing some of the host's buildings, fences and crates (the copy is built but switched off
+  for now). The host's car wheels don't turn for the guest.
 - The other player's held item may point the wrong way; tool swings and carrying are simple, not real animations.
 - Detailing (paint station) and buying quirk hints are host-only. The Chrono Dilator stays off in co-op.
 - If one feature misbehaves, both players can remove its name from the FEATURES line in
-  ue4ss\Mods\PacificTogether\Scripts\main.lua (for example "visual" if the zone hitches badly).
+  ue4ss\Mods\PacificTogether\Scripts\main.lua (for example "visual" or "hands").
 - Only the host drives. Flat-tyre status isn't synced. Engine and radio sound for the guest have not been listened to by
   a person yet; tell us if the engine pitch doesn't follow the host or a skipped track plays a different song.
 - Moved items lose their tints and upgrades (durability, fuel and battery are kept).

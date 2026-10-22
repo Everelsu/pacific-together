@@ -29,8 +29,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - The guest's journal lists the host's finished missions, and a quest item the guest picks up counts for the host.
 - Ping: look at something and press the middle mouse button. Both players see a marker there for about 8 seconds with
   your name, the distance and, for an item or container, its name, and hear a short HUD sound. One ping per player.
-- The guest sees the host's world as the host does: the zone's buildings, props, doors, fences and crates (they only existed
-  on the host before), the garage's Fig decorations, and the paint and decals of the car's parts.
+- The guest sees the garage's Fig decorations and the paint and decals of the car's parts as the host does. (Copying
+  the zone's buildings and props to the guest is built but switched off: it slowed the guest's loot sync too much.)
 
 ### Fixed
 - The host's game crashed when the host pressed Esc with a guest connected (with "Pause game while in menus" on or off).
