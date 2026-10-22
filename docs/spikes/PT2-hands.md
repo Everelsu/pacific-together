@@ -13,7 +13,7 @@ Status: see the end of this file (Results). Lane pt2-hands, test pair `C:\PTLane
 - A `GetItemProperties(nil, ...)` call from Lua crashed the host (AV 0x18, twice): never pass a nil class.
 
 ## Derived
-- Each side reports its own hand (archetype, mesh path, size, IsOn, light kind) and the other side mirrors it with local actors on its copy of that character: a StaticMeshActor on `hand_r` (size 1: on `spine_03` in front of the chest as the carry pose), a SpotLight/PointLight actor following the head and `GetBaseAimRotation` when the tool is on, a procedural swing (item pitch, 0.45 s) when a use press arrives.
+- Each side reports its own hand (archetype, mesh path, size, IsOn, light kind) and the other side mirrors it with local actors on its copy of that character: a StaticMeshActor on `hand_r` (size 1: in front of the chest as the carry pose), a SpotLight/PointLight actor following the head and `GetBaseAimRotation` when the tool is on, a procedural swing (item pitch, 0.45 s) when a use press arrives.
 - Tool use sound is not played (the tools' sounds are Wwise events on the first-person actor; would need per-tool event lookup).
 
 ## Guesses
@@ -34,7 +34,7 @@ Status: see the end of this file (Results). Lane pt2-hands, test pair `C:\PTLane
 
 ## Results
 - Scenario `hands` (fixture garage, both directions, 7 phases each, 29 checks per side): PASS 58/58, `20261022-112212-pt2-hands-hands`.
-- Mutation `nohands`: see the report / next section.
+- Mutation `nohands`: 38/58, the mirror checks FAIL (`20261022-160940-pt2-hands-hands-nohands`).
 - Earlier runs of the same scenario failed for scenario bugs and one mod bug each (listed above): `20261022-101127` (alive() on a boolean), `-103807` (the guest never acted: ROLE is "client"), `-105017` (use swing not seen: post hook; empty phase: lingering tool).
 
 ## What a human should look at (headless cannot see it)
