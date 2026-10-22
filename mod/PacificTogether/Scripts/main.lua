@@ -3,7 +3,11 @@ local common = require("common")
 local log = common.log
 
 -- One file per feature, so parallel work does not collide; each module sets itself up when required.
+<<<<<<< HEAD
 local FEATURES = { "overlay", "steam", "session", "safety", "nametag", "health", "world", "anomalies", "anomalies2", "car", "loot", "backpack", "guestact", "story", "progression", "garage", "guestparts", "carfeel", "guestswap", "anomalies3", "mapmark", "ping" }
+=======
+local FEATURES = { "overlay", "session", "safety", "nametag", "health", "world", "anomalies", "anomalies2", "car", "loot", "backpack", "guestact", "story", "progression", "garage", "guestparts", "carfeel", "guestswap", "anomalies3", "upgrades" }
+>>>>>>> worktree-agent-a6d682cf73c3b7e29
 
 -- Status lines are for the test runner only; players never set PT_STATUS, so the mod stays silent in single player.
 local STATUS_MS = tonumber(os.getenv("PT_STATUS") or "")
