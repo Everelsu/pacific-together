@@ -45,11 +45,22 @@ What works in this build
   Ping: look at something and press the middle mouse button; both see a marker there for 8 seconds.
 - An overlay at the bottom right shows the mod version and, during a session, who is connected and the ping, plus a short
   feed of what the other player does (joined, got in the car, took items from the trunk, ...).
+- You see what the other player holds (tool, item, flashlight beam, carried part) and their tool swings.
+- The guest uses the garage stations through the host: Part Shredder, research, garage upgrades, fabrication and car
+  quirk cures. Both players see the same car quirks; car upgrades (boost, jump racks, shields) show for the guest.
+- In a zone the guest now sees the host's buildings, doors, fences and crates (before, the guest's zone was nearly
+  empty), plus the garage's Fig decorations and the car's paint.
 - The guest's own saves are never written while joined. Only the host's save game is used.
 - The Chrono Dilator doesn't slow time while a guest is connected. When the host opens the pause menu, the game pauses
   for both players.
 
 Not done yet (expect oddities)
+- When a zone loads, the guest's world fills in over the first minute or two and may hitch meanwhile. Doors the guest
+  opens and crates the guest smashes stay on the guest's screen only. The host's car wheels don't turn for the guest.
+- The other player's held item may point the wrong way; tool swings and carrying are simple, not real animations.
+- Detailing (paint station) and buying quirk hints are host-only. The Chrono Dilator stays off in co-op.
+- If one feature misbehaves, both players can remove its name from the FEATURES line in
+  ue4ss\Mods\PacificTogether\Scripts\main.lua (for example "visual" if the zone hitches badly).
 - Only the host drives. Flat-tyre status isn't synced. Engine and radio sound for the guest have not been listened to by
   a person yet; tell us if the engine pitch doesn't follow the host or a skipped track plays a different song.
 - Moved items lose their tints and upgrades (durability, fuel and battery are kept).
@@ -70,7 +81,7 @@ Not done yet (expect oddities)
 - Not tried with a real mouse and keyboard yet (please check tonight): the X key to leave the car, opening the trunk as
   the guest, using repair putty or a fuel can on the car as the guest, the guest's gateway choice on the ARC screen,
   and the host abandoning a run from the pause menu with the guest connected.
-- The guest can't use the garage stations or plan the route yet.
+- The guest can't plan the route yet.
 
 Install and start (both players, with the game closed)
 1. Unpack this zip anywhere.
