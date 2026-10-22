@@ -1,4 +1,4 @@
--- pt2-story (G3): story progression for the guest. Fixture `garage`, the guest joins by itself.
+﻿-- pt2-story (G3): story progression for the guest. Fixture `garage`, the guest joins by itself.
 --   1) the host finishes missions (the game's own ForceComplete / StartObjective, the story script cascades): the guest's quest manager
 --      shows the same active objectives AND holds the same finished missions/objectives (the journal's history reads those lists);
 --   2) what the story granted reaches the guest: logbook entries, the finished-story whiteboard flags, garage upgrade flags;
@@ -178,7 +178,7 @@ return function(T)
             local im = T.first("BP_InventoryManager_C")
             im.Inventory_Player:AddItem(lib:CreateItemInstance(T.world(), arch, 0), true)
         end },
-        { check = "guest_alive_after_story", timeout = to(90), cond = L.holds(25, function() drain(); return T.netMode() == "client" and T.myPawn() ~= nil end) },
+        { check = "guest_alive_after_story", timeout = 60, cond = L.holds(25, function() drain(); return T.netMode() == "client" and T.myPawn() ~= nil end) },
         { run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.done", "1") end },
         { wait = 3 },
     }
