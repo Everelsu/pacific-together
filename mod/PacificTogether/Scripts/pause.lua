@@ -18,7 +18,8 @@ local function hook()
     hooked = pcall(RegisterHook, "/Game/Systems/Managers/BP_UIManager.BP_UIManager_C:PauseGame", function(self, who, paused)
         if OFF or not paused:get() or not safety.active() then return end
         local name = who:get():ToString()
-        if name:lower() == "pausemenu" then return end
+        -- the Esc menu keeps its pause; so does the test bot's own pause (safety scenarios check what a real pause does)
+        if name:lower() == "pausemenu" or name == "PacificTogetherTest" then return end
         self:get():PauseGame(who:get(), false, {})
         log("PT|pause refused %s", name)
     end)
