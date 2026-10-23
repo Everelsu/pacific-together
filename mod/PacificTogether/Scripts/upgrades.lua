@@ -183,9 +183,7 @@ end)
 -- Quirks are status effects on the host's car parts; their behaviours work the car manager (doors, lights, horn, wipers, radio,
 -- engine, gearbox), and car.lua / carfeel.lua already carry those states to the guest. The interior light was missing: the
 -- host's value is copied (g.up.i). The guest's own game must not roll quirks of its own: its quirk effects are removed.
-local function first(class)
-    for _, o in ipairs(FindAllOf(class) or {}) do if valid(o) then return o end end
-end
+local first = common.first
 local intSent, intWant, intAt, intHostAt, lastGuests = nil, nil, 0, 0, 0
 net.on("g.up.i", function(_, data)
     if mode() == "client" then intWant = data == "1" end

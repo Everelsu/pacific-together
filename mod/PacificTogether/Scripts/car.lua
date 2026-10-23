@@ -43,9 +43,7 @@ local function dist(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (
 local function kml() return StaticFindObject("/Script/Engine.Default__KismetMathLibrary") end
 local function toLocal(car, p) return kml():InverseTransformLocation(car:GetTransform(), p) end
 local function toWorld(car, p) return kml():TransformLocation(car:GetTransform(), p) end
-local function first(class)
-    for _, o in ipairs(FindAllOf(class) or {}) do if valid(o) then return o end end
-end
+local first = common.first
 local function localPC()
     for _, pc in ipairs(FindAllOf("PlayerController") or {}) do
         if inWorld(pc) and pc:IsLocalController() then return pc end
@@ -204,6 +202,21 @@ local doorRest, doorSwung = {}, {} -- guest: part address -> the mesh's shut pos
 
 -- host -------------------------------------------------------------------------------------------------------------------
 
+-- the car's door parts, kept 2 s (the 50 ms swing loop and every 250 ms sample walked its attached actors)
+local doorCache, doorCacheAt, doorCacheCar = {}, -10, nil
+local function doorsOf(car)
+    local addr = car:GetAddress()
+    local ok = doorCacheCar == addr and os.clock() - doorCacheAt < 2
+    if ok then for _, d in pairs(doorCache) do if not valid(d) then ok = false; break end end end
+    if not ok then doorCache, doorCacheAt, doorCacheCar = doorParts(car), os.clock(), addr end
+    return doorCache
+end
+-- host: the parts lines of the last sample (see sample); the list of doors shut or open last time starts the swing watcher
+local partLines, partCount, partsAt, partsCar = {}, 0, -1, nil
+local swingUntil, lastDoorBits = 0, nil
+local function swingFor(s) swingUntil = os.clock() + (s or 6) end
+RegisterLoadMapPreHook(function() doorCache, doorCacheCar, partsAt, partsCar = {}, nil, -1, nil end)
+
 local function sample(car, cm)
     local cont = equipped()
     if not cont then return end
@@ -214,26 +227,35 @@ local function sample(car, cm)
         cm:GetDoorState(d, o)
         if o.Open then doors = doors | (1 << d) end
     end
+    if doors ~= lastDoorBits then lastDoorBits = doors; swingFor() end
     local hb = false
     pcall(function() hb = car.VehicleController:GetParkingBrakeActive() end)
     local lines = { string.format("H\t%d\t%d\t%d\t%d\t%d", ign, cm.MyCarGearBox, cm.CarLightsOn and 1 or 0, hb and 1 or 0, doors) }
-    local n = 0
-    cont.Slots:ForEach(function(_, e)
-        local slot = e:get()
-        local it = itemOf(slot)
-        if it then
-            local name = slotName(slot)
-            local h, f, b
-            local m = manifestation(cm, name)
-            if m then h, f, b = readPart(propComps(m)) end
-            n = n + 1
-            lines[#lines + 1] = string.format("P\t%s\t%s\t%s\t%s\t%s", name, archPath(it), num(h), num(f), num(b))
-        end
-    end)
+    -- the part lines (about 30 slots, ~100 UE calls) are rebuilt at 1 Hz, or at once after a UpdatedCarEquip; the H and R lines
+    -- stay at the tick's rate (health, fuel and battery drift slowly: the guest sees them 1 s late at most)
+    if partsAt < 0 or os.clock() - partsAt > 1 or partsCar ~= car:GetAddress() then
+        local n = 0
+        local pl = {}
+        cont.Slots:ForEach(function(_, e)
+            local slot = e:get()
+            local it = itemOf(slot)
+            if it then
+                local name = slotName(slot)
+                local h, f, b
+                local m = manifestation(cm, name)
+                if m then h, f, b = readPart(propComps(m)) end
+                n = n + 1
+                pl[#pl + 1] = string.format("P\t%s\t%s\t%s\t%s\t%s", name, archPath(it), num(h), num(f), num(b))
+            end
+        end)
+        partLines, partCount, partsAt, partsCar = pl, n, os.clock(), car:GetAddress()
+    end
+    for _, l in ipairs(partLines) do lines[#lines + 1] = l end
+    local n = partCount
     -- an open door's mesh simulates physics, which detaches it (its "relative" transform is then the world's): its pose
     -- goes in the car's own space
     local ct = car:GetTransform()
-    for slot, d in pairs(doorParts(car)) do
+    for slot, d in pairs(doorsOf(car)) do
         pcall(function()
             local m = d.MainMesh
             if not m:IsSimulatingPhysics(FName("None")) then return end
@@ -246,13 +268,37 @@ local function sample(car, cm)
     return table.concat(lines, "\n")
 end
 
+-- host hooks (listen only): a door verb or knock starts the swing watcher, a changed car loadout rebuilds the part lines.
+-- Each keeps its slow timer fallback (the 2 s swing pass, the 1 s part lines); first fires are logged as PT|probe.
+local DOORBP = "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:"
+local hostHooked, probeN = false, {}
+local function probe(name, fn)
+    local ok, err = pcall(RegisterHook, name, function()
+        if common.netMode() ~= "listen" then return end
+        probeN[name] = (probeN[name] or 0) + 1
+        if probeN[name] <= 3 then log("PT|probe car hook %s n=%d", name:match("[^:/%.]+$"), probeN[name]) end
+        fn()
+    end)
+    if not ok then log("PT|probe car hook %s not registered: %s", name:match("[^:/%.]+$"), tostring(err)) end
+end
+local function hostHooks()
+    if hostHooked then return end
+    hostHooked = true
+    for _, fn in ipairs({ "AttemptOpen", "AttemptShut", "ObjectKicked", "OnConstraintBroken_Event_0" }) do
+        probe(DOORBP .. fn, function() swingFor() end)
+    end
+    probe("/Game/Systems/Managers/BP_CarManager.BP_CarManager_C:UpdatedCarEquip", function() partsAt = -1 end)
+end
+
 local lastSent, lastAt, lastGuests = nil, 0, 0
+local arcAt = -10
 local function hostTick()
+    hostHooks()
     local guests = net.guests()
     if #guests == 0 then lastSent, lastGuests = nil, 0; return end
     local car, cm = theCar(true), carManager()
     if not car or not cm then return end
-    moveArc(car)
+    if os.clock() - arcAt > 5 then arcAt = os.clock(); moveArc(car) end -- a slot is moved once
     local s = sample(car, cm)
     if not s then return end
     local t = now()
@@ -770,19 +816,26 @@ LoopInGameThreadWithDelay(250, function()
     end
     if not ok then log("PT|error car tick %s", tostring(err)) end
 end)
--- host: while a door swings the state goes out at 20 Hz, at 4 Hz the guest saw its swing "like 3 fps" (hand playtest 2026-10-23)
-local swingDoors, swingDoorsAt = {}, 0
+-- host: while a door swings the state goes out at 20 Hz, at 4 Hz the guest saw its swing "like 3 fps" (hand playtest 2026-10-23).
+-- The loop read every door's physics 20 times a second; it now works while swingUntil is ahead (set by the door hooks and by
+-- a door bit change in the 4 Hz sample) and, in case a hook did not fire, once every 2 s.
+local swingFallbackAt = 0
+M.swingWork = 0 -- debug counter for scenarios: passes that read door physics
 LoopInGameThreadWithDelay(50, function()
+    if os.clock() >= swingUntil then
+        if os.clock() - swingFallbackAt < 2 then return end
+        swingFallbackAt = os.clock()
+    end
     if common.netMode() ~= "listen" or #net.guests() == 0 then return end
     local ok, err = pcall(function()
         local car = theCar(true)
         if not car then return end
-        if now() - swingDoorsAt > 2 then swingDoors, swingDoorsAt = doorParts(car), now() end -- the car's parts, not every 50 ms
-        for _, d in pairs(swingDoors) do
+        M.swingWork = M.swingWork + 1
+        for _, d in pairs(doorsOf(car)) do
             local m = valid(d) and d.MainMesh
             if m and m:IsSimulatingPhysics(FName("None")) then
                 local a = m:GetPhysicsAngularVelocityInDegrees(FName("None"))
-                if a.X * a.X + a.Y * a.Y + a.Z * a.Z > 25 then return hostTick() end
+                if a.X * a.X + a.Y * a.Y + a.Z * a.Z > 25 then swingFor(2); return hostTick() end
             end
         end
     end)
