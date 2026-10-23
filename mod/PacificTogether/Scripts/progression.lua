@@ -20,7 +20,7 @@ local SKIP = { ["WB.WorldState.TimeOfDay"] = true, ["WB.Statistics.Fuel.Spent"] 
 -- WB.Quests/WB.Missions tags are the guest's own mirror of the active story (story.lua); only the finished flags travel (pt2-story)
 local STORYDONE = os.getenv("PT_MUTATE") ~= "nostoryprog"
 local function skipTag(tag)
-    if SKIP[tag] then return true end
+    if SKIP[tag] or tag:find("^WB%.Statistics%.") then return true end -- the guest counts its own statistics (playtest #4: mileage and radiation damage rewritten every 2 s)
     if tag:find("^WB%.Quests%.") or tag:find("^WB%.Missions%.") then return not (STORYDONE and tag:find("%.Completed$")) end
     return false
 end
