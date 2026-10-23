@@ -99,7 +99,8 @@ local function message(pc, me, mapName, isSeated)
     if not char then return os.clock() - loadedAt < 5 and "Loading\226\128\166" or "Waiting for host\226\128\166" end
     if isSeated then stillSince = nil; return "" end
     -- on the ground but frozen (MOVE_None) for 3 s: the host has not placed us yet
-    local frozen = me.CharacterMovement.MovementMode == 0
+    -- only right after a load: later a frozen guest is usually at a station or in a game interaction, not waiting for the host
+    local frozen = os.clock() - loadedAt < 90 and me.CharacterMovement.MovementMode == 0
     if not frozen then stillSince = nil; return "" end
     stillSince = stillSince or os.clock()
     return os.clock() - stillSince > 3 and "Waiting for host\226\128\166" or ""
@@ -111,7 +112,12 @@ local function fade(pc)
     local black = { R = 0, G = 0, B = 0, A = 1 }
     cm:StartCameraFade(0, 1, 0.12, black, false, true)
     ExecuteInGameThreadWithDelay(200, function()
-        pcall(function() if valid(cm) then cm:StartCameraFade(1, 0, 0.5, black, false, false) end end)
+        -- the camera manager now, not the one faded: a repossess or travel in between replaces it (left black otherwise)
+        pcall(function()
+            local now = UEHelpers.GetPlayerController().PlayerCameraManager
+            if valid(now) then now:StartCameraFade(1, 0, 0.5, black, false, false) end
+            if valid(cm) and not (valid(now) and now:GetAddress() == cm:GetAddress()) then cm:StopCameraFade() end
+        end)
     end)
     log("PT|guestui fade")
 end

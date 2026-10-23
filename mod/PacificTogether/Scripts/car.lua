@@ -335,13 +335,15 @@ net.on("g.car.hello", function() lastSent = nil end)
 -- A character spawned while the host drives is attached by the game to the DRIVER's seat (stuck there, X dropped it through the
 -- ground, once launched the car; Steam playtest 2026-10-23 #3, #17). Not seated by us: move it to the passenger seat.
 LoopInGameThreadWithDelay(250, function()
-    if common.netMode() ~= "listen" or os.getenv("PT_MUTATE") == "nozonefix" then return end
+    if not safety.active() or common.netMode() ~= "listen" or os.getenv("PT_MUTATE") == "nozonefix" then return end
     pcall(function()
         local car = theCar(true)
         if not car then return end
         for _, pc in ipairs(net.guests()) do
             local char = guestChar(pc)
-            if char and same(char:GetAttachParentActor(), car) and not seated[char:GetFullName()] then
+            local on = char and same(char:GetAttachParentActor(), car)
+            if char and not on then seated[char:GetFullName()] = nil end -- left by any path (death, unstick, the game's exit)
+            if on and not seated[char:GetFullName()] then
                 log("PT|car guest attached by the game, moved to the passenger seat")
                 seat(char, car)
             end
@@ -731,7 +733,7 @@ local function guestTick()
         unstickWanted = false
         local ok, err = pcall(unstick)
         if not ok then log("PT|error car unstick %s", tostring(err)) end
-        ov.post("Controls reset", "info", "unstick")
+        if ok then ov.post("Controls reset", "info", "unstick") end
     end
     local car = theCar(false)
     if not car then return end

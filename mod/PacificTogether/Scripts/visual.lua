@@ -360,7 +360,8 @@ local function doorName(d) -- the host's name for this door: a copy's key, or a 
     for name, a in pairs(mine) do
         if live(a) and a:GetAddress() == d:GetAddress() then return name end
     end
-    if d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then return d:GetFName():ToString() end
+    -- the full path: placed doors in different sublevels can share an FName (BP_Door_Single_C_2)
+    if d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then return fpath(d) end
 end
 local function hookDoor(cls, event, msg)
     local start = fpath(cls) .. ":" .. event
@@ -400,7 +401,7 @@ end
 local function hostDoor(name)
     for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
         for _, d in ipairs(FindAllOf(c) or {}) do
-            if live(d) and d:GetFName():ToString() == name and not fpath(d):find("/Engine/Transient", 1, true) then return d end
+            if live(d) and (fpath(d) == name or d:GetFName():ToString() == name) and not fpath(d):find("/Engine/Transient", 1, true) then return d end
         end
     end
 end
