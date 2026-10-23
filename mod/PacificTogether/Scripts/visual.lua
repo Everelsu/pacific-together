@@ -147,7 +147,7 @@ end
 
 -- what the host lists: run-time spawned (not placed in the map file) dressing. Wreck parts, loot, hazards, items and car parts have their
 -- own modules, so they are not here. A static mesh that moves (debris, a wreck's loose part) is skipped.
-local ALLOW = { "BP_Destruct_", "BP_Door_", "BP_Prop_", "BP_Poster_", "BP_Decal_", "BP_TpoleTool_", "BP_RoadObstruct_", "BP_BuildingFrame_" }
+local ALLOW = { "BP_Destruct_", "BP_Door_", "BP_Prop_", "BP_Poster_", "BP_Decal_", "BP_TpoleTool_", "BP_RoadObstruct_", "BP_BuildingFrame_", "BP_Spawn_Anchor_" }
 local function allowed(cn)
     for _, p in ipairs(ALLOW) do
         if cn:sub(1, #p) == p then return not cn:find("Part_", 1, true) end
