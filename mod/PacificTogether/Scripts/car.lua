@@ -198,6 +198,8 @@ local function doorParts(car)
     return r
 end
 local doorHold = 0 -- guest: until then its own door move (sent to the host) is not overridden
+local entryDoor -- host: the door a guest opened last { part, at }; shut once they are seated (the game's entry does it itself)
+local doorHeld -- guest: the host's last state during the hold, applied when it ends (else a shut showed only 3 s later)
 local doorRest, doorSwung = {}, {} -- guest: part address -> the mesh's shut pose on its part; parts we posed open
 
 -- host -------------------------------------------------------------------------------------------------------------------
@@ -291,6 +293,12 @@ net.on("g.car.enter", function(pc)
     -- shortcut: no reach check (a client-side teleport did not move the guest on the host); add one when doors are real input
     log("PT|car enter from %.0f uu", dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()))
     seat(char, car)
+    -- the guest's door stayed open and swung while driving (hand playtest 2026-10-23): no entry animation shuts it here
+    local door = entryDoor and now() - entryDoor.at < 5 and entryDoor.part
+    entryDoor = nil
+    if door then
+        ExecuteInGameThreadWithDelay(800, function() pcall(function() if valid(door) then door:AttemptShut() end end) end)
+    end
     ov.post(ov.other() .. " entered the car")
 end)
 
@@ -308,6 +316,13 @@ net.on("g.car.exit", function(pc)
     net.toGuest(pc, "g.car.out", string.format("%.2f|%.2f|%.2f", out.X, out.Y, out.Z))
     char:SetActorEnableCollision(true)
     pcall(function() char.CharacterMovement:SetMovementMode(1, 0) end)
+    -- The guest sends no moves while seated, so the server's forced updates move its clock for the guest on and every move
+    -- after the exit was dropped for about as long as the ride (frozen on the host, 2026-10-23). Unpossess resets the
+    -- server's prediction data, Possess makes the client reset its own (proven live: moves accepted at once).
+    ExecuteInGameThreadWithDelay(150, function()
+        local ok, e = pcall(function() if valid(pc) and valid(char) then pc:UnPossess(); pc:Possess(char) end end)
+        if not ok then log("PT|error car repossess %s", tostring(e)) end
+    end)
     log("PT|car guest left the car")
     ov.post(ov.other() .. " left the car")
 end)
@@ -529,7 +544,8 @@ local function applyState(data)
         end)
     end
     if cm.CarLightsOn ~= lights then pcall(function() cm:SetCarLightsOn(lights) end) end
-    if now() < doorHold then return end
+    if now() < doorHold then doorHeld = data; return end
+    doorHeld = nil
     for d = 0, 5 do
         local o = {}
         cm:GetDoorState(d, o)
@@ -565,13 +581,16 @@ end
 
 -- guest: its own open/close of the host's car door goes to the host, which runs the same AttemptOpen on its part;
 -- the result comes back with the car state
-net.on("g.car.door", function(_, slot)
+net.on("g.car.door", function(_, data)
     if common.netMode() ~= "listen" then return end
+    local slot, verb = data:match("^([^|]*)|?(.*)$")
+    local shut = verb == "shut"
     local car = theCar(true)
     local part = car and doorParts(car)[slot]
     if not valid(part) then log("PT|car door intent: no door at %s", tostring(slot)); return end
-    pcall(function() part:AttemptOpen() end)
-    log("PT|car door intent %s applied", slot)
+    pcall(function() if shut then part:AttemptShut() else part:AttemptOpen() end end)
+    entryDoor = not shut and { part = part, at = now() } or nil
+    log("PT|car door intent %s %s applied", slot, shut and "shut" or "open")
 end)
 
 net.on("g.car.s", function(_, data)
@@ -605,17 +624,21 @@ local function hookAll()
         if not okc then log("PT|error car door hook %s", tostring(e)) end
     end)
     if not ok then log("PT|error car hook EnterCar %s", tostring(err)); return end
-    local okd, errd = pcall(RegisterHook, "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:AttemptOpen", function(self)
-        pcall(function()
-            if common.netMode() ~= "client" then return end
-            local part, car = self:get(), theCar(false)
-            if not (valid(part) and car and same(part:GetAttachParentActor(), car)) then return end
-            local slot = part.RootComponent.AttachParent:GetFName():ToString()
-            doorHold = now() + 1.5
-            log("PT|car door intent %s sent=%s", slot, tostring(net.toHost("g.car.door", slot)))
+    -- shutting too: a door the host opened is posed on the guest with its physics off, so a local shut did nothing (2026-10-23)
+    for fn, suffix in pairs({ AttemptOpen = "", AttemptShut = "|shut" }) do
+        local okd, errd = pcall(RegisterHook, "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:" .. fn, function(self)
+            pcall(function()
+                if common.netMode() ~= "client" then return end
+                local part, car = self:get(), theCar(false)
+                if not (valid(part) and car and same(part:GetAttachParentActor(), car)) then return end
+                local slot = part.RootComponent.AttachParent:GetFName():ToString()
+                -- only our own physics swing needs protecting; a door the host opened is posed here, its shut animates from the host
+                if suffix == "" or part.MainMesh:IsSimulatingPhysics(FName("None")) then doorHold = now() + 1.5 end
+                log("PT|car door intent %s%s sent=%s", slot, suffix, tostring(net.toHost("g.car.door", slot .. suffix)))
+            end)
         end)
-    end)
-    if not okd then log("PT|error car hook AttemptOpen %s", tostring(errd)) end
+        if not okd then log("PT|error car hook %s %s", fn, tostring(errd)) end
+    end
     hooked = true
     -- leaving: key X while seated; the key only raises a flag (an ExecuteInGameThread per press crashed UE4SS when spammed, ping.lua)
     pcall(RegisterKeyBind, Key.X, function() exitWanted = true end)
@@ -674,6 +697,12 @@ end
 
 local helloFor = nil
 local function guestTick()
+    if doorHeld and now() >= doorHold then
+        local held = doorHeld
+        doorHeld = nil
+        local ok, err = pcall(applyState, held)
+        if not ok then log("PT|error car apply %s", tostring(err)) end
+    end
     if exitWanted then
         exitWanted = false
         if common.netMode() == "client" and riding then sendExit() end
@@ -693,8 +722,8 @@ local function guestTick()
     local pc = localPC()
     local me = pc and pc.Pawn
     if valid(me) then
-        -- our own enter must not run locally; it is the host's job
-        if PTNative_Mute then PTNative_Mute(me:GetAddress(), "CommandEnterCar") end
+        -- our own enter and exit must not run locally; they are the host's job (a local exit crashed AC_CarAudio's tick, 2026-10-23)
+        if PTNative_Mute then PTNative_Mute(me:GetAddress(), "CommandEnterCar|Exit Car") end
         if same(me:GetAttachParentActor(), car) then
             if not riding or riding.car ~= car:GetFullName() then ride(me, car) end
         elseif riding then
@@ -717,6 +746,24 @@ LoopInGameThreadWithDelay(250, function()
         return
     end
     if not ok then log("PT|error car tick %s", tostring(err)) end
+end)
+-- host: while a door swings the state goes out at 20 Hz, at 4 Hz the guest saw its swing "like 3 fps" (hand playtest 2026-10-23)
+local swingDoors, swingDoorsAt = {}, 0
+LoopInGameThreadWithDelay(50, function()
+    if common.netMode() ~= "listen" or #net.guests() == 0 then return end
+    local ok, err = pcall(function()
+        local car = theCar(true)
+        if not car then return end
+        if now() - swingDoorsAt > 2 then swingDoors, swingDoorsAt = doorParts(car), now() end -- the car's parts, not every 50 ms
+        for _, d in pairs(swingDoors) do
+            local m = valid(d) and d.MainMesh
+            if m and m:IsSimulatingPhysics(FName("None")) then
+                local a = m:GetPhysicsAngularVelocityInDegrees(FName("None"))
+                if a.X * a.X + a.Y * a.Y + a.Z * a.Z > 25 then return hostTick() end
+            end
+        end
+    end)
+    if not ok then log("PT|error car door tick %s", tostring(err)) end
 end)
 
 M.exit = sendExit

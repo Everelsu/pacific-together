@@ -216,6 +216,13 @@ end)
 
 -- Level-placed hazards (grabbers) keep simulating on the guest and ignore replicated movement: the host sends the positions
 -- of those that moved and the guest puts its copies there (same name on both sides). Between updates the guest's own motion shows.
+-- A grabber's floating core moves on its own inside the actor: its world position goes along, else the guest's core stayed
+-- ~650 uu under an awake grabber (hand playtest 2026-10-23: "a wiggling wreck" instead of the grabber).
+local function core(o)
+    local ok, c = pcall(function() return o.CoreFloatingMesh end)
+    return ok and c and c:IsValid() and c or nil
+end
+local function moved(a, b) return math.abs(a.X - b.X) + math.abs(a.Y - b.Y) + math.abs(a.Z - b.Z) > 20 end
 local sent, beat = {}, 0
 LoopInGameThreadWithDelay(250, function()
     if not M.enabled or not safety.active() or safety.guest() then return end
@@ -226,10 +233,13 @@ LoopInGameThreadWithDelay(250, function()
         each("BP_Base_Hazard_C", function(o)
             if WI:IsValid() and o:IsA(WI) then return end
             local n, l = o:GetFName():ToString(), o:K2_GetActorLocation()
+            local c = core(o)
+            c = c and c:K2_GetComponentLocation()
             local p = sent[n]
-            if not p or math.abs(p.X - l.X) + math.abs(p.Y - l.Y) + math.abs(p.Z - l.Z) > 20 then
-                sent[n] = { X = l.X, Y = l.Y, Z = l.Z }
+            if not p or moved(p, l) or (c and (not p.c or moved(p.c, c))) then
+                sent[n] = { X = l.X, Y = l.Y, Z = l.Z, c = c and { X = c.X, Y = c.Y, Z = c.Z } }
                 L[#L + 1] = string.format("%s\t%.1f\t%.1f\t%.1f", n, l.X, l.Y, l.Z)
+                    .. (c and string.format("\t%.1f\t%.1f\t%.1f", c.X, c.Y, c.Z) or "")
             end
         end)
         if #L > 0 then net.toGuests("g.world.pos", table.concat(L, "\n")) end
@@ -241,12 +251,19 @@ net.on("g.world.pos", function(_, data)
     try("pos", function()
         local at = {}
         for line in data:gmatch("[^\n]+") do
-            local n, x, y, z = line:match("^([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$")
-            if n then at[n] = { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) } end
+            local n, x, y, z, rest = line:match("^([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)(.*)$")
+            if n then
+                at[n] = { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }
+                local cx, cy, cz = rest:match("^\t([^\t]+)\t([^\t]+)\t([^\t]+)$")
+                if cx then at[n].c = { X = tonumber(cx), Y = tonumber(cy), Z = tonumber(cz) } end
+            end
         end
         each("BP_Base_Hazard_C", function(o)
             local l = at[o:GetFName():ToString()]
-            if l then o:K2_SetActorLocation(l, false, {}, true) end
+            if not l then return end
+            o:K2_SetActorLocation(l, false, {}, true)
+            local c = l.c and core(o)
+            if c then c:K2_SetWorldLocation(l.c, false, {}, true) end
         end)
     end)
 end)

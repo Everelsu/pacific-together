@@ -656,3 +656,36 @@ Observations
 Derived / not yet verified by hand or a scenario
 - Door pose now sent in car space and rebuilt on the guest; shut doors go back on their mount (owner saw the first, world-space
   version misplaced; this version not seen yet). Guest hitting the host: guest's health put back, host takes the hit (not seen).
+
+## 2026-10-23 afternoon: live bug-fix loop (owner, two rendered clients, zone fixture, logs local/playtest-20261023-afternoon/)
+Observations
+- Seen working by hand: car doors/hatch pose v2 and the guest hitting the host (from the morning), headlights (2nd run).
+- Guest pressing X in the car crashed the guest (EXCEPTION_ACCESS_VIOLATION reading 0xffffffffffffffff, game thread in
+  AC_CarAudio_C:ReceiveTick). No `PT|car exit intent` line: the game's own "Exit Car" ran locally before our X flag was read.
+  Muting "Exit Car" on the guest's own pawn (next to CommandEnterCar): two exits after, no crash.
+- Guest frozen on the host after an exit (turns, does not move, then snapped back), for about as long as the ride
+  (2.2 s ride -> 2.1 s freeze, 52 s -> 46 s). Probe (Character:ServerMovePacked / ClientMoveResponsePacked hooks, 250 ms):
+  ~10 moves per 250 ms reached the host after the exit, 0 responses came back (before the ride: 2-3). The seated guest
+  sends no moves (its CharacterMovement tick is off). Turning the host's CharacterMovement tick off during the ride did NOT
+  help (52 s ride, 46 s freeze). pc:UnPossess(); pc:Possess(char) on the host 150 ms after the exit: moves accepted at once
+  (owner: "worked seamlessly"); now in the g.car.exit handler.
+- C (scan) did nothing on host and guest: InpActEvt_ScanObject fires, ObjectToScan is the anomaly (BP_Hazard_PhysicsGrabber2),
+  then ScanInvalid. BP_ProgressionManager.CanScanObject returns false unless QD_Q00_Mission_B (or QD_Q00_Demo_Mission_A)
+  is complete; in the zone fixture both are incomplete (the fixture came from TravelToNextLeg on the garage save, the
+  tutorial was never finished). Not our bug as far as seen; needs a fixture made by finishing Q00 to test scanning.
+- Guest closing a door the host opened did nothing: we forwarded AttemptOpen only. AttemptShut now forwarded too; the host
+  shut at once (0.3 s), the guest showed it 3.8 s later: its own 1.5 s door hold dropped the host's change and the next
+  state came after 3 s. Now the held state is applied when the hold ends, and a shut of a door posed from the host sets no hold.
+  Owner: closes, but "like 3 fps" (car state every 250 ms); host now also sends at 20 Hz while a door's physics turns.
+- Grabbers: same 25 hazards on both sides, but the awake grabbers' CoreFloatingMesh sat ~650 uu under the actor on the guest
+  (host: 0), owner saw "a wiggling wreck" instead. The core's world position now goes with g.world.pos; owner: synced.
+- Door swing at 20 Hz while it turns: owner "faster, not smooth", accepted as is.
+- Guest entering by a door left it open (swung while driving): the game's entry animation shuts it, our seat() does not.
+  The host now shuts the door of the guest's last open intent (within 5 s) 0.8 s after seating. Owner: works.
+- Guest's ARC map: icons on a blank sheet, no terrain or roads (host: both). No MapFog or MapRevealer on either side; the
+  terrain is BP_GobblerMapBounds' own capture at level start. RecaptureMinimap on the guest drew it (seen live); mapmark.lua
+  now recaptures 10 s and 40 s after the guest first sees the bounds (35 ms frame each). Owner: works.
+Unknowns / open
+- One dormant grabber has different names on host and guest (97A5... vs ..._C_2147477136), so it is never position-synced.
+- Grabber position on the guest trails the host by ~200 uu (250 ms updates, no interpolation).
+- None of today's afternoon changes has run in a scenario.

@@ -95,12 +95,31 @@ local function update()
     end
 end
 
+-- The ARC map's terrain and roads are a capture the map bounds take at level start; on the guest it came out blank (only
+-- icons, hand playtest 2026-10-23), a RecaptureMinimap once the world is there drew it like the host's (seen live).
+local RECAPTURE = { 10, 40 } -- s after the guest first sees this map's bounds
+local captureSeen, captureDone = nil, 0
+
 -- a map change frees every object we hold: forget them before it happens
-RegisterLoadMapPreHook(function() marks = {} end)
+RegisterLoadMapPreHook(function() marks, captureSeen, captureDone = {}, nil, 0 end)
 
 LoopInGameThreadWithDelay(250, function()
     local ok, err = pcall(update)
     if not ok then log("PT|error mapmark %s", tostring(err)) end
+end)
+LoopInGameThreadWithDelay(1000, function()
+    if not safety.guest() or captureDone >= #RECAPTURE then return end
+    local ok, err = pcall(function()
+        local b = FindFirstOf("BP_GobblerMapBounds_C")
+        if not (b and b:IsValid()) then return end
+        captureSeen = captureSeen or os.clock()
+        if os.clock() - captureSeen >= RECAPTURE[captureDone + 1] then
+            captureDone = captureDone + 1
+            b:RecaptureMinimap()
+            log("PT|mapmark guest map recaptured n=%d", captureDone)
+        end
+    end)
+    if not ok then log("PT|error mapmark recapture %s", tostring(err)) end
 end)
 
 return M
