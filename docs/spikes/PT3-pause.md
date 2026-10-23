@@ -15,3 +15,10 @@ Module `mod/PacificTogether/Scripts/pause.lua` (new), label in `overlay.lua`; me
 
 ## Unknowns
 - Whether the freeze in #16 is a guest-local pause (world paused by the game on the guest) or a hung game thread; sounds kept playing, which fits a paused world (audio runs) more than a hang.
+
+## Results
+- Reproduced on code without the fix: grid open with option 2 -> `paused=true`, guest travelled 0 uu (result 20261023-235101, hook not yet loaded).
+- Fix: BP hook with ONE callback runs after the body (pre-hook rewriting Paused did nothing); it calls `PauseGame(instigator, false)` again for every instigator but "PauseMenu" (the game's name is `PauseMenu`, case matters). Overlay banner `PTBanner` is the box's last child.
+- `pausehost` 27/27 `20261024-005815-pt3-pause-pausehost`; mutation `nopause` 22/27 (grid walk, label shown/cleared fail) `20261024-014327-pt3-pause-pausehost-nopause`.
+- Guest movement in the garage is slow (about 2 uu/s with AddMovementInput), so the movement check threshold is 10 uu, not a distance test.
+- Not verified: logbook/map/ability menus (same funnel, refused the same way), real container/trunk menus (same playermenu instigator).
