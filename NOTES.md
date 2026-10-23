@@ -790,3 +790,46 @@ Owner + friend reports from play (guest = owner, host = friend; numbering is the
     `GetGarageInventory` index warning, `GasPump GetUpgrades index -1`: guest-side UI/state mismatches, not looked into.
 Unknowns
 - The guest's UE4SS logs of the first three sessions are gone (the freeze after the ARC anchor was in the second).
+
+## 2026-10-24 night: Steam playtest fixes (lead + 10 Sonnet lanes, owner asleep; spike docs docs/spikes/PT3-*.md, PT1-portal.md, PT1-pt3-spawn.md)
+
+All proven headless two-client only (no rendered or hand check). Numbers refer to the Steam playtest list above.
+
+Observations (scenario runs, folders in local/test-results)
+- #3 guest put in the DRIVER seat on a zone join: the game attaches a character spawned while the host drives to the driver
+  seat; the host now moves it to the passenger seat (car.lua). zonespawn 34/34, mutation nozonefix 32/34.
+- #6 host menus froze the guest: everything goes through BP_UIManager_C:PauseGame; with a session only the Esc menu
+  (instigator PauseMenu) keeps its pause (pause.lua). #11 "Paused by host" banner on the guest. pausehost 27/27, nopause 22/27.
+- #1 chained garage doors: guest lock-open and E run on the host's map-placed door (g.vis.unlock, g.vis.door, full-path key).
+  worlddoors 21/21. #15 ARC anchor structures and #7b broken plasma generators on the guest: worldzone 26/26.
+- #8 radiation: the radiating volumes are spawned at runtime on the host only (host 8, guest 3); radiation.lua sends them and
+  the guest spawns copies (damage only, no decal/VFX). radiation 20/20, norad 16/20.
+- #9 flat tyres: SE_FlatTire on the host set GetPartFlat on the host only; wheelflat.lua mirrors the flat map. wheelflat
+  17/17. On-screen look not checked.
+- #4 story lines: the guest's 6 s dedupe window was just shorter than the replay interval in the real log; now 90 s, and the
+  guest stops writing WB.Statistics.* tags. storysync 24/24, storyprog 26/26, progsync 30/30. Not proven against the real repeat.
+- #7 Impact Hammer: the tool carries a visible /Engine/BasicShapes/Cylinder that hands.lua took as the base; engine meshes
+  skipped. hands 64/64. #13 Cyrillic nametag: TextRender only draws offline fonts (256 Latin glyphs); names with letters above
+  U+00FF use a UMG TextBlock at the head (nametag 23/23; lead fixed the byte test to the UTF-8 lead byte). #2 scrape sound:
+  BP_CarScrapeFX_C destroyed on spawn on the guest (carfeel 42/42; cause read from bytecode, not heard).
+- Spark Tower: SpatialTickController switches managed hazards off by distance (5000) from the HOST's player; hazards near a guest
+  are kept ticking, player-range hazards (landmines, bollards, grabbers) arm for the guest, Tesla beam/discharge mirrored,
+  replicated hazard copies glide (anomalies3.lua, world.lua). anomtesla 20/20.
+- Exit portals and Q01 radio bits: the guest destroyed its own level-placed copy before the host's actor channel bound to it
+  (SerializeNewActor failed); now the guest keeps copies the host has. portals 20/20 (portal half not reproduced in the fixture).
+- Guest UI: Esc opens the pause menu (a client's SetGamePaused always fails), End/F8 + `ptunstick` with "Controls reset",
+  "X  Exit car" hint, Joining/Loading/Waiting text, fade on seat changes (guestui.lua). guestui 40/40.
+- Host frame time: car host tick 3.9 -> 1.0 ms/call, swing watcher gone from the top 8, carfeel ticks halved (carsync window,
+  docs/spikes/PT3-perf.md). Hooks seen firing on the host: UpdatedCarEquip, Tintable SetPaint/SetDecal.
+- Two code reviews of the merged code; 14 fixes by the lead (35a885d, d818b35, e080c60, 54d56ce).
+- Full suite on main d818b35 (2 shards): 46/50. Reruns: lootcar 24/24 (flake). Fail twice: playpath p6 (guest ground pickup
+  never reaches the host), guestparts (1-2 different checks per run), mapmark (guest crash after its death rejoin, same address
+  0x1e31c0cc0 as 2026-10-23 16:36: pre-existing). Lanes pt3-regress (p6, guestparts) and pt3-crash (mapmark) started 03:00.
+
+Unknowns / not fixed
+- #16 freeze after the ARC anchor: the ARC machine code never pauses, dilates time or repossesses; host log clean; cause on the
+  guest side, needs a live repro or the guest's UE4SS log.
+- #5 transmuter vs ARDA container: not reproduced (the host's transmuter reaches the guest, ~1 min late).
+- #10 scrapper sound left playing, #12 legs under the car, #14 slow car entry, #17 40-60 s stall (assumed same cause as #3).
+- Landmines still creep toward the host only; the guest's radiation copies have no visuals; a host pause opened before the guest
+  joined is not refused; host health read 97 once after a Tesla shot at the guest (anomtesla run, unverified).
