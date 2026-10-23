@@ -187,13 +187,7 @@ local function propsTick()
         end
     end
 end
-local function guestProps()
-    for _, class in ipairs(PROPS) do
-        for _, o in ipairs(FindAllOf(class) or {}) do
-            if live(o) and o.Role ~= 1 then o:K2_DestroyActor() end
-        end
-    end
-end
+-- the guest's own copies are cleaned by world.lua (only those the host does not have): a level-placed copy the guest keeps is what the host's channel binds to
 
 -- ---------------------------------------------------------------- guest
 
@@ -363,7 +357,6 @@ end)
 LoopInGameThreadWithDelay(500, function()
     if not M.enabled or not safety.active() then return end
     if safety.guest() then
-        try("props", guestProps)
         if PROG then try("report", reportTasks) end
         return
     end
