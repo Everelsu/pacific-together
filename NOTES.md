@@ -775,5 +775,18 @@ Owner + friend reports from play (guest = owner, host = friend; numbering is the
 - Host log at the ARC freeze (19:14-19:18): only slow lines, nothing from car/session until the guest's rejoin at 19:18:15
   (seated 19:18:46). So the host saw nothing wrong; the freeze was on the guest's side.
 
+- Guest-only engine warnings (lead, diff of guest vs host warning kinds):
+  - `SerializeNewActor failed to find/spawn actor` for actors of `Rural_Forest_Radio_Scylla_02_Mission_Sub`:
+    BP_Hazard_Tesla_C x8, BP_Hazard_PhysicsGrabber_C x6, BP_LevelTransition_ExitPortal_C x4,
+    BP_Resource_Narrative_Q01_RadioBitsGrabbable_C x4 (each zone join). Fits "Spark Tower not working" on the guest; the
+    exit portal (gateway) and the Q01 quest item may be missing or unsynced on the guest too (not checked).
+  - `No owning connection for actor BP_Hazard_PhysicsGrabber_C / BP_Hazard_Bollard_C. Function SERVER_Start/Stop will not
+    be processed`: the guest's own hazard copies call server RPCs.
+  - `CreateSavedMove: Hit limit of N saved moves` 66+ times around 16:00-16:10 UTC: the guest's moves not acked while the
+    host was paused in menus (#6).
+  - `ClientAdjustPosition_Implementation could not resolve the new relative movement base actor` ~45x at the garage join
+    (base SM_Metal_Sheet_2), once in the zone.
+  - `Ability ARC Doc / Handbrake no longer "available" from provider`, `GetHotbarSlots index 2 of length 2` (guest hotbar),
+    `GetGarageInventory` index warning, `GasPump GetUpgrades index -1`: guest-side UI/state mismatches, not looked into.
 Unknowns
 - The guest's UE4SS logs of the first three sessions are gone (the freeze after the ARC anchor was in the second).
