@@ -295,6 +295,7 @@ end)
 -- shows the copy gliding there from where it was shown, over the time the last two updates were apart. A jump over 1500 uu (teleport) is not glided.
 -- Mutation nosmooth switches it off.
 local smooth, hz, scanned = {}, {}, 0
+RegisterLoadMapPostHook(function() smooth, hz, scanned = {}, {}, 0 end) -- keyed by address: freed ones come back as other objects
 local function dist(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2) end
 LoopInGameThreadWithDelay(16, function()
     if not M.enabled or os.getenv("PT_MUTATE") == "nosmooth" or not safety.guest() then return end
