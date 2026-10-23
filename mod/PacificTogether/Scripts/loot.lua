@@ -462,9 +462,13 @@ local function scanGuest()
     for id, e in pairs(ents) do
         if e.kind == "W" and not alive(e.actor) then
             -- picked up here (the item sits in a slot now): tell the host once
-            local ok, slot = pcall(function() return e.actor.Instance:GetOuterSlot() end)
+            -- the item instance kept while the actor lived: a freed actor's fields are read natively and crash (pcall does not catch it)
+            local ok, slot = pcall(function() return alive(e.inst) and e.inst:GetOuterSlot() end)
             if ok and slot and slot:IsValid() then say("T|" .. id) end
             ents[id] = nil
+        elseif e.kind == "W" and not e.inst then
+            local i = e.actor.Instance
+            if alive(i) then e.inst = i end
         elseif (e.kind == "P" or e.kind == "R") and not alive(e.actor) then
             -- scrapped or taken here: the host removes its part
             say("T|" .. id)

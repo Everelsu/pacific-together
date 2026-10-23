@@ -1,6 +1,7 @@
 # Facts mined from PDCoopNet (reference/pdcoopnet)
 
-Read-only review, 2026-10-19. LN = `LAB-NOTES.md`, ML = `mod/PDCoopNet/Scripts/main.lua`, RT = `tools/run_test.ps1`.
+Read-only review, 2026-10-19. LN = `LAB-NOTES.md`, ML = `mod/PDCoopNet/Scripts/main.lua`, RT = `tools/run_test.ps1` (ML and RT
+were removed from this repo on 2026-10-23; the facts below stay).
 All test results are as their notes report them; none re-run by us.
 
 ## Game facts

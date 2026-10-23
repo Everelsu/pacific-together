@@ -2,7 +2,7 @@
 
 2026-10-19, lane E. How the Tourist anomaly decides it is "not observed", and how to make "observed by any player"
 work with the host authoritative. Sources: `BP_Hazard_Landmine` and `BP_HazardProperty_PlayerRange` extracted from
-`pakchunk0` (`reference/pdcoopnet/tools/pakextract.py`) and listed with `tools/kdis/` (Kismet bytecode; listings in
+`pakchunk0` (`tools/pak/pak.py`) and listed with `tools/kdis/` (Kismet bytecode; listings in
 `local/research-extract/laneE/dis*/`, git-ignored), plus scenario `tourist`
 (`test/PacificTogetherTest/Scripts/scenarios/tourist.lua`).
 

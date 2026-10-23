@@ -10,8 +10,8 @@ and milestones.
 - Game build: Steam v1.15.0 (buildid 21896301). Other builds are not supported.
 - Built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS). Not affiliated with Ironwood Studios.
 - Research notes: [docs/research](docs/research). Release rules: [docs/RELEASING.md](docs/RELEASING.md).
-- `reference/pdcoopnet` is a copy of [PDCoopNet](https://github.com/BroZYTnikkkk/pacific-drive-coop) (MIT, by
-  BroZYTnikkkk), kept as research material.
+- `reference/pdcoopnet` holds the lab notes and README of [PDCoopNet](https://github.com/BroZYTnikkkk/pacific-drive-coop) v0.2
+  (MIT, by BroZYTnikkkk), kept as research material; none of its code is in this repo.
 
 ## Building from source
 

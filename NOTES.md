@@ -692,3 +692,33 @@ Unknowns / open
   39/39, guestact 32/32, worldsync 27/27, anomalies2 27/27; carsync 35/36 in parallel (guest_car_follows t=1), 36/36 alone;
   mapmark 16/19: guest crash after its death rejoin, same last calls as 20261022-084655 and -162801 (known rejoin crash in
   mapmark's icon loop, before today's recapture; the recapture ran 30 s earlier). Zip dist/PacificTogether-0.0.6-dev-061d114.zip.
+
+## 2026-10-23 evening: facts from upstream PDCoopNet v0.8/v0.9-dev and coop-anything 5b86e5b
+
+Sources: github.com/BroZYTnikkkk/pacific-drive-coop (docs/WORLD_SYNC.md, README) and its lab notes on
+BroZYTnikkkk/coop-anything branch game/pacific-drive (games/pacific-drive/NOTES.md, 2026-10-23). Their text, not checked by
+us unless said. Their code is no longer in this repo (`reference/pdcoopnet` keeps the v0.2 notes); `tools/pak/pak.py` is our
+own pak v11 reader (same file lists for all 5 paks as their tool, extracted files byte-identical to `local/research-extract`).
+
+Observations (ours)
+- Guest E on a zone door copy now reaches the host: hook on the Highlight interact event of BP_Door_Single_C and
+  BP_Door_Sliding_Single_C (the declaring classes), g.vis.door with the host's actor name, the host presses its door's
+  Highlight. Door copies keep the Visibility response (other copies still ignore it). visual 28/28 with the new
+  host_door_used_by_guest (host door 0 -> 2 about 1 s after the guest's press). Final code, zone fixture: visual 28/28
+  (`20261023-181155-main2-visual`), playpath 39/39 (`180938`), lootsync 34/34 (`180844`), lootsync2 33/33 (`181028`).
+- loot.lua guest pickup detection read `.Instance` of an actor already failing the alive check (freed memory when the actor
+  was gone). Guarding it with IsValid dropped the pickup report (playpath p6_world_item_gone_on_host failed once,
+  `20261023-175526-main2-playpath`); the instance is now kept while the actor lives and checked instead.
+
+Derived / theirs (not checked by us)
+- Reading fields of a pooled item actor whose Instance is gone crashes natively; pcall does not catch it.
+- `ReplicatedMovement.RotationQuantizationLevel` changed on one side only breaks the connection (level never sent).
+- Handlers must not run inside an RPC hook (one that loaded an asset hung the client): queue, handle from a loop.
+- Container events: hooks on `UItemContainer::HandleSlotItemAdded/Removed` see every item entering or leaving any
+  container; `RegisterBeginPlayPostHook` as a "new actors appeared" counter to gate whole-world scans. Candidate fix for
+  our FindAllOf polling cost (not tried).
+- The zone is chosen at travel time: the same save and route gave two copies different maps.
+- The remote body can play the shipped ALS clips from Lua (`SetAnimationMode(1)`, `PlayAnimation`, `SetPlayRate`).
+
+Unknowns
+- A real E press on a door copy (trace + highlight) is not seen yet: the scenario presses the copy's Highlight directly.

@@ -3,6 +3,7 @@
 -- (t.sample); the guest looks for each in its own world, then the host changes things and the guest's copies follow within 3 s:
 --   guest_mirrors_*            static meshes (90 %), every sampled building frame, door and destructible exists on the guest
 --   guest_door_follows_host    the host swings a door open (the game's own "Set Door from State"): the guest's copy has the same state
+--   host_door_used_by_guest    the guest presses its copy of a closed door (Highlight, as E does): the host's door opens
 --   guest_destructible_breaks  the host breaks a destructible: the guest's copy breaks or is gone
 --   guest_removed_mesh_gone    the host removes a prefab mesh: the guest's copy is removed
 -- Run: tools/run-test.ps1 -Scenario visual -Fixture zone -Headless [-Root .. -Port ..]   Mutation novisual: visual.lua inert on both sides.
@@ -72,7 +73,7 @@ return function(T)
         local steps = {}
         local function add(s) steps[#steps + 1] = s end
         local function toGuest(k, v) PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), k, v or "") end
-        local sample, door, cone, mesh = nil, nil, nil, nil
+        local sample, door, door2, cone, mesh = nil, nil, nil, nil, nil
         for _, s in ipairs(T.loadFixture("zone")) do add(s) end
         add({ check = "host_listen_zone", timeout = 60, cond = function() return T.netMode() == "listen" and T.listening() end })
         add({ check = "host_guest_in_zone", timeout = 240, cond = function() return L.guestChar() ~= nil end })
@@ -86,7 +87,7 @@ return function(T)
             local doors = all(function(o) return isDoor(o) and o.CurrentState == 0 end)
             table.sort(doors, function(a, b) return a:GetFName():ToString() < b:GetFName():ToString() end)
             for i = 1, math.min(4, #doors) do S[#S + 1] = ser("D", doors[i], tostring(doors[i].CurrentState)) end
-            door = doors[1]
+            door, door2 = doors[1], doors[2]
             local ds = all(isDestruct)
             table.sort(ds, function(a, b) return a:GetFName():ToString() < b:GetFName():ToString() end)
             for i = 1, math.min(5, #ds) do S[#S + 1] = ser("X", ds[i]) end
@@ -120,6 +121,16 @@ return function(T)
             local p = mesh:K2_GetActorLocation()
             toGuest("t.remove", string.format("%s\t%.2f\t%.2f\t%.2f", meshOf(mesh), p.X, p.Y, p.Z))
             mesh:K2_DestroyActor()
+        end })
+        add({ wait = 4 })
+        add({ run = function()
+            local p = door2:K2_GetActorLocation()
+            toGuest("t.use", string.format("%s\t%.2f\t%.2f\t%.2f", cn(door2), p.X, p.Y, p.Z))
+            T.log("PT|info host asks the guest to use door %s state=%s", door2:GetFName():ToString(), tostring(door2.CurrentState))
+        end })
+        add({ check = "host_door_used_by_guest", timeout = to(40), cond = function()
+            T.log("PT|info host door %s state=%s", door2:GetFName():ToString(), tostring(door2.CurrentState))
+            return door2.CurrentState ~= 0
         end })
         add({ check = "host_guest_finished", timeout = 400 * slow, cond = function() poll(); return got["t.done"] ~= nil end })
         add({ wait = 2 })
@@ -183,6 +194,17 @@ return function(T)
             local n, x, y, z = d:match("^([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$")
             return copyOf("S", n, { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }) == nil, "copy gone"
         end) },
+        { check = "guest_door_copy_pressed", timeout = to(40), cond = function()
+            poll()
+            local d = got["t.use"]
+            if not d then return false end
+            local n, x, y, z = d:match("^([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$")
+            local o = copyOf("B", n, { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) })
+            if not o then return false end
+            o.Highlight:InteractPressed(nil) -- what the guest's E does on the door it looks at
+            o.Highlight:InteractReleased(nil)
+            return true
+        end },
         { check = "guest_alive_after", timeout = to(60), cond = L.holds(8, function() return T.netMode() == "client" and T.map() == "Rural_Forest_Radio_Scylla_02" and T.myPawn() ~= nil end) },
         { run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.done", "1") end },
         { wait = 3 },

@@ -4,7 +4,7 @@
 `docs/research/tourists.md`, `garage-stations.md`, `arc-device.md`, `arc-marker.md`, `crash-reports.md`.
 Results: `local/test-results/<stamp>-laneE-<scenario>[-<mutation>]` (lane `C:\PTLanes\laneE`, port 7851, headless,
 `main.dll` copied from the main checkout). Blueprint listings: `tools/kdis/` over files extracted with
-`reference/pdcoopnet/tools/pakextract.py` into `local/research-extract/laneE/` (git-ignored).
+`tools/pak/pak.py` into `local/research-extract/laneE/` (git-ignored).
 
 ## Checks that ran
 

@@ -6,7 +6,8 @@
 --   props   the zone's procedural dressing exists on the host only (the run's spawn pass never runs on a guest): buildings (BuildingFrame),
 --           prefab meshes (StaticMeshActor), doors, destructibles, lights, posters, decals, poles. The host lists them (class or mesh,
 --           transform, door state, broken flag) and the guest spawns and keeps copies (g.vis.p, g.vis.hello). Copies have no gameplay of their
---           own: a guest opening a door or smashing a crate does not reach the host (known gap).
+--           own, except doors: the guest's E on a door copy is pressed on the host's door (g.vis.door). Smashing a crate does not reach
+--           the host (known gap).
 -- Inert in single player (Q7): nothing runs without a listening host with a guest, or a guest.
 local UEHelpers = require("UEHelpers")
 local common = require("common")
@@ -348,6 +349,53 @@ local function dispose(a)
     end
 end
 
+-- The guest's E on its copy of a door: the copy swings here, the host's door gets the same press (its state comes back in g.vis.p).
+-- The interact event is declared on a parent class (BP_Door_Single_C, BP_Door_Sliding_Single_C), hooked there once.
+local INTERACT = "BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature"
+local doorHooks = {} -- class path -> true (hooked or not declared in its chain)
+local function hookDoor(cls)
+    local path = fpath(cls)
+    if doorHooks[path] then return end
+    doorHooks[path] = true
+    for _ = 1, 6 do
+        if not (cls and cls:IsValid()) then return end
+        local fn = StaticFindObject(fpath(cls) .. ":" .. INTERACT)
+        if fn and fn:IsValid() then
+            local at = fpath(cls)
+            if doorHooks[at .. ":"] then return end
+            doorHooks[at .. ":"] = true
+            local ok, err = pcall(RegisterHook, at .. ":" .. INTERACT, function(self)
+                if not (M.enabled and safety.guest()) then return end
+                local d = self:get()
+                for name, a in pairs(mine) do
+                    if live(a) and a:GetAddress() == d:GetAddress() then
+                        net.toHost("g.vis.door", name)
+                        log("PT|visual guest used door %s", name)
+                        return
+                    end
+                end
+            end)
+            log("PT|visual door hook %s %s", at, ok and "ok" or tostring(err))
+            return
+        end
+        cls = cls:GetSuperStruct()
+    end
+end
+net.on("g.vis.door", function(_, name)
+    if not M.enabled then return end
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
+        for _, d in ipairs(FindAllOf(c) or {}) do
+            if live(d) and d:GetFName():ToString() == name then
+                d.Highlight:InteractPressed(nil)
+                d.Highlight:InteractReleased(nil)
+                log("PT|visual guest used door %s: pressed on the host, state=%s", name, tostring(d.CurrentState))
+                return
+            end
+        end
+    end
+    log("PT|visual guest used door %s: not on the host", name)
+end)
+
 local function make(f)
     local asset, l, r, s = dict[f[3]], f[4], f[5], f[6]
     local x, y, z = nums(l)
@@ -376,12 +424,14 @@ local function make(f)
     else
         applyState(a, f[8] or "")
     end
+    local door = f[1] == "B" and asset:find("/BP_Door_", 1, true) ~= nil
+    if door then hookDoor(cls) end
     -- copies block pawns and the car but not the interaction/camera traces: a guest's interact, pickup and aim trace must not hit a copy
-    -- (playpath, lootsync2 failed with the copies blocking them)
+    -- (playpath, lootsync2 failed with the copies blocking them). Doors keep the interact trace: the guest's E on one goes to the host.
     pcall(function()
         for _, c in ipairs(a:K2_GetComponentsByClass(StaticFindObject("/Script/Engine.PrimitiveComponent"))) do
             local p = c:get()
-            p:SetCollisionResponseToChannel(0, 0) -- ECC_Visibility
+            if not door then p:SetCollisionResponseToChannel(0, 0) end -- ECC_Visibility
             p:SetCollisionResponseToChannel(1, 0) -- ECC_Camera
         end
     end)
