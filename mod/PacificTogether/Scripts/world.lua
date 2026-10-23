@@ -224,13 +224,23 @@ local function core(o)
 end
 local function moved(a, b) return math.abs(a.X - b.X) + math.abs(a.Y - b.Y) + math.abs(a.Z - b.Z) > 20 end
 local sent, beat = {}, 0
+-- host: the hazard list is refetched every 5 s (and on a map load), the 4 Hz position pass only checks the kept objects
+local hazards, hazardsAt = {}, -99
+RegisterLoadMapPreHook(function() hazardsAt = -99 end)
+local function eachHazard(fn)
+    if os.clock() - hazardsAt > 5 then
+        hazards, hazardsAt = {}, os.clock()
+        each("BP_Base_Hazard_C", function(o) hazards[#hazards + 1] = o end)
+    end
+    for _, o in ipairs(hazards) do if o:IsValid() then fn(o) end end
+end
 LoopInGameThreadWithDelay(250, function()
     if not M.enabled or not safety.active() or safety.guest() then return end
     beat = beat + 1
     if beat % 8 == 0 then sent = {} end -- everything again every 2 s (a late guest, a copy that drifted)
     try("pos", function()
         local L = {}
-        each("BP_Base_Hazard_C", function(o)
+        eachHazard(function(o)
             if WI:IsValid() and o:IsA(WI) then return end
             local n, l = o:GetFName():ToString(), o:K2_GetActorLocation()
             local c = core(o)

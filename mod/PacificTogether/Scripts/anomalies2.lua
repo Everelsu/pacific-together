@@ -82,6 +82,8 @@ end)
 
 local GRAB = "BP_Hazard_PhysicsGrabber_C"
 local HIT, RANGE, PULL_MAX, COOL = 10, 700, 3, 6 -- shortcut: the game's tuning tag value is not read; range stands in for the cone when its overlap is off
+local grabList, grabAt = {}, -99
+RegisterLoadMapPreHook(function() grabAt = -99 end)
 local grabbing = {} -- grabber name -> { since, last, cool }
 M.pulls = 0
 
@@ -104,9 +106,16 @@ LoopInGameThreadWithDelay(100, function()
     if not (M.enabled and safety.active() and not safety.guest()) then return end
     try("grab", function()
         local now = os.clock()
-        each(GRAB, function(g)
+        local gp = guestPawns()
+        if #gp == 0 then return end
+        -- the grabber list is refetched every 1 s (one just spawned shows up late), not 10 times a second
+        if now - grabAt > 1 then
+            grabList, grabAt = {}, now
+            each(GRAB, function(g) grabList[#grabList + 1] = g end)
+        end
+        for _, g in ipairs(grabList) do if g:IsValid() then
             local core = g.CoreFloatingMesh:K2_GetComponentLocation()
-            for _, t in ipairs(guestPawns()) do
+            for _, t in ipairs(gp) do
                 local key = g:GetFName():ToString()
                 local st = grabbing[key] or {}
                 if (st.cool or 0) > now then
@@ -124,7 +133,7 @@ LoopInGameThreadWithDelay(100, function()
                 else st.since = nil end
                 grabbing[key] = st
             end
-        end)
+        end end
     end)
 end)
 

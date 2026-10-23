@@ -177,3 +177,31 @@ Measure first: take a 900 s run with a guest, record per-site `sum_ms` and the c
 11. Suite once after the merges (NOTES "suite once at end"), then a 900 s `carsync` and `visual` and read the host's
     `PT|perf`/`PT|slow`: target is car.lua loop sums under a quarter of the table above and no slow line above 40 ms in
     an idle 10 minutes.
+
+## Results (lane pt3-perf, 2026-10-24 night)
+
+Scenario carsync (garage fixture, host drives with a guest), host log, callbacks per minute window; baseline folder
+20261024-002320-pt3-perf-carsync, after 20261024-012212-pt3-perf-carsync (all 36/36).
+
+| loop | before | after |
+|---|---|---|
+| car.lua hostTick (250 ms) | 709 ms / 180 calls = 3.9 ms | 404 ms / 420 calls = 1.0 ms |
+| car.lua swing watcher (50 ms) | 187 ms / 843 calls (top 8) | out of the top 8 (below 118 ms) |
+| carfeel hostCarTick (100 ms) | 426 ms / 442 = 0.96 ms | 457 ms / 1029 = 0.44 ms |
+| carfeel radioTick (200 ms) | 236 ms / 229 = 1.0 ms | 124 ms / 291 = 0.43 ms |
+| visual hostTick (250 ms) | 775 ms / 180 = 4.3 ms | 1578 ms / 420 = 3.8 ms (sweep unchanged, see below) |
+
+Done: item 1 (swing watcher: runs only while `swingUntil` is ahead, set by hooks AttemptOpen/AttemptShut/ObjectKicked/
+OnConstraintBroken_Event_0 and by a door-bit change; 2 s fallback pass; `car.swingWork` counter), item 2 (part lines at 1 Hz,
+dirty on UpdatedCarEquip; one shared doorParts cache; moveArc every 5 s), item 4 (`common.first`, ToD/Storm in SINGLE, used by
+car, carfeel, upgrades; per-car `ownedBy` cache), item 3 partly (paint on SetPaint/SetDecal/SetTintingEnabled or every 5 s),
+item 5 partly (grabber list refetched every 1 s, nothing when no guest pawn), item 7 (hazard list refetched every 5 s),
+item 9 (nametag 10 Hz while every tag is invisible). Not done: 6 (loot), 8 (progression: guest-side tests wait on 2 s pushes).
+
+Probes (PT|probe lines in the host log): `BP_CarManager_C:UpdatedCarEquip` FIRES on the listen host (carsync). `BP_TintableComponent_C`
+SetPaint and SetDecal FIRE on the host on a garage paint (visualgarage). The door hooks did not show a fire in carsync (the
+guest enters without a host door verb there), so the door part rests on the door-bit change plus the 2 s fallback until carenter
+or a hand play shows `PT|probe car hook AttemptOpen`.
+
+Failed attempts (kept out): a 10 s prop rescan in visual.lua broke `guest_door_follows_host` (needs state within 3 s: door state
+needs its own hook before the sweep can slow down); a 2500 uu distance gate in the grabber loop broke `guest_pulled_by_grabber`.

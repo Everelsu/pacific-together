@@ -109,12 +109,14 @@ local function scan()
     end
 end
 
+local allHidden = false
 local function update()
     local active = safety.active()
     if active and os.time() >= nextScan then nextScan = os.time() + 2; scan() end
     local pcm = active and pc and pc:IsValid() and pc.PlayerCameraManager
     local cam = pcm and pcm:IsValid() and pcm:GetCameraLocation()
     local seen = {}
+    allHidden = true
     for _, c in ipairs(cam and others or {}) do
         if c:IsValid() then
             local key = c:GetFullName()
@@ -135,6 +137,7 @@ local function update()
             tag.actor:K2_SetActorRotation({ Pitch = 0, Yaw = math.deg(math.atan(dy, dx)), Roll = 0 }, false)
             tag.text:SetTextRenderColor({ R = 255, G = 255, B = 255, A = math.floor(a * 255 + 0.5) })
             tag.actor:SetActorHiddenInGame(a <= 0)
+            if a > 0 then allHidden = false end
             if viaUi then
                 if not tag.idx then uiN = uiN + 1; tag.idx = uiN end
                 showUi(tag, tag.idx, label, a)
@@ -156,7 +159,11 @@ end
 -- a map change frees every object we hold (the tags die with their world): forget them before it happens
 RegisterLoadMapPreHook(function() tags, others, pc, nextScan, ui, uiN = {}, {}, nil, 0, nil, 0 end)
 
+-- while every tag is invisible (the other player is far) the update runs at 10 Hz instead of 20 Hz
+local beatN = 0
 LoopInGameThreadWithDelay(50, function()
+    beatN = beatN + 1
+    if allHidden and beatN % 2 == 1 then return end
     local ok, err = pcall(update)
     if not ok then log("PT|error nametag %s", tostring(err)) end
 end)

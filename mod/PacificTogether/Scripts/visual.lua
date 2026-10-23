@@ -528,18 +528,36 @@ net.on("g.vis.lv", function(_, data) wantLevels = data end)
 net.on("g.vis.paint", function(_, data) wantPaint = data end)
 
 local beat, lastLv, lastPaint = 0, nil, nil
+-- paint is read on a hook (garage paint: SetPaint, SetDecal, SetTintingEnabled on the tintable component) or every 5 s, not every
+-- 500 ms (the part walk was ~1 ms of every 5 ms host tick); PT|probe lines show whether the hooks fire on the host
+local paintDirty, paintHooked, paintProbe = true, false, 0
+local function hookPaint()
+    if paintHooked then return end
+    local ok = true
+    for _, fn in ipairs({ "SetPaint", "SetDecal", "SetTintingEnabled" }) do
+        local okh = pcall(RegisterHook, TINT .. ":" .. fn, function()
+            paintDirty = true
+            paintProbe = paintProbe + 1
+            if paintProbe <= 3 then log("PT|probe visual paint hook %s n=%d", fn, paintProbe) end
+        end)
+        ok = ok and okh
+    end
+    paintHooked = ok
+end
 local function hostTick()
     beat = beat + 1
     if not M.ready then return end
+    hookPaint()
     if beat % 8 == 1 then
         local s = table.concat(levelPackages(), "\n")
         if s ~= lastLv or beat % 40 == 1 then lastLv = s; net.toGuests("g.vis.lv", s) end
     end
-    if beat % 2 == 0 then
+    if paintDirty or beat % 20 == 0 then
+        paintDirty = false
         local p = paintLines()
         if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
-    if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end
+    if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end -- shortcut: a 10 s rescan broke "door follows the host within 3 s"
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
         if q then net.toGuests("g.vis.p", q) end
