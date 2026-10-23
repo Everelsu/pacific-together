@@ -60,6 +60,21 @@ return function(T)
             return guestHp >= 0 and guestHp < 99
         end })
         add({ check = "guest_sees_tesla_fx", timeout = 90, cond = function() poll(); return fx > 0 end })
+        -- other hazards (spike doc item 3): a Landmine next to the guest, far from the host, arms (its PlayerRange sees a player in range)
+        local mine
+        add({ run = function()
+            for _, o in ipairs(FindAllOf("BP_Hazard_Landmine_C") or {}) do if T.inWorld(o) and not mine then mine = o end end
+            assert(mine, "no landmine")
+            local l = mine:K2_GetActorLocation()
+            PTNative_MsgToGuest(gpc:GetAddress(), "t.tp", string.format("%.0f\t%.0f\t%.0f", l.X + 600, l.Y, l.Z + 150))
+            pcall(function() L.guestChar():K2_TeleportTo({ X = l.X + 600, Y = l.Y, Z = l.Z + 150 }, { Pitch = 0, Yaw = 0, Roll = 0 }) end)
+            T.log("PT|info guest to landmine %s", T.name(mine))
+        end })
+        add({ check = "landmine_arms_for_guest", timeout = 60, cond = function()
+            local ok, r = pcall(function() return mine.BP_HazardProperty_PlayerRange.PlayerInRange end)
+            T.log("PT|info landmine PlayerInRange=%s dist=%.0f", tostring(r), T.dist(mine, L.guestChar()))
+            return ok and r == true
+        end })
         -- grabber: put one in motion on the host, the guest's copy must follow without big jumps
         add({ run = function()
             local gs = {}
@@ -68,21 +83,21 @@ return function(T)
             end
             assert(#gs > 0, "no map grabber")
             local n = 0
-            T.log("PT|info moving %d grabbers, 150 uu every 100 ms", #gs)
+            T.log("PT|info moving %d grabbers, 700 uu every 500 ms", #gs)
             PTNative_MsgToGuest(gpc:GetAddress(), "t.grab", "1")
-            LoopInGameThreadWithDelay(100, function()
+            LoopInGameThreadWithDelay(500, function()
                 n = n + 1
-                if n > 50 then return true end
+                if n > 12 then return true end
                 for _, g in ipairs(gs) do
-                    pcall(function() g.o:K2_SetActorLocation({ X = g.l.X + n * 150, Y = g.l.Y, Z = g.l.Z }, false, {}, true) end)
+                    pcall(function() g.o:K2_SetActorLocation({ X = g.l.X + n * 700, Y = g.l.Y, Z = g.l.Z }, false, {}, true) end)
                 end
                 return false
             end)
         end })
         add({ check = "grabber_smooth_on_guest", timeout = 60, cond = function()
             poll()
-            T.log("PT|info grabber samples=%d max step=%.1f", grabSeen, jump)
-            return grabSeen >= 20 and jump <= 105 -- unsmoothed: one 150 uu step per update
+            T.log("PT|info grabber samples=%d frames moved=%.0f%%", grabSeen, jump)
+            return grabSeen >= 15 and jump >= 60 -- percent of frames in which it moved: smoothed 78, a copy that jumps per update 18 (runs 20261024-014213 / -014417-nosmooth)
         end })
         add({ run = function() PTNative_MsgToGuest(gpc:GetAddress(), "t.end", "1") end })
         add({ wait = 3 })
@@ -97,26 +112,37 @@ return function(T)
         end
     end)
     -- grabber track: the guest's copy of the first grabber the host moves; frame-to-frame step while it moves
-    local watch, last, maxStep, samples = nil, nil, 0, 0
+    -- a copy that only jumps when an update arrives moves in few frames of the motion window (the guest renders ~6 fps headless, the host moves
+    -- it every 500 ms); a smoothed one moves in almost every frame. frames = frames from the first to the last movement, moved = frames with movement.
+    local watch, last, flags = nil, nil, {}
     LoopInGameThreadWithDelay(16, function() pcall(function()
         if not watch then return end
         local g
         for _, o in ipairs(FindAllOf("BP_Hazard_PhysicsGrabber_C") or {}) do if T.inWorld(o) and not g then g = o end end
         if not g then return end
-        local l = g:K2_GetActorLocation()
+        local l, did = g:K2_GetActorLocation(), false
         if last then
             local d = math.sqrt((l.X - last.X) ^ 2 + (l.Y - last.Y) ^ 2 + (l.Z - last.Z) ^ 2)
-            if d > 0.5 and d < 1500 then samples = samples + 1; maxStep = math.max(maxStep, d) end
+            did = d > 0.5 and d < 1500
         end
         last = l
+        flags[#flags + 1] = did
     end) end)
+    local function ratio()
+        local i, j = nil, nil
+        for k, f in ipairs(flags) do if f then i = i or k; j = k end end
+        if not i or j - i < 10 then return 0, 0 end
+        local m = 0
+        for k = i, j do if flags[k] then m = m + 1 end end
+        return 100 * m / (j - i + 1), j - i + 1
+    end
     local home
     LoopInGameThreadWithDelay(1000, function() pcall(function()
         if T.netMode() ~= "client" then return end
         local me = T.myPawn()
         PTNative_MsgToHost(T.localPC():GetAddress(), "t.hp", string.format("%.0f", health()))
         PTNative_MsgToHost(T.localPC():GetAddress(), "t.fx", tostring(fx))
-        PTNative_MsgToHost(T.localPC():GetAddress(), "t.jump", string.format("%.1f\t%d", maxStep, samples))
+        PTNative_MsgToHost(T.localPC():GetAddress(), "t.jump", string.format("%.1f\t%d", ratio()))
         if watch then
             local n, hit, hits = 0, nil, {}
             for _, o in ipairs(FindAllOf("BP_Hazard_PhysicsGrabber_C") or {}) do

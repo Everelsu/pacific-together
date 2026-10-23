@@ -100,6 +100,29 @@ LoopInGameThreadWithDelay(500, function()
     end)
 end)
 
+-- The game's range check of Landmines, Bollards, Grabbers ... (BP_HazardProperty_PlayerRange) measures from the HOST's camera only, so they never armed
+-- for a guest alone in their area. The post-hook gives the check the nearest guest's flat distance when that is shorter.
+local RANGE = "/Game/Gameplay/Hazards/HazardProperties/CheckPlayerRange/BP_HazardProperty_PlayerRange.BP_HazardProperty_PlayerRange_C:DistanceToPlayer"
+local rangeHooked = false
+LoopInGameThreadWithDelay(2000, function()
+    if rangeHooked then return end
+    rangeHooked = pcall(RegisterHook, RANGE, function(self, out)
+        if not (M.enabled and M.fix and safety.active() and not safety.guest()) then return end
+        try("range", function()
+            local at, best = self:get():K2_GetComponentLocation(), out:get()
+            for _, pc in ipairs(net.guests()) do
+                local p = pc:IsValid() and pc.Pawn or nil
+                if p and p:IsValid() then
+                    local l = p:K2_GetActorLocation()
+                    local d = math.sqrt((l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2)
+                    if d < best then best = d end
+                end
+            end
+            if best < out:get() then out:set(best); M.ranged = (M.ranged or 0) + 1 end
+        end)
+    end)
+end)
+
 -- ---------------------------------------------------------------- Spark Tower effects show on the guest
 
 -- The guest's copy of a Tesla does not tick (world.lua), so its beams, flashes and sounds never ran there. A hook on the game's own calls

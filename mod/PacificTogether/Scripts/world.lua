@@ -289,7 +289,7 @@ LoopInGameThreadWithDelay(16, function()
             if not s then smooth[key] = { shown = cur, from = cur, to = cur, t0 = now, len = 0.25 } return end
             if dist(cur, s.shown) > 1 then -- someone moved it: a new update
                 if dist(cur, s.shown) > 1500 then s.shown, s.from, s.to, s.t0 = cur, cur, cur, now
-                else s.from, s.to, s.len, s.t0 = s.shown, cur, math.max(0.08, math.min(0.35, now - s.t0)), now end
+                else s.from, s.to, s.len, s.t0 = s.shown, cur, math.max(0.08, math.min(0.5, now - s.t0)), now end
             end
             local k = math.min(1, (now - s.t0) / s.len)
             s.shown = { X = s.from.X + (s.to.X - s.from.X) * k, Y = s.from.Y + (s.to.Y - s.from.Y) * k, Z = s.from.Z + (s.to.Z - s.from.Z) * k }
