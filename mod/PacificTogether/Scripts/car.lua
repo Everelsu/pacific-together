@@ -711,6 +711,7 @@ local function guestTick()
         unstickWanted = false
         local ok, err = pcall(unstick)
         if not ok then log("PT|error car unstick %s", tostring(err)) end
+        ov.post("Controls reset", "info", "unstick")
     end
     local car = theCar(false)
     if not car then return end
@@ -767,6 +768,7 @@ LoopInGameThreadWithDelay(50, function()
 end)
 
 M.exit = sendExit
+M.unstick = function() unstickWanted = true end -- guestui.lua: second key and console command
 -- for guestact.lua (the guest's car work and ARC)
 M.theCar, M.carManager, M.equipped, M.itemOf, M.slotName = theCar, carManager, equipped, itemOf, slotName
 M.manifestation, M.propComps, M.readPart = manifestation, propComps, readPart
