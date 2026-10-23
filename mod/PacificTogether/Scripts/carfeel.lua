@@ -267,7 +267,13 @@ LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
         if active() then hookAudio() else unhookAudio() end
-        if role == "client" then refreshGuest() elseif role == "listen" then hostCarTick() end
+        if role == "client" then
+            refreshGuest()
+            -- the posed car copy hits the ground and the game spawns its metal scrape sound actor; the host hears the real hits
+            if os.getenv("PT_MUTATE") ~= "noscrapedrop" then
+                for _, a in ipairs(FindAllOf("BP_CarScrapeFX_C") or {}) do if valid(a) then a:K2_DestroyActor() end end
+            end
+        elseif role == "listen" then hostCarTick() end
     end)
     if not ok then log("PT|error feel car tick %s", tostring(err)) end
 end)

@@ -328,14 +328,14 @@ net.on("g.story.quest", function(_, data)
     try("quest", applyQuest, data)
 end)
 
-local lastSayAt = {} -- a line the host replays within seconds is played once
+local lastSayAt = {} -- a line the host replays within 90 s is played once (playtest #4: the same line came every 6 s)
 net.on("g.story.say", function(_, data)
     if not M.enabled or not safety.guest() then return end
     try("say", function()
         local p, pr = data:match("^([^\t]+)\t(%d+)$")
         local d, seq = dialogue(), p and load(p)
         if not (d and seq) then return end
-        if d.CurrentlyPlayingSequence == seq or (lastSayAt[p] and os.clock() - lastSayAt[p] < 6) then return end
+        if d.CurrentlyPlayingSequence == seq or (lastSayAt[p] and os.clock() - lastSayAt[p] < 90) then return end
         lastSayAt[p] = os.clock()
         applying = true
         d:PlaySequence(seq, tonumber(pr), nil)

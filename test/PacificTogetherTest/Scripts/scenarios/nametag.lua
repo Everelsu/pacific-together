@@ -73,6 +73,19 @@ return function(T)
             place(2800), { wait = 3 }, tagCheck("host_tag_mid", mid),
             place(6000), { wait = 3 }, tagCheck("host_tag_far", far),
             place(300), { wait = 3 }, tagCheck("host_tag_back", near),
+            -- a Cyrillic name: TextRender cannot draw it (squares), so the tag text is empty and a UMG TextBlock shows the real name
+            { run = function() guest.PlayerState.PlayerNamePrivate = utf8.char(0x411, 0x43e, 0x433, 0x434, 0x430, 0x43d) end },
+            { wait = 2 },
+            { check = "host_cyrillic_name_in_umg", timeout = 6, cond = function()
+                local want = utf8.char(0x411, 0x43e, 0x433, 0x434, 0x430, 0x43d)
+                local s = L.tagState(T, L.tagsOn(T, guest)[1])
+                local shown
+                for _, b in ipairs(FindAllOf("TextBlock") or {}) do
+                    if b:IsValid() and b:GetFName():ToString():find("^PTNameTag") and b:GetVisibility() == 3 then shown = b:GetText():ToString() end
+                end
+                T.log("PT|info cyrillic tag text='%s' umg='%s'", s and s.text or "-", tostring(shown))
+                return s ~= nil and s.text == "" and shown ~= nil and shown:find(want, 1, true) == 1
+            end },
             -- the guest checks the host's tag while it stands near
             { wait = 20 },
         }) do steps[#steps + 1] = s end

@@ -15,6 +15,7 @@ return function(T)
     local FLASH = TOOLS .. "Flashlight/Potato/IA_Tool_Toggle_Flashlight.IA_Tool_Toggle_Flashlight"
     local PATCH = TOOLS .. "PatchKit/IA_Tool_Target_Consumable_PatchKit.IA_Tool_Target_Consumable_PatchKit"
     -- a car part is the two-handed kind (Archetype.Size 1; the fuel can is a one-hand tool)
+    local BREAKER = TOOLS .. "Breaker/IA_Tool_Target_Breaker.IA_Tool_Target_Breaker" -- the Impact Hammer: carries an engine Cylinder (VFX volume)
     local DOOR = "/Game/Gameplay/Inventory/Items/Car/Doors/Door_Titanium_Basic_01/IA_Attach_Body_Door_Titanium_Basic.IA_Attach_Body_Door_Titanium_Basic"
     local slow = (T.MUTATE == "nohands") and 0.15 or 1
     local function to(s) return math.max(6, math.floor(s * slow)) end
@@ -135,6 +136,25 @@ return function(T)
         end)
     end
 
+    -- every mirror part of the other's character: engine basic shapes (the hammer's VFX cylinder) and anything over 100 uu are wrong
+    local function mirrorsBad()
+        local o = otherC()
+        local bad = {}
+        for _, a in ipairs(o and FindAllOf("StaticMeshActor") or {}) do
+            local pa = alive(a) and a:GetAttachParentActor()
+            if pa and pa:IsValid() and pa:GetFullName() ~= o:GetFullName() then pa = pa:GetAttachParentActor() end -- extra parts hang on the first
+            if pa and pa:IsValid() and pa:GetFullName() == o:GetFullName() then
+                local c = a.StaticMeshComponent
+                local sm = c.StaticMesh
+                local r = (alive(sm) and sm:GetBounds().SphereRadius or 0) * c:K2_GetComponentScale().Z
+                local n = alive(sm) and sm:GetFullName() or "none"
+                log("PT|info mirror part %s r=%.0f", n, r)
+                if n:find("/Engine/", 1, true) or r > 100 then bad[#bad + 1] = n end
+            end
+        end
+        return #bad > 0
+    end
+
     local steps = {}
     local function add(s) steps[#steps + 1] = s end
     local function hostSetup()
@@ -196,6 +216,7 @@ return function(T)
             local h = handItem()
             h.Instance:GetOuterSlot():RemoveAllItems({})
         end, function() return mirror() == nil end)
+        phase(8, "hammer", function() hold(BREAKER) end, function() return mirror() ~= nil and not mirrorsBad() end)
         phase(7, "carry", function() hold(DOOR) end, function(mesh)
             local s, m = mirrorSocket(), mirrorMesh()
             log("PT|info %s carry socket=%s mirror=%s hand=%s", d.b, s, m, mesh)

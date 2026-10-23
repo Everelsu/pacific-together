@@ -148,10 +148,10 @@ end
 local function applyBroken(a)
     if os.getenv("PT_MUTATE") == "noplasma" or brokenOf(a) then return end
     pcall(function()
-        a.Broken = true
         a.SM_Plasma_Generator_Glass:SetStaticMesh(a.BrokenMesh)
         a.SpotLight:SetIntensity(0.0)
         a.Highlight:SetActive(false, false)
+        a.Broken = true -- last: brokenOf() stops retries, so only a finished swap may set it
     end)
     log("PT|loot plasma generator broken here too")
 end

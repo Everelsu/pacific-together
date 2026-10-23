@@ -261,6 +261,18 @@ return function(T)
         return false
     end })
 
+    -- the guest's posed car copy hits the ground and spawns the game's metal scrape sound actor (#2, 2026-10-23): the guest drops it
+    local scrape
+    add({ run = function()
+        local P = "/Game/Sound/Blueprints/BP_CarScrapeFX.BP_CarScrapeFX_C"
+        local c = StaticFindObject(P)
+        if not (c and c:IsValid()) then pcall(LoadAsset, P); c = StaticFindObject(P) end
+        local l = L.car():K2_GetActorLocation()
+        scrape = require("UEHelpers").GetWorld():SpawnActor(c, { X = l.X, Y = l.Y, Z = l.Z + 300 }, { Pitch = 0, Yaw = 0, Roll = 0 })
+        log("PT|info scrape fx spawned %s", tostring(scrape and scrape:IsValid()))
+    end })
+    add({ wait = 0.8 })
+    add({ check = "guest_scrape_fx_dropped", timeout = 0.2, cond = function() return scrape ~= nil and (not scrape:IsValid() or scrape:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) or scrape:IsActorBeingDestroyed()) end })
     add({ run = function() toHost("t.done") end })
     add({ wait = 3 })
     return steps
