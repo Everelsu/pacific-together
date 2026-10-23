@@ -31,13 +31,15 @@ end
 local SMC, LIGHT = StaticFindObject("/Script/Engine.StaticMeshComponent"), StaticFindObject("/Script/Engine.LightComponent")
 
 -- What the item shows in the hand: its visible static meshes (an item's CurrentItemMesh; a tool has a few: can body, handle, ...),
--- the biggest first. SM_bboxTube is a VFX volume some tools carry.
+-- the biggest first. SM_bboxTube is a VFX volume some tools carry; so is the Impact Hammer's /Engine/BasicShapes/Cylinder (100 uu
+-- tall, untextured: a giant green body on the guest, 2026-10-23), so engine meshes are skipped.
 local function heldParts(h)
     local list = {}
     for _, c in ipairs(h:K2_GetComponentsByClass(SMC)) do
         c = c:get()
         local sm = valid(c) and c:IsVisible() and c.StaticMesh
-        if valid(sm) and not sm:GetFullName():find("bboxTube", 1, true) then list[#list + 1] = { c = c, sm = sm, r = sm:GetBounds().SphereRadius } end
+        if valid(sm) and not sm:GetFullName():find("bboxTube", 1, true)
+            and not (sm:GetFullName():find("/Engine/", 1, true) and os.getenv("PT_MUTATE") ~= "engmesh") then list[#list + 1] = { c = c, sm = sm, r = sm:GetBounds().SphereRadius } end
     end
     table.sort(list, function(a, b) return a.r > b.r end)
     return list
