@@ -722,3 +722,50 @@ Derived / theirs (not checked by us)
 
 Unknowns
 - A real E press on a door copy (trace + highlight) is not seen yet: the scenario presses the copy's Highlight directly.
+
+## 2026-10-23 evening: first real Steam play (owner's PC = guest, real install, 0.0.6-dev-e56651f; logs local/playtest-20261023-steam/)
+
+Observations
+- Four sessions 18:52-19:30 local, all joined over Steam between two real accounts: each engine log has `Welcomed by server`
+  (garage once, zone Rural_Forest_Radio_Scylla_02 in all four; 15:57 and 16:29 UTC end with "Host closed the connection.").
+- Last session's UE4SS.log (the only one kept; UE4SS overwrites it per launch): the invite / Join Game callback arrived while the
+  game ran (`PT|steam event join_lobby`, callback 333 path), lobby entered, tunnel peer 10.77.0.1 -> host SteamID, warm-up echo
+  reliable and unreliable after 2.0 s, then the ordinary join and hello. So the Steam tunnel carries UE traffic between two
+  accounts: the main X6/PT2-steam unknown.
+- Host engine log (friend's PC, saved as host-PenDriverPro.log): one launch 18:52-19:32, garage `?listen` 15:52, zone 15:57:20,
+  garage again 16:30:01 (after both died), main menu 16:32. So the two "Host closed the connection" are the host's own travels,
+  not drops. No mod lines in it (ours go to UE4SS.log). 12k+ each of `Divide by zero detected: 425/0`, `325/0`, `0/0` on the
+  host only: source not looked up.
+- Guest sessions vs owner's account: 18:58 quit after X in the zone launched the car (#3); 18:59-19:17 ended by the hard
+  freeze after the arc anchor (#6/#16); 19:27 rejoin, long stall at the zone entry, car launched, both died (#17).
+
+Owner + friend reports from play (guest = owner, host = friend; numbering is the owner's list)
+1. Chained side doors in the garage (pried open): opened by the guest, the door swings, but an invisible wall blocks the guest.
+   Opened by the host, it works for both.
+2. Guest driving: scraping-metal sound sometimes, host never hears it (maybe while turning).
+3. Zone load: guest spawns in the driver's seat (game default), stuck. X: guest falls through the ground, then is put back
+   floating above the car with the camera stuck to it; once the X launched the car.
+4. Story lines repeat for the guest until the "mission updated" log appears.
+5. Transmuter (in place of an ARDA container, small building) shown to the host only.
+6. Guest frozen and snapped back while the host is in pause, loot container, trunk or crafting grid ("pause game while in
+   inventories" was on: likely the cause). Once a freeze never ended (restart): host in the car using the ARC anchor at the car's
+   ARC machine (behind the guest's seat); guest still heard car sounds as if seated.
+7. Host's crafted Impact Hammer, seen by the guest: huge, broken texture (screenshot from owner, green body lying on the road
+   next to the car), from the moment it was crafted.
+7b. Plasma generator broken by the host: its drops reach the guest, the generator stays whole on the guest.
+8. Radiation never hurts the guest.
+9. Wheel damage (broken, punctured) not shown on either client, but a scan reports it damaged. Owner: not vanilla behaviour.
+10. Guest scrapping sometimes leaves its sound playing.
+11. No "paused by host" label on the guest: pauses look like lag.
+12. Guest's legs stick out under the car (body copy seated).
+13. Cyrillic Steam name renders as squares on the floating nametag (fine in the UI hint): font lacks Cyrillic.
+14. Guest car entry sometimes slow.
+15. ARC anchor structures invisible to the guest; once the host picks one up it shows in their hands, dropped it shows on the floor.
+16. After the host inserted the ARC anchor, the car froze for the guest (sounds kept playing): same event as #6's hard freeze.
+17. After several rejoins, 40-60 s stuck at the zone entry crossing, unable to move; then the car was launched spinning into
+   the air, its impact killed both, both sent to the garage, guest launched again there.
+- Worked: car parts, driving, Grabber (per-frame jumpy on the guest), floor items, buildings, scrappables, crafting, inventories.
+- Host felt lower FPS / more sluggish than solo; no other complaints.
+
+Unknowns
+- The host's UE4SS.log (asked for; next launch overwrites it); the guest's UE4SS logs of the first three sessions are gone.
