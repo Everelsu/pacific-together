@@ -13,6 +13,7 @@ if os.getenv("PT_MUTATE") == "nooverlay" then
     function M.post() end
     function M.other() return "Player" end
     function M.settled() return false end
+    function M.hostPaused() end
     return M
 end
 
@@ -73,6 +74,7 @@ local function build()
         n.lines[i]:SetVisibility(1)
         add(n.lines[i])
     end
+    n.banner = text(tree, "PTBanner", 30, "warn"); n.banner:SetVisibility(1); add(n.banner) -- last child: "Paused by host"
     n.label:SetText(FText("Pacific Together " .. common.MOD_VERSION))
     -- nothing of it takes input or hit tests: the whole tree is HitTestInvisible
     box:SetVisibility(3); canvas:SetVisibility(3); w:SetVisibility(3)
@@ -94,6 +96,12 @@ end
 
 local function render()
     local now = os.clock()
+    local pv = (pausedAt and now - pausedAt < 3) and 3 or 1
+    if ui.cache.pv ~= pv then
+        ui.cache.pv = pv
+        ui.banner:SetVisibility(pv)
+        if pv == 3 then ui.banner:SetText(FText("Paused by host")) end
+    end
     for i = #feed, 1, -1 do if now - feed[i].t0 > LIFE then table.remove(feed, i) end end
     for i, t in ipairs(ui.lines) do
         local l = feed[math.max(1, #feed - LINES + 1) + i - 1] -- newest at the bottom, the last LINES shown
@@ -132,6 +140,10 @@ function M.post(fmt, kind, key, n)
     if not safety.active() then return end
     push(fmt, kind, key, n)
 end
+
+-- the host's world is paused (Esc menu): pause.lua tells us every second; the label lapses 3 s after the last word
+local pausedAt = nil
+function M.hostPaused(on) pausedAt = on and os.clock() or nil end
 
 -- the other player's name as this side knows it
 function M.other() return hostName or next(names) or "Player" end
