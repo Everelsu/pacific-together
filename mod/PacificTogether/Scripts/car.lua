@@ -181,6 +181,25 @@ local function moveArc(car)
     end
 end
 
+-- doors and the rear hatch (BP_CarPart_Door_Base on SLOT_*Door / Slot_Trunk): slot name -> part
+-- Opening only unlatches one; its mesh then swings on physics. The guest's copy stayed shut (no physics there), and the
+-- host's door-state sync closed the guest's own opening 1-2 s later (hand playtest 2026-10-23).
+local DOOR = "BP_CarPart_Door_Base_C"
+local function doorParts(car)
+    local r, list = {}, {}
+    pcall(function() car:GetAttachedActors(list, true) end)
+    for _, e in ipairs(list) do
+        local a = e:get()
+        if valid(a) and a:GetClass():GetFName():ToString() == DOOR then
+            local ok, slot = pcall(function() return a.RootComponent.AttachParent:GetFName():ToString() end)
+            if ok then r[slot] = a end
+        end
+    end
+    return r
+end
+local doorHold = 0 -- guest: until then its own door move (sent to the host) is not overridden
+local doorRest, doorSwung = {}, {} -- guest: part address -> the mesh's shut pose on its part; parts we posed open
+
 -- host -------------------------------------------------------------------------------------------------------------------
 
 local function sample(car, cm)
@@ -209,6 +228,18 @@ local function sample(car, cm)
             lines[#lines + 1] = string.format("P\t%s\t%s\t%s\t%s\t%s", name, archPath(it), num(h), num(f), num(b))
         end
     end)
+    -- an open door's mesh simulates physics, which detaches it (its "relative" transform is then the world's): its pose
+    -- goes in the car's own space
+    local ct = car:GetTransform()
+    for slot, d in pairs(doorParts(car)) do
+        pcall(function()
+            local m = d.MainMesh
+            if not m:IsSimulatingPhysics(FName("None")) then return end
+            local l = kml():InverseTransformLocation(ct, m:K2_GetComponentLocation())
+            local r = kml():InverseTransformRotation(ct, m:K2_GetComponentRotation())
+            lines[#lines + 1] = string.format("R\t%s\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f", slot, l.X, l.Y, l.Z, r.Pitch, r.Yaw, r.Roll)
+        end)
+    end
     lines[#lines + 1] = "E\t" .. n
     return table.concat(lines, "\n")
 end
@@ -443,12 +474,13 @@ local function applyState(data)
     local cm, cont = carManager(), equipped()
     if not cm or not cont then return end
     local car = theCar(false)
-    local head, parts, count, n = nil, {}, 0, nil
+    local head, parts, count, n, swing = nil, {}, 0, nil, {}
     for line in data:gmatch("[^\n]+") do
         local f = {}
         for x in (line .. "\t"):gmatch("([^\t]*)\t") do f[#f + 1] = x end
         if f[1] == "H" then head = f
         elseif f[1] == "P" then parts[f[2]] = { arch = f[3], h = tonumber(f[4]), f = tonumber(f[5]), b = tonumber(f[6]) }; count = count + 1
+        elseif f[1] == "R" then swing[f[2]] = { vec(tonumber(f[3]), tonumber(f[4]), tonumber(f[5])), { Pitch = tonumber(f[6]), Yaw = tonumber(f[7]), Roll = tonumber(f[8]) } }
         elseif f[1] == "E" then n = tonumber(f[2]) end
     end
     -- a truncated message must never look like "the host has no parts"
@@ -497,13 +529,50 @@ local function applyState(data)
         end)
     end
     if cm.CarLightsOn ~= lights then pcall(function() cm:SetCarLightsOn(lights) end) end
+    if now() < doorHold then return end
     for d = 0, 5 do
         local o = {}
         cm:GetDoorState(d, o)
         local want = (doors >> d) & 1 == 1
         if o.Open ~= want then pcall(function() cm:SetDoorState(d, want) end) end
     end
+    if not car then return end
+    local ct = car:GetTransform()
+    for slot, part in pairs(doorParts(car)) do
+        pcall(function()
+            local m = part.MainMesh
+            local key = part:GetAddress()
+            -- the shut pose: where the mesh sits on its part before anything swung it
+            if not doorRest[key] and not swing[slot] and not m:IsSimulatingPhysics(FName("None")) then
+                local l, r = m.RelativeLocation, m.RelativeRotation
+                doorRest[key] = { parent = m.AttachParent, loc = vec(l.X, l.Y, l.Z), rot = { Pitch = r.Pitch, Yaw = r.Yaw, Roll = r.Roll } }
+            end
+            local want = swing[slot]
+            if want then
+                if m:IsSimulatingPhysics(FName("None")) then m:SetSimulatePhysics(false) end
+                m:K2_SetWorldLocationAndRotation(kml():TransformLocation(ct, want[1]), kml():TransformRotation(ct, want[2]), false, {}, true)
+                doorSwung[key] = true
+            elseif doorSwung[key] and doorRest[key] then
+                local rest = doorRest[key]
+                if m:IsSimulatingPhysics(FName("None")) then m:SetSimulatePhysics(false) end
+                if valid(rest.parent) then m:K2_AttachToComponent(rest.parent, FName("None"), 0, 0, 0, false) end
+                m:K2_SetRelativeLocationAndRotation(rest.loc, rest.rot, false, {}, true)
+                doorSwung[key] = nil
+            end
+        end)
+    end
 end
+
+-- guest: its own open/close of the host's car door goes to the host, which runs the same AttemptOpen on its part;
+-- the result comes back with the car state
+net.on("g.car.door", function(_, slot)
+    if common.netMode() ~= "listen" then return end
+    local car = theCar(true)
+    local part = car and doorParts(car)[slot]
+    if not valid(part) then log("PT|car door intent: no door at %s", tostring(slot)); return end
+    pcall(function() part:AttemptOpen() end)
+    log("PT|car door intent %s applied", slot)
+end)
 
 net.on("g.car.s", function(_, data)
     if common.netMode() ~= "client" then return end
@@ -536,6 +605,17 @@ local function hookAll()
         if not okc then log("PT|error car door hook %s", tostring(e)) end
     end)
     if not ok then log("PT|error car hook EnterCar %s", tostring(err)); return end
+    local okd, errd = pcall(RegisterHook, "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:AttemptOpen", function(self)
+        pcall(function()
+            if common.netMode() ~= "client" then return end
+            local part, car = self:get(), theCar(false)
+            if not (valid(part) and car and same(part:GetAttachParentActor(), car)) then return end
+            local slot = part.RootComponent.AttachParent:GetFName():ToString()
+            doorHold = now() + 1.5
+            log("PT|car door intent %s sent=%s", slot, tostring(net.toHost("g.car.door", slot)))
+        end)
+    end)
+    if not okd then log("PT|error car hook AttemptOpen %s", tostring(errd)) end
     hooked = true
     -- leaving: key X while seated; the key only raises a flag (an ExecuteInGameThread per press crashed UE4SS when spammed, ping.lua)
     pcall(RegisterKeyBind, Key.X, function() exitWanted = true end)

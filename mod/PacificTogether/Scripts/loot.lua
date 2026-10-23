@@ -1,5 +1,6 @@
 -- M4 shared items (W1, W2, C6, G1, P2, P3). The host's world is the truth; the guest's own loot is replaced by copies of it.
---   L lootable containers, W world pickups, I the game's single containers (car trunk, garage storage).
+--   L lootable containers, W world pickups, I the game's single containers (car trunk, garage storage),
+--   R scrappable resources (PCs, TVs, lights, gas cylinders: BP_Spawn_ResourceBase_C; the zone's spawn pass makes them on the host only).
 -- Host: finds them, gives each an id, tells the guest (A add, S contents, D gone). Guest: spawns or claims a local copy
 -- per id and removes its own random loot; its own changes go back as intents (S contents, T "I picked this up") and the
 -- host applies them. The guest's backpack stays its own: a pickup lands there through the game's own code.
@@ -192,7 +193,7 @@ local function line(e)
     local l, r = a:K2_GetActorLocation(), a:K2_GetActorRotation()
     local what, state
     if e.kind == "L" then what, state = ids.path2(a:GetClass()), stateOf(e)
-    elseif e.kind == "B" then what, state = ids.path2(a:GetClass()), "-"
+    elseif e.kind == "B" or e.kind == "R" then what, state = ids.path2(a:GetClass()), "-"
     elseif e.kind == "P" then what, state = ids.path2(a:GetClass()), partState(a)
     else what, state = ids.path(a.Instance.Archetype), "-;" end
     return string.format("A|%s|%s|%.0f|%.0f|%.0f|%.0f|%s", e.id, what, l.X, l.Y, l.Z, r.Yaw, state)
@@ -252,6 +253,16 @@ local function scanHost()
             local e = register("P" .. nextId, "P", a)
             nextId, byName[k] = nextId + 1, e.id
             e.last = partKey(a)
+            say(line(e))
+        end
+    end
+    -- scrappable resources: presence only (scrapping one destroys it, IP_Health_DestroyOnDead); its drops are world items.
+    -- shortcut: the guest's copy rolls its own mesh variant (BiomeSwapMesh) and starts at full health
+    for _, a in ipairs(FindAllOf("BP_Spawn_ResourceBase_C") or {}) do
+        local k = a:GetAddress()
+        if not byName[k] and room() and alive(a) then
+            local e = register("R" .. nextId, "R", a)
+            nextId, byName[k] = nextId + 1, e.id
             say(line(e))
         end
     end
@@ -383,6 +394,22 @@ local function spawnItem(arch, x, y, z, yaw)
     return alive(w) and w or nil
 end
 
+-- guest: a wreck part copy goes on its wreck body copy (the host's parts are attached to theirs). Standalone, a trunk lid
+-- could not be opened (hand playtest 2026-10-23). The body is the nearest body copy within 6 m.
+local function attachToBody(e)
+    if e.attached or not alive(e.actor) then return end
+    local l, best, bd = e.actor:K2_GetActorLocation(), nil, 600 ^ 2
+    for _, b in pairs(ents) do
+        if b.kind == "B" and alive(b.actor) then
+            local p = b.actor:K2_GetActorLocation()
+            local d = (p.X - l.X) ^ 2 + (p.Y - l.Y) ^ 2 + (p.Z - l.Z) ^ 2
+            if d < bd then best, bd = b.actor, d end
+        end
+    end
+    if not best then return end
+    e.attached = pcall(function() e.actor:K2_AttachToActor(best, FName("None"), 1, 1, 1, false) end)
+end
+
 local function onAdd(id, what, x, y, z, yaw, state)
     local e = ents[id]
     if e then return end
@@ -394,13 +421,16 @@ local function onAdd(id, what, x, y, z, yaw, state)
     -- wrecks are rolled per side, so a guest's own body or part is never the host's: always a fresh copy. Claiming them
     -- (the full list now comes after the guest's own wrecks spawned) took parts attached to an own body, and purging that
     -- body took the claimed parts with it (lootsync2, guestparts 2026-10-23)
+    elseif kind == "R" then
+        a = claim("BP_Spawn_ResourceBase_C", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
+            or spawnLootable(what, x, y, z, yaw)
     elseif kind == "B" then
         a = spawnLootable(what, x, y, z, yaw)
         made.spawned = made.spawned + 1
     elseif kind == "P" then
         a = spawnPart(what, x, y, z, yaw, state)
         made.spawned = made.spawned + 1
-        if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); return end
+        if a then local e = register(id, kind, a); applyState(e, state); e.last = partKey(a); attachToBody(e); return end
     else
         a = claim("BP_WorldItem_C", x, y, z, function(o) return alive(o.Instance) and ids.path(o.Instance.Archetype) == what end)
             or spawnItem(what, x, y, z, yaw)
@@ -419,7 +449,7 @@ local function purge()
     for _, a in ipairs(FindAllOf("BP_WorldItem_C") or {}) do
         if alive(a) and not claimed[a:GetFullName()] and not a:GetAttachParentActor():IsValid() then a:K2_DestroyActor(); n = n + 1 end
     end
-    for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
+    for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate", "BP_Spawn_ResourceBase_C" }) do
         for _, a in ipairs(FindAllOf(c) or {}) do
             if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor(); n = n + 1 end
         end
@@ -435,11 +465,12 @@ local function scanGuest()
             local ok, slot = pcall(function() return e.actor.Instance:GetOuterSlot() end)
             if ok and slot and slot:IsValid() then say("T|" .. id) end
             ents[id] = nil
-        elseif e.kind == "P" and not alive(e.actor) then
+        elseif (e.kind == "P" or e.kind == "R") and not alive(e.actor) then
             -- scrapped or taken here: the host removes its part
             say("T|" .. id)
             ents[id] = nil
         elseif e.pending then applyState(e, e.pending) end
+        if e.kind == "P" and not e.attached and tickN % 4 == 0 then attachToBody(e) end
     end
     -- ask for the full list until one has come through to its end (F): a host that was not ready yet sent nothing. Not while
     -- lines still come in or wait in the inbox (a second list would flood the channel)
@@ -457,7 +488,7 @@ local function scanGuest()
         for _, a in ipairs(FindAllOf("BP_Lootable_Base_C") or {}) do
             if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
         end
-        for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate" }) do
+        for _, c in ipairs({ "LootableTemplatePart", "LootableTemplate", "BP_Spawn_ResourceBase_C" }) do
             for _, a in ipairs(FindAllOf(c) or {}) do
                 if alive(a) and not claimed[a:GetFullName()] then a:K2_DestroyActor() end
             end

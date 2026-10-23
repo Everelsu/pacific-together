@@ -4,6 +4,8 @@
 --            its AC_PlayerHealthReceiverHelper adjusts the HOST's PlayerHealth: the host was hurt for the guest's hit. The host
 --            takes the damage off that message (Damage = 0) and sends it as "g.anom.msg"; the guest dispatches the same message
 --            class to its own pawn, so its own health, magic HP, feedback and death run as for any hit (health.lua handles death).
+--            The same the other way: the guest hitting the host's body (a melee swing) hurt the GUEST (hand playtest 2026-10-23);
+--            the guest puts its own health back and the host takes the hit on its own character.
 --   tourists a Tourist creeps only when camera 0 (the host's) does not see it; a post-hook on CreepCheck also asks the guest's
 --            camera as the host sees it (ServerUpdateCamera), docs/research/tourists.md.
 -- Everything is inert outside a session (Q7).
@@ -60,15 +62,24 @@ local function hostHealth()
 end
 
 LoopInGameThreadWithDelay(16, function()
-    if not (M.enabled and safety.active() and not safety.guest()) then lastHp = nil return end
+    if not (M.enabled and safety.active()) then lastHp = nil return end
     local rm = hostHealth()
     lastHp = rm and rm.PlayerHealth.Current or nil
 end)
 
+-- guest: is this receiver on a character that is not ours (the host's body)?
+local function isHostBody(receiver)
+    local owner, pc = receiver:GetOwner(), UEHelpers.GetPlayerController()
+    return valid(owner) and valid(pc) and valid(pc.Pawn) and owner:GetAddress() ~= pc.Pawn:GetAddress()
+        and owner:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter"))
+end
+
 local function pre(self, payload)
-    if not (M.enabled and safety.active() and not safety.guest()) then return end
+    if not (M.enabled and safety.active()) then return end
+    local guest = safety.guest()
     local rec, p = self:get(), payload:get()
-    if not (valid(rec) and valid(p) and isGuestPawn(rec)) then return end
+    if not (valid(rec) and valid(p)) then return end
+    if guest then if not isHostBody(rec) then return end elseif not isGuestPawn(rec) then return end
     local dmg = p.Damage
     local key, now = p:GetAddress(), os.clock()
     if key == lastPayload and now - lastAt < 0.5 then return end
@@ -86,6 +97,11 @@ local function pre(self, payload)
     local cls = p:GetClass():GetFullName():gsub("^%S+ ", "")
     local msg = string.format("%s\t%.3f\t%d\t%d\t%.3f\t%d", cls, dmg, p.Spillover and 1 or 0, p.IsDamageOverTime and 1 or 0, p.FeedbackStrength, p.DistributeMode)
     M.forwarded = M.forwarded + 1
+    if guest then
+        net.toHost("g.anom.msg", msg)
+        log("PT|anom damage for host %s", msg)
+        return
+    end
     net.toGuest(rec:GetOwner().Controller, "g.anom.msg", msg)
     log("PT|anom damage for guest %s", msg)
     ov.post(ov.other() .. " was hit by an anomaly", "warn", "anom")
@@ -96,20 +112,23 @@ for _, fn in ipairs(BINDS) do
 end
 
 net.on("g.anom.msg", function(_, data)
-    if not (M.enabled and safety.guest()) then return end
+    if not (M.enabled and safety.active()) then return end
+    local guest = safety.guest()
     try("apply", function()
         local cls, dmg, sp, dot, fb, dm = data:match("^([^\t]+)\t([^\t]+)\t(%d)\t(%d)\t([^\t]+)\t(%d)$")
         if not cls then return end
         local c = StaticFindObject(cls)
         if not valid(c) then pcall(LoadAsset, cls); c = StaticFindObject(cls) end
         local pc, ms = UEHelpers.GetPlayerController(), FindFirstOf("MessageSystem")
-        if not (valid(c) and valid(pc) and valid(pc.Pawn) and valid(ms)) then return end
+        local cm = FindFirstOf("BP_MainCharacterManager_C")
+        local target = guest and (valid(pc) and pc.Pawn) or (valid(cm) and cm.CharacterActor)
+        if not (valid(c) and valid(target) and valid(ms)) then return end
         local m = StaticConstructObject(c, ms)
         m.Damage, m.Spillover, m.IsDamageOverTime, m.FeedbackStrength, m.DistributeMode = tonumber(dmg), sp == "1", dot == "1", tonumber(fb), tonumber(dm)
-        ms:DispatchMessage(m, pc.Pawn)
+        ms:DispatchMessage(m, target)
         M.applied = M.applied + 1
         log("PT|anom damage applied %s", data)
-        ov.post("Hit by an anomaly", "warn", "anom")
+        ov.post(guest and "Hit by an anomaly" or (ov.other() .. " hit you"), "warn", "anom")
     end)
 end)
 

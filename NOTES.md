@@ -639,3 +639,20 @@ Observations and derived facts, later the same night
 - Code review round 5: keeping "not dressing" verdicts by address without reading the class (cheaper sweep) made
   `visual` fail guest_removed_mesh_gone in 2 of 3 runs (`20261023-022539`, `022831`); reverted, then 3 of 3 passed
   (`2033*`). Guess: an address freed by the removed mesh came back as debris and kept a stale verdict.
+
+## 2026-10-23 morning: hand playtest with the frame-time build (owner, two clients on one PC, logs local/playtest-20261023-morning/)
+Observations
+- Lag gone by feel (owner). Whole session: host 25 frames over 30 ms, guest 11 (PT|slow).
+- Guest stuck after a car exit, reproduced: the guest's BP_MainCharacterManager.CharacterActor pointed at the HOST's
+  character (simulated proxy, no controller). Setting it back to the guest's pawn freed walking and camera at once. The same
+  flip made session.refreshBodies treat the host's body as ours: it got the invisible first-person material
+  (M_PlayerCharacter_Invist) back. A guard (session.lua) put it back once in play (`PT|session guest manager was on ...`).
+- Scrappable props (BP_Spawn_ResourceBase_C: PCs, TVs, lights, plasma generators) existed on the host only (56 vs 6); now
+  loot kind R. Owner: visible and scrappable as guest, drops right.
+- Car doors are physics once unlatched; the guest's copy never swung, and the door-state sync closed the guest's own opening.
+  A simulating mesh is detached: its RelativeLocation/Rotation are world values (host hatch loc 70142,-35850,8290).
+- Wreck trunk lids on the guest were standalone copies (host: attached to BP_Template_StrippedCar_01_C); attaching them to
+  the nearest body copy made the trunk open (owner, by hand).
+Derived / not yet verified by hand or a scenario
+- Door pose now sent in car space and rebuilt on the guest; shut doors go back on their mount (owner saw the first, world-space
+  version misplaced; this version not seen yet). Guest hitting the host: guest's health put back, host takes the hit (not seen).

@@ -93,7 +93,10 @@ local function visibleMaterial()
 end
 local function setBody(c, visible)
     local mesh, key = c.Mesh, c:GetFullName()
-    if not valid(mesh) or (visible and changed[key]) or (not visible and not changed[key]) then return end
+    if not valid(mesh) or (not visible and not changed[key]) then return end
+    -- done already, unless the game put its invisible material back since
+    if visible and changed[key] and same(mesh:GetMaterial(0), visibleMaterial()) then return end
+    if visible and changed[key] then changed[key] = nil end
     if visible then
         local orig = {}
         for i = 0, mesh:GetNumMaterials() - 1 do
@@ -122,8 +125,9 @@ local function refreshBodies()
     local w = world()
     local pc, cm = localPC(w), charManager()
     if not pc then return end
-    -- ours: the pawn, or the manager's character while we sit in the car
-    local own = cm and cm.CharacterActor
+    -- ours: the pawn when it is a character, else (the host driving: the car is the pawn) the manager's character.
+    -- Not the manager's first: on a guest it could point at the host's body, which then got our invisible material back.
+    local own = (valid(pc.Pawn) and pc.Pawn:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter"))) and pc.Pawn or (cm and cm.CharacterActor)
     for _, c in ipairs(FindAllOf("BaseCharacter") or {}) do
         if inWorld(c, w) then
             local remote = not same(c, pc.Pawn) and not same(c, own)
@@ -382,6 +386,29 @@ ExecuteInGameThreadWithDelay(1000, function()
         log("PT|session rejoin without menu=%s", tostring(PTNative_SetRejoin and PTNative_SetRejoin(JOIN)))
         join()
     end
+end)
+
+-- Guest: the game's single-player managers can end up on the host's character (seen 2026-10-23 after car enter/exit:
+-- BP_MainCharacterManager.CharacterActor = the host's body). The guest's input then drove the host's body (stuck after a
+-- car exit, camera and walking dead) and the host's body got the invisible first-person material. Put it back.
+local lastFix, beat = 0, 0
+LoopInGameThreadWithDelay(250, function()
+    local mode = common.netMode()
+    beat = beat + 1
+    -- both sides: the other player's body is looked at again every 2 s (the game can put its invisible material back)
+    if (mode == "client" or mode == "listen") and beat % 8 == 0 then pcall(refreshBodies) end
+    if mode ~= "client" then return end
+    local ok, err = pcall(function()
+        local pc, cm = localPC(world()), charManager()
+        local me = pc and pc.Pawn
+        if not (cm and valid(me) and me:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter"))) or same(cm.CharacterActor, me) then return end
+        local was = fullName(cm.CharacterActor)
+        cm.CharacterActor = me
+        refreshBodies()
+        if os.clock() - lastFix > 5 then log("PT|session guest manager was on %s, back on our own character", was) end
+        lastFix = os.clock()
+    end)
+    if not ok then log("PT|error session manager guard %s", tostring(err)) end
 end)
 
 -- for overlay.lua, steam.lua, backpack.lua
