@@ -688,4 +688,7 @@ Observations
 Unknowns / open
 - One dormant grabber has different names on host and guest (97A5... vs ..._C_2147477136), so it is never position-synced.
 - Grabber position on the guest trails the host by ~200 uu (250 ms updates, no interpolation).
-- None of today's afternoon changes has run in a scenario.
+- Scenarios on 061d114 (two pairs in parallel): carenter 21/21, carexit 29/29, anomalies 19/19, session 40/40, playpath
+  39/39, guestact 32/32, worldsync 27/27, anomalies2 27/27; carsync 35/36 in parallel (guest_car_follows t=1), 36/36 alone;
+  mapmark 16/19: guest crash after its death rejoin, same last calls as 20261022-084655 and -162801 (known rejoin crash in
+  mapmark's icon loop, before today's recapture; the recapture ran 30 s earlier). Zip dist/PacificTogether-0.0.6-dev-061d114.zip.
