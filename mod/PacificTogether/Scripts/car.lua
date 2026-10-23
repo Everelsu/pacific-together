@@ -263,7 +263,9 @@ local function hostTick()
 end
 
 -- C1: seat the guest at the mirrored seat and attach it (movement and collision off on both sides)
+local seated = {} -- host: guest character full name -> true while our seat() holds it (the game attaches a new character as DRIVER, playtest 2026-10-23)
 local function seat(char, car)
+    seated[char:GetFullName()] = true
     local lp = PASSENGER
     pcall(function()
         local t = {}
@@ -306,6 +308,7 @@ net.on("g.car.exit", function(pc)
     if common.netMode() ~= "listen" then return end
     local char, car = guestChar(pc), theCar(true)
     if not char or not car or not same(char:GetAttachParentActor(), car) then return end
+    seated[char:GetFullName()] = nil
     char:K2_DetachFromActor(1, 1, 1)
     -- beside the driver's door, a little up so the capsule clears the sill
     local p = car:K2_GetActorLocation()
@@ -328,6 +331,23 @@ net.on("g.car.exit", function(pc)
 end)
 
 net.on("g.car.hello", function() lastSent = nil end)
+
+-- A character spawned while the host drives is attached by the game to the DRIVER's seat (stuck there, X dropped it through the
+-- ground, once launched the car; Steam playtest 2026-10-23 #3, #17). Not seated by us: move it to the passenger seat.
+LoopInGameThreadWithDelay(250, function()
+    if common.netMode() ~= "listen" or os.getenv("PT_MUTATE") == "nozonefix" then return end
+    pcall(function()
+        local car = theCar(true)
+        if not car then return end
+        for _, pc in ipairs(net.guests()) do
+            local char = guestChar(pc)
+            if char and same(char:GetAttachParentActor(), car) and not seated[char:GetFullName()] then
+                log("PT|car guest attached by the game, moved to the passenger seat")
+                seat(char, car)
+            end
+        end
+    end)
+end)
 
 -- guest ------------------------------------------------------------------------------------------------------------------
 
