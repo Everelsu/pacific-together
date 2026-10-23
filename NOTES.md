@@ -767,5 +767,13 @@ Owner + friend reports from play (guest = owner, host = friend; numbering is the
 - Worked: car parts, driving, Grabber (per-frame jumpy on the guest), floor items, buildings, scrappables, crafting, inventories.
 - Host felt lower FPS / more sluggish than solo; no other complaints.
 
+- Host UE4SS.log (friend sent it, saved as host-UE4SS.log, 18:52-19:32): no PT|error, no Lua traceback. Hitches: 257
+  `PT|slow` lines (>30 ms in one callback), nearly all car.lua:740 (host car tick, 250 ms loop) and car.lua:753 (door swing
+  loop, 50 ms), plus visual.lua:552, loot.lua:721, progression.lua:118. Last perf window: car.lua:740 total 1098 ms
+  (max 33, n=222), carfeel.lua:265 851 ms, visual.lua:552 516 ms, car.lua:753 474 ms; FindAllOf BP_CarManager_C 403 ms
+  over n=1376 and PlayerController 347 ms. Fits the friend's "more sluggish than solo" (derived, not measured in FPS).
+- Host log at the ARC freeze (19:14-19:18): only slow lines, nothing from car/session until the guest's rejoin at 19:18:15
+  (seated 19:18:46). So the host saw nothing wrong; the freeze was on the guest's side.
+
 Unknowns
-- The host's UE4SS.log (asked for; next launch overwrites it); the guest's UE4SS logs of the first three sessions are gone.
+- The guest's UE4SS logs of the first three sessions are gone (the freeze after the ARC anchor was in the second).
