@@ -82,6 +82,7 @@ local function build()
     return n
 end
 
+local pausedAt = nil -- when the host last said it is paused (see M.hostPaused)
 local function set(t, key, value) -- only touch the widget when something changed
     if ui.cache[key] ~= value then ui.cache[key] = value; t:SetText(FText(value)) end
 end
@@ -142,7 +143,6 @@ function M.post(fmt, kind, key, n)
 end
 
 -- the host's world is paused (Esc menu): pause.lua tells us every second; the label lapses 3 s after the last word
-local pausedAt = nil
 function M.hostPaused(on) pausedAt = on and os.clock() or nil end
 
 -- the other player's name as this side knows it
