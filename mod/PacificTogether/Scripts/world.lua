@@ -31,6 +31,10 @@ local REPLICATED = { "BP_Base_Hazard_C", "BP_ZoneStorm_Base_C", "BP_LevelTransit
 local OV = { "Priority_2_E0B18C1F4F7065861D754CBC1717C0F4", "RainAmount_6_1DF01C624F8A4DABBCF2D9B45FEE5251", "FogAmount_7_DF39641648DD1C067F04379E79B4AC5F",
     "WindAmount_11_AA5396694831838AD8399192FA714B4C", "DarknessAmount_12_C1E6970E406443EC371A029B6E403FA3", "ZoneStormAmount_29_0E19DE884D969BB97E764EBE017A5607",
     "AcidAmount_31_1713ABA54AE616BBBC74EEB59EFF6CF2", "Identifier_26_37794E45404F7D45933471B6A50F260C", "OverrideSpeedMult_34_B5D9F9C34E787BDD5826CA97FDFF7EFA" }
+local PROP = "BP_Resource_Narrative_Q01_RadioBitsGrabbable_C" -- story.lua replicates it
+-- names of the host's portals and story props: the guest's level-placed copy of one is what the host's channel binds to
+-- (destroyed, the bunch fails: "SerializeNewActor failed to find/spawn actor")
+local keep = {}
 local ID = 8
 local INSTAB = { TagName = FName("WB.WorldState.Instability.Current") }
 
@@ -87,6 +91,9 @@ local function snapshot()
         add("storm", table.concat({ sm.CurrentStormState, tostring(sm.RedWallActive), f(sm.TimeBeforeInstabilityStarts), f(sm.FinalInstabilityTollerance), f(sm.StormAudioVisualIntensity) }, "|"))
         add("gate", short(sm.EvolvedGatewayExit))
     end
+    local names = {}
+    for _, c in ipairs({ "BP_LevelTransition_ExitPortal_C", PROP }) do each(c, function(o) names[#names + 1] = short(o) end) end
+    add("keep", table.concat(names, ","))
     local st = firstLive("BP_ZoneStorm_Base_C")
     if st then add("wall", table.concat({ f(st.Vol_Rad_Main), f(st.Vol_Rad_Weak), tostring(st.Collapsed) }, "|")) end
     return table.concat(L, "\n")
@@ -182,9 +189,12 @@ end
 
 -- anything this process simulated on its own: after the host's state has been flowing for a few seconds, only replicated copies (Role 1) stay
 local function cleanGuest()
+    -- the test mutation: the old behaviour, own story pickups destroyed at once
+    if os.getenv("PT_MUTATE") == "noportals" then each(PROP, function(o) if o.Role ~= 1 then o:K2_DestroyActor() end end) end
     if os.clock() - lastState > 5 or os.clock() - (M.since or os.clock()) < 5 then return end
-    for _, class in ipairs(REPLICATED) do
+    for _, class in ipairs({ "BP_Base_Hazard_C", "BP_ZoneStorm_Base_C", "BP_LevelTransition_ExitPortal_C", PROP }) do
         each(class, function(o)
+            if (class == PROP or class == "BP_LevelTransition_ExitPortal_C") and keep[short(o)] then return end
             if o.Role == 1 then
                 -- the host's copy decides where it is: the guest's own motion code stays off (position updates: g.world.pos)
                 if class == "BP_Base_Hazard_C" and not (WI:IsValid() and o:IsA(WI)) then o:SetActorTickEnabled(false) end
@@ -203,6 +213,7 @@ net.on("g.world.state", function(_, data)
     M.since = M.since or os.clock()
     lastState = os.clock()
     local s = parse(data)
+    if s.keep and os.getenv("PT_MUTATE") ~= "noportals" then keep = {} for n in s.keep:gmatch("[^,]+") do keep[n] = true end end
     try("time", applyTime, s)
     try("storm", applyStorm, s)
 end)
