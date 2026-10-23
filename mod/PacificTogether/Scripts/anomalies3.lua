@@ -10,7 +10,7 @@ local safety = require("safety")
 local ov = require("overlay")
 local log = common.log
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", debug = os.getenv("PT_ANOM_DEBUG") ~= nil, pushed = 0, applied = 0 } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noanom3", fix = os.getenv("PT_MUTATE") ~= "noanomtesla", debug = os.getenv("PT_ANOM_DEBUG") ~= nil, pushed = 0, applied = 0 } -- the test mutation switches the module off
 local function try(what, fn, ...)
     local ok, err = pcall(fn, ...)
     if not ok then log("PT|error anomalies3 %s %s", what, tostring(err)) end
@@ -58,6 +58,102 @@ LoopInGameThreadWithDelay(1000, function()
                 log("PT|anom3 replicating %s", o:GetFName():ToString())
             end)
         end
+    end)
+end)
+
+-- ---------------------------------------------------------------- hazards near a guest wake up (Spark Tower, Leech tree ...)
+
+-- The game's SpatialTickController switches hazards off by their distance to the HOST's player: a Tesla next to a guest far from the host
+-- sat dormant (no target, no buildup; scenario anomtesla). Every 0.5 s the host turns the tick of managed hazards within their own
+-- MaxTickDistance of a guest back on.
+M.woken = 0
+local awake = {} -- ManagedTickComponent address -> component taken out of the controller's hands
+LoopInGameThreadWithDelay(500, function()
+    if not (M.enabled and M.fix and safety.active() and not safety.guest()) then return end
+    try("wake", function()
+        local pawns = {}
+        for _, pc in ipairs(net.guests()) do
+            local p = pc:IsValid() and pc.Pawn or nil
+            if p and p:IsValid() then pawns[#pawns + 1] = p:K2_GetActorLocation() end
+        end
+        local ctl = FindFirstOf("SpatialTickController")
+        if not (ctl and ctl:IsValid()) then return end
+        each("ManagedTickComponent", function(c)
+            local o = c:GetOwner()
+            if not alive(o) then return end
+            local l, r2, near = o:K2_GetActorLocation(), c:GetSquaredMaxTickDistance(), false
+            for _, g in ipairs(pawns) do
+                if (l.X - g.X) ^ 2 + (l.Y - g.Y) ^ 2 + (l.Z - g.Z) ^ 2 < r2 then near = true break end
+            end
+            local key = c:GetAddress()
+            if near and not awake[key] and not o:IsActorTickEnabled() then
+                ctl:RemoveManagedTick(c) -- else its next Tick switches the owner off again (host far away)
+                c:SetOwnerTickEnabled(true)
+                awake[key] = c
+                M.woken = M.woken + 1
+                log("PT|anom3 woke %s for the guest", o:GetFName():ToString())
+            elseif awake[key] and not near then
+                awake[key] = nil
+                ctl:AddManagedTick(c)
+            end
+        end)
+    end)
+end)
+
+-- ---------------------------------------------------------------- Spark Tower effects show on the guest
+
+-- The guest's copy of a Tesla does not tick (world.lua), so its beams, flashes and sounds never ran there. A hook on the game's own calls
+-- (Discharge, CreateTargetingBeam) never fired (Blueprint-internal calls), so the host watches each running Tesla every 100 ms and sends the two
+-- moments that show: the winding-up beam and the discharge (Cooldown turning on); the guest runs the game's effect functions on its copy.
+local function v3(v) return string.format("%.0f,%.0f,%.0f", v.X, v.Y, v.Z) end
+local function unv3(s) local x, y, z = s:match("^(%-?[%d%.]+),(%-?[%d%.]+),(%-?[%d%.]+)$") return x and { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) } end
+local teslaSeen = {} -- name -> { cooldown, winding }
+LoopInGameThreadWithDelay(100, function()
+    if not (M.enabled and M.fix and safety.active() and not safety.guest()) then return end
+    try("fx", function()
+        if #net.guests() == 0 then return end
+        each("BP_Hazard_Tesla_C", function(t)
+            if not t:IsActorTickEnabled() then return end
+            local n = t:GetFName():ToString()
+            local st = teslaSeen[n] or { cooldown = false, winding = false }
+            teslaSeen[n] = st
+            local cd, wind, target = t.Cooldown, t.DataBlock_WindingUp and t.ShouldActuallyFire, t.TargetLocation
+            local at = t:K2_GetActorLocation()
+            local from = { X = at.X, Y = at.Y, Z = at.Z + 500 }
+            if cd and not st.cooldown and st.fire then -- a cooldown after an idle cycle (nothing to shoot at) shows nothing
+                net.toGuests("g.anom3.fx", table.concat({ v3(at), "Discharge", v3(from), v3(target) }, "\t"))
+                M.fxSent = (M.fxSent or 0) + 1
+                log("PT|anom3 tesla %s discharge at %s", n, v3(target))
+            elseif wind and not st.winding then
+                net.toGuests("g.anom3.fx", table.concat({ v3(at), "CreateTargetingBeam", v3(target), "5" }, "\t"))
+                M.fxSent = (M.fxSent or 0) + 1
+                log("PT|anom3 tesla %s beam to %s", n, v3(target))
+            end
+            st.cooldown, st.winding, st.fire = cd, wind, t.ShouldActuallyFire
+        end)
+    end)
+end)
+
+net.on("g.anom3.fx", function(_, data)
+    if not (M.enabled and M.fix and safety.guest()) then return end
+    try("apply fx", function()
+        -- the guest's copy has another name (a replicated copy is spawned anew): the Tesla nearest to the host's one's position is it
+        local loc, fn, p1, p2 = data:match("^([^	]+)	([^	]+)	([^	]+)	?([^	]*)$")
+        local at, t, best = unv3(loc), nil, 400
+        each("BP_Hazard_Tesla_C", function(o)
+            local l = o:K2_GetActorLocation()
+            local d = math.sqrt((l.X - at.X) ^ 2 + (l.Y - at.Y) ^ 2 + (l.Z - at.Z) ^ 2)
+            if d < best then t, best = o, d end
+        end)
+        log("PT|anom3 tesla fx %s found=%s", tostring(fn), tostring(t ~= nil))
+        if not t then return end
+        if fn == "Discharge" then -- the visual half of the game's Discharge: flash, force, camera shake, beam
+            local a, b = unv3(p1), unv3(p2)
+            t:FireFakeShot(a, b, 0.4)
+            t:CreateDischargeFX(b)
+        elseif fn == "CreateTargetingBeam" then t:CreateTargetingBeam(unv3(p1), tonumber(p2) or 1)
+        end
+        M.fxApplied = (M.fxApplied or 0) + 1
     end)
 end)
 
