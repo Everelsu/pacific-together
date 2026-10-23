@@ -160,3 +160,18 @@ menu until the host listens); the host's shipping mod listens like a real player
   that), the guest follows. The host copy's own saves are put back when the script ends.
 - `-Root` (default `C:\PacificTogetherTest`), `-Port`. It refuses to start while a game from `-Root` runs, waits until
   both games are closed (Ctrl+C closes them) and prints each side's `UE4SS.log` path.
+
+## Live bug-fix loop (preferred for bugs found in play)
+
+The owner's preferred way to fix a bug seen in play (2026-10-23: five bugs in about 40 minutes that no scenario had
+caught). It needs the owner at the PC; suites and bots come after, as regression.
+
+1. Start two rendered games that both answer the live console: game MCP `session_start players=2 headless=false
+   seconds=3600` (plus `fixture=zone|garage`). `tools/play-local.ps1` does not do this: its guest has no console.
+2. The owner plays and reproduces the bug (or describes it), then leaves the broken state alone (no F8, no keys).
+3. Read the live state on the side that is wrong and compare it with the other side (`eval`, `describe`, `watch`,
+   `screenshot`). Before writing code, prove the cause with a live poke where possible (for example setting a field back
+   and asking the owner whether it moves now).
+4. Patch the files, copy both `UE4SS.log` first if they hold anything worth keeping, then `session_stop` and
+   `session_start` again. Restart; do not hot-reload (RestartMod crashed a guest after a few reloads in one session).
+5. The owner retests by hand. Report what the owner saw fixed and what was not seen yet; record the cause in NOTES.md.
