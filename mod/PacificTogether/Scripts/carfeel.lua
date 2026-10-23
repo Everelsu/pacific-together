@@ -21,9 +21,7 @@ if os.getenv("PT_MUTATE") == "nofeel" then
 end
 
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
-local function first(class)
-    for _, o in ipairs(FindAllOf(class) or {}) do if valid(o) then return o end end
-end
+local first = common.first
 local function now()
     local s, p = {}, {}
     UEHelpers.GetGameplayStatics():GetAccurateRealTime(s, p)
@@ -38,11 +36,15 @@ local function carCar()
     local ok, car = pcall(require, "car")
     return ok and type(car) == "table" and car.theCar and car.theCar(mode() == "listen") or nil
 end
+local ownedCache = {} -- class -> { car address, object }: the lookup walked every AC_CarAudio_C twice a tick
+RegisterLoadMapPreHook(function() ownedCache = {} end)
 local function ownedBy(class, car)
+    local c = ownedCache[class]
+    if c and c[1] == car:GetAddress() and valid(c[2]) then return c[2] end
     for _, o in ipairs(FindAllOf(class) or {}) do
         if valid(o) then
             local own = class == "AC_CarAudio_C" and o:GetOwner() or o:GetAttachParentActor()
-            if valid(own) and own:GetFullName() == car:GetFullName() then return o end
+            if valid(own) and own:GetFullName() == car:GetFullName() then ownedCache[class] = { car:GetAddress(), o }; return o end
         end
     end
 end

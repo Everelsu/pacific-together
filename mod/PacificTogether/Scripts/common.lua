@@ -61,7 +61,8 @@ FindAllOf, FindFirstOf = counted("FindAllOf", FindAllOf), counted("FindFirstOf",
 -- one found is kept while it is live, and every map load drops them all (the old world's go with it).
 local SINGLE = { DrivingGameInstance = true, BP_ResourceManager_C = true, BP_InventoryManager_C = true, BP_MainCharacterManager_C = true,
     BP_CarManager_C = true, BP_StatusEffectManager_C = true, BP_ProgressionManager_C = true, BP_QuestManager_C = true,
-    BP_DialogueManager_C = true, MessageSystem = true, InventorySystem = true, BP_SaveGameManager_C = true, BP_MusicManager_C = true }
+    BP_DialogueManager_C = true, MessageSystem = true, InventorySystem = true, BP_SaveGameManager_C = true, BP_MusicManager_C = true,
+    BP_ToDManager_C = true, BP_StormManager_C = true }
 local singles = {}
 local rawFirst = FindFirstOf
 function FindFirstOf(class)
@@ -71,6 +72,11 @@ function FindFirstOf(class)
     o = rawFirst(class)
     if live(o) then singles[class] = o end
     return o
+end
+-- the cached singleton or nil: module-local first() helpers looped FindAllOf (26 CarManager lookups a second on the host)
+function M.first(class)
+    local o = FindFirstOf(class)
+    if live(o) then return o end
 end
 -- the cached controller and world too: a freed object's address can come back as another object, which IsValid cannot tell
 local function forget() singles, cachedPC, cachedWorld = {}, nil, nil end
