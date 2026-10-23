@@ -12,9 +12,14 @@ Unknowns
 - The spawned guest volumes have no decal / point light / VFX (construction visuals not run); only the damage is shared. Volumes the host destroys are not removed on the guest.
 - Radiation damage to the car on the guest side was not looked at.
 
-## #9 wheel damage look (NOT done, no run)
-- Our Lua never touches wheels (grep: no wheel/tire code in car.lua, guestparts.lua, carfeel.lua).
-- Atlas: the flat look is the wheel mesh material (`flatTire_TraceDistance`, `flatTire_WheelOffset_Vector`) set every tick by `BP_CarPart_Wheel_Base` from the WheelComponent's trace; the flat state is `CarManager:GetPartFlat(slot)` (status effect `SE_FlatTire` on the item instance, read by AC_CarHandling.UpdateFlatTireCalcs). Guess: the car's wheel parts on the guest copy lack the status effect / trace, or the host's co-op car loses it; first step next time is a solo-vs-coop live comparison (`GetPartFlat` on host and guest after `AddItemStatusEffect(inst, SE_FlatTire_C)`).
+## #9 flat tyres (partly fixed, scenario `wheelflat`)
+Observations
+- Live probe (zone, host + guest): the flat state is `BP_CarManager:GetPartFlat(slot)`; `SE_FlatTire` / `SE_BlownoutTire` (on the wheel item instance) call `SetPartFlat`. Applying `SE_FlatTire` on the host's WheelFR via `BP_StatusEffectManager:AddItemStatusEffect(instance, class)` gave flat=true on the host and flat=false on the guest: nothing mirrors it. Handling (`AC_CarHandling.UpdateFlatTireCalcs`), audio (`AC_CarAudio`) and the field-guide scan read `GetPartFlat`, so the guest's car never knew.
+- Our Lua never touched wheels. The visible tyre squash is the wheel mesh material (`flatTire_TraceDistance` from the wheel trace, `BP_CarPart_Wheel_Base`); nothing sets a separate "flat" look, so it follows the suspension sag the handling tuning produces.
+Derived
+- Fix: `wheelflat.lua`: host sends the four slots' flat flags (`g.wheel.flat`, every 5 s and on change), the guest calls `SetPartFlat`. Scenario `wheelflat` (zone): flat on the host's WheelFR, the guest's GetPartFlat shows it (FL stays whole). `noflat` mutation: 16/17 (guest_wheel_flat fails), fixed 17/17 (folders 20261024-002523-pt3-hazard-wheelflat-noflat, 20261024-002639-pt3-hazard-wheelflat).
+Unknowns
+- Whether the tyre then LOOKS flat on the guest (a rendered check by eye is needed). The owner said the host did not show it either; the host side was not reproduced (headless, no screenshot of a driven car). The status effect itself is not added on the guest (only the map), so a scan of the guest's own item may still say whole.
 
 ## #4 repeating story lines (changed, NOT proven by a scenario)
 - Guest log: the same dialogue sequence `g.story.say` played every ~6.1 s (= the guest's 6 s dedupe window) and `PT|prog guest whiteboard N tags set` 69 times in 3 minutes; the tags were `WB.Statistics.PlayerWalkMileage` and `WB.Statistics.PlayerDamage.Rad`, rewritten every 2 s (the guest counts its own statistics).
