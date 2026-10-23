@@ -139,7 +139,28 @@ local function partState(a)
     return string.format("%.1f,%.1f,%s,%s;%s", r.Pitch, r.Roll, ids.spec(a.ItemInstance), alive(a.RequestedMesh) and ids.path2(a.RequestedMesh) or "-", partContents(a))
 end
 
+-- a plasma generator the host broke (harvested): the game sets Broken, swaps the glass mesh, kills the light and the highlight. The
+-- guest's copy stayed whole (first Steam play #7b). Only broken -> whole is not undone.
+local function brokenOf(a)
+    local ok, v = pcall(function() return a.Broken end)
+    return ok and v == true
+end
+local function applyBroken(a)
+    if os.getenv("PT_MUTATE") == "noplasma" or brokenOf(a) then return end
+    pcall(function()
+        a.Broken = true
+        a.SM_Plasma_Generator_Glass:SetStaticMesh(a.BrokenMesh)
+        a.SpotLight:SetIntensity(0.0)
+        a.Highlight:SetActive(false, false)
+    end)
+    log("PT|loot plasma generator broken here too")
+end
+
 local function applyState(e, s)
+    if e.kind == "R" then
+        if s == "br" and alive(e.actor) then applyBroken(e.actor) end
+        return
+    end
     if e.kind == "P" then
         local spec = s:match("^[^,]*,[^,]*,([^,]*),")
         if alive(e.actor) and alive(e.actor.ItemInstance) and spec then
@@ -193,7 +214,8 @@ local function line(e)
     local l, r = a:K2_GetActorLocation(), a:K2_GetActorRotation()
     local what, state
     if e.kind == "L" then what, state = ids.path2(a:GetClass()), stateOf(e)
-    elseif e.kind == "B" or e.kind == "R" then what, state = ids.path2(a:GetClass()), "-"
+    elseif e.kind == "R" then what, state = ids.path2(a:GetClass()), brokenOf(a) and "br" or "-"
+    elseif e.kind == "B" then what, state = ids.path2(a:GetClass()), "-"
     elseif e.kind == "P" then what, state = ids.path2(a:GetClass()), partState(a)
     else what, state = ids.path(a.Instance.Archetype), "-;" end
     return string.format("A|%s|%s|%.0f|%.0f|%.0f|%.0f|%s", e.id, what, l.X, l.Y, l.Z, r.Yaw, state)
@@ -424,6 +446,7 @@ local function onAdd(id, what, x, y, z, yaw, state)
     elseif kind == "R" then
         a = claim("BP_Spawn_ResourceBase_C", x, y, z, function(o) return ids.path2(o:GetClass()) == what end)
             or spawnLootable(what, x, y, z, yaw)
+        if a and state == "br" then applyBroken(a) end
     elseif kind == "B" then
         a = spawnLootable(what, x, y, z, yaw)
         made.spawned = made.spawned + 1
@@ -558,7 +581,12 @@ local function scanChanges()
     local far = 10 -- the other parts, round robin: each one at least every ~10 s, a few per tick
     for id, e in pairs(ents) do
         local c = e.get()
-        if e.kind == "P" then
+        if e.kind == "R" then
+            if listening and alive(e.actor) then
+                local b = brokenOf(e.actor)
+                if b ~= (e.br or false) then e.br = b; say("S|" .. id .. "|" .. (b and "br" or "-")) end
+            end
+        elseif e.kind == "P" then
             -- a part's full key (fuel, wear, contents) is costly (~0.4 ms) and changes slowly: every 2 s near a player
             -- (all 206 parts of a zone took 60-250 ms per check, 2026-10-22)
             local ok = alive(e.actor) and alive(e.actor.ItemInstance)
