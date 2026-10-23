@@ -349,30 +349,36 @@ local function dispose(a)
     end
 end
 
--- The guest's E on its copy of a door: the copy swings here, the host's door gets the same press (its state comes back in g.vis.p).
--- The interact event is declared on a parent class (BP_Door_Single_C, BP_Door_Sliding_Single_C), hooked there once.
+-- The guest's E on a door, and a lock it opens (prybar): the door swings here, the host's door gets the same (its state comes back in
+-- g.vis.p for zone copies). Doors placed in the map (the garage's chained side doors) exist on both sides and are not mirrored: the host's
+-- stayed shut and locked and its collision blocked the guest (first Steam play, #1). The events are declared on a parent class
+-- (BP_Door_Single_C, BP_Door_Sliding_Single_C), hooked there once.
 local INTERACT = "BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature"
-local doorHooks = {} -- class path -> true (hooked or not declared in its chain)
-local function hookDoor(cls)
-    local path = fpath(cls)
-    if doorHooks[path] then return end
-    doorHooks[path] = true
+local UNLOCK = "OnLockOpened_Event_0"
+local doorHooks = {} -- class path .. ":" .. event -> true (hooked or not declared in its chain)
+local function doorName(d) -- the host's name for this door: a copy's key, or a map-placed door's own name
+    for name, a in pairs(mine) do
+        if live(a) and a:GetAddress() == d:GetAddress() then return name end
+    end
+    if d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then return d:GetFName():ToString() end
+end
+local function hookDoor(cls, event, msg)
+    local start = fpath(cls) .. ":" .. event
+    if doorHooks["seen " .. start] then return end
+    doorHooks["seen " .. start] = true
     for _ = 1, 6 do
         if not (cls and cls:IsValid()) then return end
-        local fn = StaticFindObject(fpath(cls) .. ":" .. INTERACT)
+        local at = fpath(cls) .. ":" .. event
+        local fn = StaticFindObject(at)
         if fn and fn:IsValid() then
-            local at = fpath(cls)
-            if doorHooks[at .. ":"] then return end
-            doorHooks[at .. ":"] = true
-            local ok, err = pcall(RegisterHook, at .. ":" .. INTERACT, function(self)
+            if doorHooks[at] then return end
+            doorHooks[at] = true
+            local ok, err = pcall(RegisterHook, at, function(self)
                 if not (M.enabled and safety.guest()) then return end
-                local d = self:get()
-                for name, a in pairs(mine) do
-                    if live(a) and a:GetAddress() == d:GetAddress() then
-                        net.toHost("g.vis.door", name)
-                        log("PT|visual guest used door %s", name)
-                        return
-                    end
+                local name = doorName(self:get())
+                if name then
+                    net.toHost(msg, name)
+                    log("PT|visual guest %s door %s", msg, name)
                 end
             end)
             log("PT|visual door hook %s %s", at, ok and "ok" or tostring(err))
@@ -381,19 +387,37 @@ local function hookDoor(cls)
         cls = cls:GetSuperStruct()
     end
 end
-net.on("g.vis.door", function(_, name)
-    if not M.enabled then return end
-    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
+local function hookPlacedDoors()
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do
         for _, d in ipairs(FindAllOf(c) or {}) do
-            if live(d) and d:GetFName():ToString() == name then
-                d.Highlight:InteractPressed(nil)
-                d.Highlight:InteractReleased(nil)
-                log("PT|visual guest used door %s: pressed on the host, state=%s", name, tostring(d.CurrentState))
-                return
+            if live(d) then
+                hookDoor(d:GetClass(), INTERACT, "g.vis.door")
+                hookDoor(d:GetClass(), UNLOCK, "g.vis.unlock")
             end
         end
     end
-    log("PT|visual guest used door %s: not on the host", name)
+end
+local function hostDoor(name)
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
+        for _, d in ipairs(FindAllOf(c) or {}) do
+            if live(d) and d:GetFName():ToString() == name and not fpath(d):find("/Engine/Transient", 1, true) then return d end
+        end
+    end
+end
+net.on("g.vis.door", function(_, name)
+    if not M.enabled then return end
+    local d = hostDoor(name)
+    if d then
+        d.Highlight:InteractPressed(nil)
+        d.Highlight:InteractReleased(nil)
+    end
+    log("PT|visual guest used door %s: %s, state=%s", name, d and "pressed on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
+end)
+net.on("g.vis.unlock", function(_, name)
+    if not M.enabled then return end
+    local d = hostDoor(name)
+    if d and d.CurrentState >= 3 then d:ForceUnlockDoor() end -- the game's own unlock (WorkLock); it opens the door as it does for the guest
+    log("PT|visual guest unlocked door %s: %s, state=%s", name, d and "unlocked on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
 end)
 
 local function make(f)
@@ -425,7 +449,7 @@ local function make(f)
         applyState(a, f[8] or "")
     end
     local door = f[1] == "B" and asset:find("/BP_Door_", 1, true) ~= nil
-    if door then hookDoor(cls) end
+    if door then hookDoor(cls, INTERACT, "g.vis.door"); hookDoor(cls, UNLOCK, "g.vis.unlock") end
     -- copies block pawns and the car but not the interaction/camera traces: a guest's interact, pickup and aim trace must not hit a copy
     -- (playpath, lootsync2 failed with the copies blocking them). Doors keep the interact trace: the guest's E on one goes to the host.
     pcall(function()
@@ -540,6 +564,7 @@ local function guestTick()
     if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
     if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
+    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end -- map-placed doors (garage)
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
     if beat % 20 == 0 then
         local n = 0
