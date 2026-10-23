@@ -290,5 +290,35 @@ net.on("g.world.pos", function(_, data)
     end)
 end)
 
+-- Smooth hazards on the guest (pt3-anom, "the grabber moves very per frame"): a replicated hazard's position arrives 4 to 10 times a second and the
+-- engine snaps the copy to it. Every frame the guest notices that the engine (or g.world.pos above) moved a copy, takes that spot as the target and
+-- shows the copy gliding there from where it was shown, over the time the last two updates were apart. A jump over 1500 uu (teleport) is not glided.
+-- Mutation nosmooth switches it off.
+local smooth, hz, scanned = {}, {}, 0
+local function dist(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2) end
+LoopInGameThreadWithDelay(16, function()
+    if not M.enabled or os.getenv("PT_MUTATE") == "nosmooth" or not safety.guest() then return end
+    local now = os.clock()
+    if now - scanned > 1 then
+        scanned, hz = now, {}
+        each("BP_Base_Hazard_C", function(o) if o.Role == 1 and not (WI:IsValid() and o:IsA(WI)) then hz[#hz + 1] = o end end)
+    end
+    for _, o in ipairs(hz) do
+        pcall(function()
+            if not live(o) then return end
+            local key, cur = o:GetAddress(), o:K2_GetActorLocation()
+            local s = smooth[key]
+            if not s then smooth[key] = { shown = cur, from = cur, to = cur, t0 = now, len = 0.25 } return end
+            if dist(cur, s.shown) > 1 then -- someone moved it: a new update
+                if dist(cur, s.shown) > 1500 then s.shown, s.from, s.to, s.t0 = cur, cur, cur, now
+                else s.from, s.to, s.len, s.t0 = s.shown, cur, math.max(0.08, math.min(0.5, now - s.t0)), now end
+            end
+            local k = math.min(1, (now - s.t0) / s.len)
+            s.shown = { X = s.from.X + (s.to.X - s.from.X) * k, Y = s.from.Y + (s.to.Y - s.from.Y) * k, Z = s.from.Z + (s.to.Z - s.from.Z) * k }
+            if dist(s.shown, cur) > 0.5 then o:K2_SetActorLocation(s.shown, false, {}, true) end
+        end)
+    end
+end)
+
 M.snapshot = snapshot
 return M
