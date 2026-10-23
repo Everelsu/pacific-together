@@ -272,22 +272,31 @@ end
 -- Each keeps its slow timer fallback (the 2 s swing pass, the 1 s part lines); first fires are logged as PT|probe.
 local DOORBP = "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:"
 local hostHooked, probeN = false, {}
+local probeOk, probeLogged = {}, {} -- hook name -> registered; -> failure logged once
 local function probe(name, fn)
+    if probeOk[name] then return true end
     local ok, err = pcall(RegisterHook, name, function()
         if common.netMode() ~= "listen" then return end
         probeN[name] = (probeN[name] or 0) + 1
         if probeN[name] <= 3 then log("PT|probe car hook %s n=%d", name:match("[^:/%.]+$"), probeN[name]) end
         fn()
     end)
-    if not ok then log("PT|probe car hook %s not registered: %s", name:match("[^:/%.]+$"), tostring(err)) end
+    if not ok and not probeLogged[name] then
+        probeLogged[name] = true
+        log("PT|probe car hook %s not registered: %s", name:match("[^:/%.]+$"), tostring(err))
+    end
+    probeOk[name] = ok
+    return ok
 end
 local function hostHooks()
     if hostHooked then return end
-    hostHooked = true
+    -- retried until all register: on the first listen tick the Blueprint classes may not be loaded yet
+    local all = true
     for _, fn in ipairs({ "AttemptOpen", "AttemptShut", "ObjectKicked", "OnConstraintBroken_Event_0" }) do
-        probe(DOORBP .. fn, function() swingFor() end)
+        all = probe(DOORBP .. fn, function() swingFor() end) and all
     end
-    probe("/Game/Systems/Managers/BP_CarManager.BP_CarManager_C:UpdatedCarEquip", function() partsAt = -1 end)
+    all = probe("/Game/Systems/Managers/BP_CarManager.BP_CarManager_C:UpdatedCarEquip", function() partsAt = -1 end) and all
+    hostHooked = all
 end
 
 local lastSent, lastAt, lastGuests = nil, 0, 0

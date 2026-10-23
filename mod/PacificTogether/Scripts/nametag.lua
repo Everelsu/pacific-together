@@ -20,7 +20,7 @@ local tags, others, pc, nextScan = {}, {}, nil, 0
 -- letters (Cyrillic: squares, 2026-10-23) is drawn by a UMG TextBlock in the default font instead, at the projected head position.
 local uiN = 0 -- blocks handed out
 local ui = nil -- { widget, canvas, tree, blocks = {} }
-local function needsUi(label) return os.getenv("PT_MUTATE") ~= "nocyr" and label:find("[Ä-ÿ]") ~= nil end -- UTF-8 lead byte above U+00FF
+local function needsUi(label) return os.getenv("PT_MUTATE") ~= "nocyr" and label:find("[Ä-ô]") ~= nil end -- UTF-8 lead byte above U+00FF (Cyrillic D0/D1)
 local function uiBlock(i)
     if not (ui and ui.widget:IsValid()) then
         local w = StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary"):Create(pc, StaticFindObject("/Script/UMG.UserWidget"), pc)

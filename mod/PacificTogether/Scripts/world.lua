@@ -35,6 +35,7 @@ local PROP = "BP_Resource_Narrative_Q01_RadioBitsGrabbable_C" -- story.lua repli
 -- names of the host's portals and story props: the guest's level-placed copy of one is what the host's channel binds to
 -- (destroyed, the bunch fails: "SerializeNewActor failed to find/spawn actor")
 local keep = {}
+RegisterLoadMapPostHook(function() keep = {} end) -- placed names repeat across maps (BP_LevelTransition_ExitPortal_C_1)
 local ID = 8
 local INSTAB = { TagName = FName("WB.WorldState.Instability.Current") }
 

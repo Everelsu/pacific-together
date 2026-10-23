@@ -326,9 +326,10 @@ net.on("g.act.grab", function(_, data)
     if not hostCar() then return end
     for _, o in ipairs(FindAllOf("BP_Resource_Narrative_Q01_RadioBitsGrabbable_C") or {}) do
         if valid(o) and o:GetFName():ToString() == data then
-            if not o.SuccessfullyGrabbed then pcall(o.ShortGrabComplete, o, {}) end
+            local first = not o.SuccessfullyGrabbed -- both grab hooks may send: one toast
+            if first then pcall(o.ShortGrabComplete, o, {}) end
             log("PT|act grab %s grabbed=%s", data, tostring(o.SuccessfullyGrabbed))
-            ov.post(ov.other() .. " picked up a story item", "good")
+            if first then ov.post(ov.other() .. " picked up a story item", "good") end
             return
         end
     end

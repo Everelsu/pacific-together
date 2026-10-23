@@ -263,6 +263,7 @@ net.on("g.feel.c", function(_, data)
     end
 end)
 
+local SCRAPE, scrapeNotify = "/Game/Sound/Blueprints/BP_CarScrapeFX.BP_CarScrapeFX_C", false
 LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
@@ -271,7 +272,14 @@ LoopInGameThreadWithDelay(100, function()
             refreshGuest()
             -- the posed car copy hits the ground and the game spawns its metal scrape sound actor; the host hears the real hits
             if os.getenv("PT_MUTATE") ~= "noscrapedrop" then
-                for _, a in ipairs(FindAllOf("BP_CarScrapeFX_C") or {}) do if valid(a) then a:K2_DestroyActor() end end
+                -- on spawn (destroyed next game-thread turn, not mid-construction); polled only until that is registered
+                scrapeNotify = scrapeNotify or pcall(NotifyOnNewObject, SCRAPE, function(a)
+                    if role ~= "client" then return end
+                    ExecuteInGameThread(function() if valid(a) then a:K2_DestroyActor() end end)
+                end)
+                if not scrapeNotify then
+                    for _, a in ipairs(FindAllOf("BP_CarScrapeFX_C") or {}) do if valid(a) then a:K2_DestroyActor() end end
+                end
             end
         elseif role == "listen" then hostCarTick() end
     end)

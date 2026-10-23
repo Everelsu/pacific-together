@@ -19,7 +19,7 @@ local function hook()
         if OFF or not paused:get() or not safety.active() then return end
         local name = who:get():ToString()
         -- the Esc menu keeps its pause; so does the test bot's own pause (safety scenarios check what a real pause does)
-        if name:lower() == "pausemenu" or name == "PacificTogetherTest" then return end
+        if name:lower() == "pausemenu" or (name == "PacificTogetherTest" and os.getenv("PT_STATUS")) then return end
         self:get():PauseGame(who:get(), false, {})
         log("PT|pause refused %s", name)
     end)

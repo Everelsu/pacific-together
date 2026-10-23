@@ -77,6 +77,8 @@ end
 function M.first(class)
     local o = FindFirstOf(class)
     if live(o) then return o end
+    -- the first one can be a dead or old-world object while a live one exists (after a map change or a stream)
+    for _, x in ipairs(FindAllOf(class) or {}) do if live(x) then return x end end
 end
 -- the cached controller and world too: a freed object's address can come back as another object, which IsValid cannot tell
 local function forget() singles, cachedPC, cachedWorld = {}, nil, nil end

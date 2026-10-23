@@ -531,15 +531,17 @@ local beat, lastLv, lastPaint = 0, nil, nil
 -- paint is read on a hook (garage paint: SetPaint, SetDecal, SetTintingEnabled on the tintable component) or every 5 s, not every
 -- 500 ms (the part walk was ~1 ms of every 5 ms host tick); PT|probe lines show whether the hooks fire on the host
 local paintDirty, paintHooked, paintProbe = true, false, 0
+local paintHooks = {} -- SetPaint etc. -> registered
 local function hookPaint()
     if paintHooked then return end
     local ok = true
     for _, fn in ipairs({ "SetPaint", "SetDecal", "SetTintingEnabled" }) do
-        local okh = pcall(RegisterHook, TINT .. ":" .. fn, function()
+        local okh = paintHooks[fn] or pcall(RegisterHook, TINT .. ":" .. fn, function()
             paintDirty = true
             paintProbe = paintProbe + 1
             if paintProbe <= 3 then log("PT|probe visual paint hook %s n=%d", fn, paintProbe) end
         end)
+        paintHooks[fn] = okh -- a hook that registered is never registered again (one per tick piled up)
         ok = ok and okh
     end
     paintHooked = ok
