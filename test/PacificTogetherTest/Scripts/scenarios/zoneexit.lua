@@ -4,7 +4,8 @@
 -- (BFL_ProgressionHelpers:TravelToNextLeg, as through a junction), the guest rejoins and the game puts it in the car; then it leaves,
 -- walks 5 m away from the car and jumps (owner: it strikes after a junction's map load, not in a zone both started on foot).
 -- Checks: the guest walks 1.5 m on both sides, its jump leaves the ground, and its own pawn and the host's copy of it stay within 3 m
--- below the exit spot for 10 s.
+-- below the exit spot for 10 s. Then it gets back in through the DRIVER's door (owner: it sat like a driver, the seat guard fought the
+-- game's own entry 229 times in 3 s) and must stay at the passenger seat for 3 s.
 -- Run: tools/run-test.ps1 -Scenario zoneexit -Fixture coop-zone -Headless     Mutations: hostout (the host leaves the car first), noexitwalk (walking and collision not restored after the exit's repossess)
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -100,7 +101,8 @@ return function(T)
             log("PT|info guest own z exit=%s min=%s", e, m)
             return tonumber(m) > tonumber(e) - 300
         end })
-        add({ wait = 3 })
+        -- the guest gets back in on its own (driver's door) and checks its seat; the host stays until it is done
+        add({ check = "host_guest_done", timeout = 180, cond = function() return has("t.done2") end })
         return steps
     end
 
@@ -155,6 +157,27 @@ return function(T)
         log("PT|info guest own z exit=%.0f min=%.0f", exitZ, minZ)
         sendHost("t.zmin", string.format("%.0f|%.0f", exitZ, minZ))
     end })
-    add({ wait = 10 })
+    -- back in through the driver's door, as a player would from where they stand
+    add({ wait = 3 })
+    add({ run = function() id = T.act_begin("door_press", {}) end })
+    add({ check = "guest_reentered", timeout = 90, cond = function()
+        local d, t = T.act_done(id)
+        if d and not attached(T.myPawn()) then log("PT|info guest door press: %s", (t or ""):gsub("\n", " / "):sub(1, 300)) end
+        return attached(T.myPawn())
+    end })
+    local far, t1 = 0, nil
+    add({ check = "guest_stays_on_passenger_seat", timeout = 6, cond = function()
+        t1 = t1 or os.clock()
+        local me, car = T.myPawn(), theCar()
+        if me and car then
+            local l = KML:InverseTransformLocation(car:GetTransform(), me:K2_GetActorLocation())
+            local d = math.sqrt((l.X - 46.2) ^ 2 + (l.Y - 45.8) ^ 2)
+            if d > far then far = d; log("PT|info guest seat offset %.1f,%.1f,%.1f (%.0f uu off the passenger seat)", l.X, l.Y, l.Z, d) end
+        end
+        if os.clock() - t1 < 3 then return false end
+        return far < 20
+    end })
+    add({ run = function() sendHost("t.done2") end })
+    add({ wait = 5 })
     return steps
 end

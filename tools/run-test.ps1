@@ -221,6 +221,12 @@ while ((Get-Date) -lt $deadline) {
         Start-Side $s $s.Life
         $deadline = $deadline.AddSeconds(120)
     }
+    # a scenario that does not load (a Lua syntax error) left both games idling at the menu until the timeout, 18 min (2026-10-24):
+    # stop at once, and when a booted side shows no test plan after 3 min
+    $bad = @($sides | Where-Object { (Get-Log $_) -match "PT\|error unknown scenario" })
+    if ($bad) { $stop = "scenario did not load on $($bad.Role -join ', ') (PT|error unknown scenario: see its UE4SS.log)"; break }
+    $noPlan = @($sides | Where-Object { ((Get-Date) - $_.Started).TotalSeconds -gt 180 -and (Get-Log $_) -match "PT\|boot " -and (Get-Log $_) -notmatch "PT\|plan side=" })
+    if ($noPlan) { $stop = "no test plan 3 min after boot on $($noPlan.Role -join ', ')"; break }
     $done = @($sides | Where-Object { (Get-Log $_) -match "\[PacificTogetherTest\] PT\|done side=" })
     if ($done.Count -eq $sides.Count) { $stop = "all sides done"; break }
     if ((Get-NewCrashes) -and $CrashExpected -notcontains $Scenario) { $stop = "crash"; break }

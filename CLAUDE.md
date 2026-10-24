@@ -34,3 +34,6 @@ SHA-256 `568bb63476c6de5fc2b1878572a655dd631dd25bb44fe304e3d96a51f6b98f7e`. If y
 - Write `NOTES.md` as you go: observations, derived facts, guesses and unknowns in separate lists, with sources.
 - Verify, then claim: "works" means an automated two-client test passed. Report only checks that ran.
 - No game files or extracted assets in git.
+- Never start a test run and just wait for it. Every few minutes (at most 5), check it is moving: the newest `PT|check` lines in
+  both sides' UE4SS.log, the game processes, the results folder. A run with no new check in that time is stuck: find out why
+  and stop it, do not let it run out its timeout. (`run-test.ps1` also stops by itself on a scenario that does not load.)
