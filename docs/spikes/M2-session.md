@@ -1,5 +1,7 @@
 # M2 session core (lane F1)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-20. Shipping code: `mod/PacificTogether/Scripts/session.lua`, native additions in
 `native/PacificTogetherNative/dllmain.cpp` (`PTNative_SetAutoListen`, `PTNative_GameBuild`, native version 0.0.3).
 Tests: `test/PacificTogetherTest/Scripts/scenarios/session*.lua`; they drive the real mod (the guest's mod joins by
@@ -181,31 +183,3 @@ UE4SS start-up (log ends after the signature scan, no mod loaded) until the 1500
 - Exposure: with D14 every mod user's host listens on a reachable UDP port while a save is loaded; anyone who sends a
   matching public hello gets a character. Acceptable for 0.1.0 internal (direct IP, M2); the M6 Steam work should
   close it (Steam sessions / invites instead of an open port).
-
-## Verdicts
-
-- S1 auto-listen on every gameplay map, including the first load from the menu and native travel: **works** (session).
-- S3 direct IP join from `PT_JOIN`: **works** (session, sessionrejoin). `join.txt`: implemented, not tested.
-- S4 handshake: accept, mismatch refusal with a clear message, and no-hello refusal **work** (session, sessionmismatch;
-  mutations match and hello2 each fail their refusal).
-- Older two-client scenarios with the shipping mod installed (body, travel, guestsave, zonejoin, listen): **pass**
-  again once the test guest sends the hello; a zone join before the host's character exists now **works** (zonejoin).
-- S5 leave and rejoin without a host crash: **works** (sessionrejoin 6 cycles; session guest leave). Key fix: never
-  write a hooked RPC's string parameter.
-- S6 session survives `UserNewGame` and `QuitToMenu` + new game, guest rejoins by itself: **works for these two
-  paths only** (session). Gateway/zone travel and run failure: **untested** (see Unknowns).
-- P1 guest character next to the host, possessed, manager stays the host's: **works** (session).
-- X13 other player's body visible on both sides, own body untouched: **works**, cooked `MI_GenManMade_Cloth_01`
-  (session, sessionlook screenshots).
-- Q7 single player unchanged apart from listening: **works** (sessionsolo).
-- Native `Destroyed` patch: **dropped** (crashed the host).
-
-## Shared files touched
-
-- `tools/run-test.ps1`: `$Defaults` for `session`, `sessionmismatch`, `sessionsolo`, `sessionrejoin`; `$AutoJoin` list;
-  sets `PT_JOIN=127.0.0.1:<port>` for the client of those scenarios and clears it afterwards.
-- `test/PacificTogetherTest/Scripts/main.lua`: `inWorld` and `pcs` skip PendingKill objects; `T.hello` and the
-  client hello hook for scenarios without `PT_JOIN`; `body` uses the shipping spawn; `travel` nokeep/norehost turn
-  auto-listen off; `guestsave`'s guest turns auto-listen off.
-- `.gitignore`: `mod/PacificTogether/join.txt`.
-- `native/PacificTogetherNative/dllmain.cpp`: `PTNative_SetAutoListen`, `PTNative_GameBuild`, version 0.0.3.

@@ -1,11 +1,12 @@
 # Pacific Together
 
 Two-player online co-op mod for [Pacific Drive](https://store.steampowered.com/app/1458140/Pacific_Drive/):
-one drives, one rides along, both scavenge, the run is shared. Join through Steam invites.
+one drives, one rides along, both scavenge, the run is shared. Join through Steam invites, the friends list or direct IP.
 
-**Status: early development.** Two players can join by IP, see each other and walk the garage and zones together;
-the car, loot and the run aren't synced yet. No public release before 1.0. See [docs/PLAN.md](docs/PLAN.md) for scope
-and milestones.
+**Status: development preview 0.0.7 (2026-10-24), network protocol 3.** Shared car, loot, progression and run systems
+are implemented, with ongoing playtesting and fixes. Both players need the same mod version. No public release before
+1.0; previews are for the developers and friends. See [CHANGELOG.md](CHANGELOG.md) for changes and known issues,
+and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
 
 - Game build: Steam v1.15.0 (buildid 21896301). Other builds are not supported.
 - Built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS). Not affiliated with Ironwood Studios.
@@ -13,37 +14,59 @@ and milestones.
 - `reference/pdcoopnet` holds the lab notes and README of [PDCoopNet](https://github.com/BroZYTnikkkk/pacific-drive-coop) v0.2
   (MIT, by BroZYTnikkkk), kept as research material; none of its code is in this repo.
 
+## Current features
+
+- **Sessions:** host plus one guest, Steam friends-only lobbies and invites, or direct-IP joining. Steam joining was
+  verified between two real accounts in the October 23 playtest. Guests can rejoin and follow the host through map changes.
+- **Players:** animated survivor bodies, held tools and items, name tags with health, HUD and ARC-map markers, and
+  middle-mouse pings. The guest has their own health, radiation damage and backpack; death drops a recoverable crate
+  and respawns them at the car. The host stores the guest's backpack for later joins.
+- **Car:** the host drives and the guest rides in the passenger seat. Parts, damage, fuel, battery and storage are
+  shared; the guest can repair, scrap, refuel, remove and install parts. Engine audio, instruments, lights and supported
+  car-upgrade effects follow the host.
+- **Loot and world:** shared containers, pickups, abandoned cars and garage storage, with item condition preserved
+  on handover. Zone props, weather, time, instability, storms, gateways and many anomaly interactions are synchronized.
+- **Run and progression:** travel through junctions and return to the garage together, including shared run failure.
+  The guest sees the host's research, garage and player upgrades, missions, journal and radio dialogue, and can use
+  supported garage stations and summon a gateway through the ARC. The host owns the world and save; the guest's own
+  saves are protected while joined.
+- **Interface:** session status and activity feed, guest loading and seat prompts, and shared pause when the host opens
+  Esc. The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
+
+## Limitations and testing
+
+This is still a preview, with known gameplay gaps:
+
+- Anchors picked up by the guest can remain on the host and be deposited twice.
+- Tutorial steps completed by the guest alone are not shared with the host.
+- Re-entering through the driver's door showed the driver's pose once in hand play; automated tests have not reproduced it.
+- Driving and route planning remain host-only. Detailing and buying quirk hints are also host-only, and the Chrono
+  Dilator is disabled in co-op.
+
+Version 0.0.7 addresses join-buffer overflows, guest seating and collision after junction travel, key-handling crashes
+and synchronization stalls. Automated two-instance scenarios cover these systems, but passing those checks does not
+replace further human playtesting. Recorded results are in [NOTES.md](NOTES.md); the runner and test-copy workflow are
+documented in [docs/TESTING.md](docs/TESTING.md).
+
 ## Building from source
 
-Windows only. The C++ part builds against UE4SS's source, which includes Unreal Engine headers that only
-Epic-linked GitHub accounts can download.
+Windows only. Native builds need Visual Studio C++ Build Tools, Rust and an Epic-linked GitHub account for UE4SS's
+Unreal headers. Follow [docs/DEVELOPING.md](docs/DEVELOPING.md) for prerequisites, the pinned UE4SS build and test copies.
+Its Lua-only setup uses a matching prebuilt native DLL.
 
-1. **Link GitHub to Epic Games**: epicgames.com -> Account -> Apps and Accounts -> GitHub -> Connect, then accept the
-   invite at https://github.com/orgs/EpicGames/invitation (arrives by email).
-2. **Install the tools**:
-   ```
-   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-   winget install --id Rustlang.Rustup
-   winget install --id GitHub.cli
-   ```
-   Then in a new terminal: `rustup default stable-msvc`, `gh auth login` (choose HTTPS), `gh auth setup-git`, and
-   `git config --global core.longpaths true` (some UE4SS file paths are longer than Windows' 260-character limit).
-3. **Clone and build** into a short path such as `C:\dev`. UE4SS's sub-repos point at SSH addresses; the `-c` flag
-   fetches them over HTTPS so no SSH key is needed:
-   ```
-   git clone https://github.com/ikeepcalm/pacific-together.git
-   cd pacific-together
-   git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
-   tools\build-native.cmd
-   ```
-   Do not use `git clone --recursive`: it uses the SSH addresses and fails without an SSH key.
+```powershell
+git clone https://github.com/ikeepcalm/pacific-together.git
+cd pacific-together
+git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
+tools\build-native.cmd
+```
 
-Test copies of the game, the test runner and CLion settings: [docs/DEVELOPING.md](docs/DEVELOPING.md). Many tasks need
-none of the C++ setup above (see its "Lua-only setup").
+Use a short checkout path and Git long-path support. The HTTPS rewrite avoids the submodules' SSH-key requirement.
 
 ## Contributing
 
-[docs/TASKS.md](docs/TASKS.md) lists self-contained tasks, each on its own branch, sorted by AI-token cost and by how
-many game instances they need. Some need no AI at all. To claim one, open a draft PR named after its id.
+[docs/TASKS.md](docs/TASKS.md) tracks remaining work and the disposition of earlier task IDs. Check the code and open
+PRs before claiming a task with a draft PR named after its id. Setup and validation: [docs/DEVELOPING.md](docs/DEVELOPING.md)
+and [docs/TESTING.md](docs/TESTING.md).
 
 MIT license. This repository contains no game files.

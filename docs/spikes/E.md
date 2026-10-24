@@ -1,5 +1,7 @@
 # Lane E: research for D13, D16, D17, D19, D21
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19. Details, sources and the Observations / Derived / Guesses / Unknowns lists are in the topic docs:
 `docs/research/tourists.md`, `garage-stations.md`, `arc-device.md`, `arc-marker.md`, `crash-reports.md`.
 Results: `local/test-results/<stamp>-laneE-<scenario>[-<mutation>]` (lane `C:\PTLanes\laneE`, port 7851, headless,

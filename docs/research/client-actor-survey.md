@@ -1,5 +1,7 @@
 # Client-local actor survey (spike X3)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19. Every actor of the current world on both sides, grouped by class, `Role`, `bReplicates`, loaded from the
 map file (`RF_WasLoaded`) and owner class. Scenario `travel` (garage) and `zonejoin` (Wilderness_Forest_01) in
 `test/PacificTogetherTest/Scripts/main.lua` (`survey()`), 20 s after the client joined; the runner writes

@@ -1,5 +1,7 @@
 # PT2 upgrades: car upgrades and quirks in co-op
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Code: `mod/PacificTogether/Scripts/upgrades.lua` (new, in FEATURES), scenario `upgrades` (`-Fixture garage`), mutation `noupgrades`.
 No edit to car.lua or carfeel.lua. Messages: `g.up.a` (provider event), `g.up.f` (part function), `g.up.i` (interior light).
 

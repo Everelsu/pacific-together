@@ -1,5 +1,7 @@
 # PT1 anom3: Spark Tower, Pickpocket, Bunnies on the guest (W6)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-22, lane `pt1-anom3`. Module `mod/PacificTogether/Scripts/anomalies3.lua` (+ "anomalies3" in FEATURES), scenario `anomalies3` (fixture `zone`, mutation `noanom3`).
 
 ## Observations
@@ -44,7 +46,7 @@ bunny all pass), `20261022-032241` 26/27 (only the Tesla firing check failed), `
   Not verified.
 - A discharge at the position of the guest would be forwarded by anomalies.lua like any `DispatchMessageInSphere` damage; the Tesla chose the host (`FindTarget` takes the first actor with the highest tag priority).
 
-## Unknowns / gaps (next session)
+## Unknowns at the time
 
 - **Spark Tower firing at the guest is not proven.** A map Tesla moved next to the players (`K2_SetActorLocation`) fired within seconds: host hp 100 -> 1 -> 20, the guest stayed at 100
   for the 5 s seen, then the headless host crashed (access violation, `crash-host-UE4CC...` in `20261022-035511`: most likely the host reaching 0 hp). Teleporting the host 44000 uu to a

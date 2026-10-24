@@ -1,5 +1,7 @@
 ﻿# PT3 anom: Spark Tower and Grabber on the guest (Steam playtest 2026-10-23)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane `pt3-anom`. Code: `anomalies3.lua` (wake, range, Tesla effects), `world.lua` (hazard smoothing). Scenario `anomtesla` (fixture `zone`), mutations `noanomtesla` (wake, range hook, effects off) and `nosmooth` (smoothing off).
 
 ## Observations
@@ -14,7 +16,7 @@ Lane `pt3-anom`. Code: `anomalies3.lua` (wake, range, Tesla effects), `world.lua
 - The same distance rule exists in `BP_HazardProperty_PlayerRange:DistanceToPlayer` (distance from `GetPlayerCameraManager(0)`, flattened): Landmines, Bollards and Grabbers arm only for the host.
 - Level-placed hazards the host replicates are spawned anew on the guest (name `BP_Hazard_PhysicsGrabber_C_2147477277`, Role 1), not matched by name to the host's actor. So `g.world.pos` (by name)
   does not move them; their motion is the engine's replicated movement (snaps at the update rate). The Tesla copy on the guest has a different name too.
-- Measuring smoothness: the host moves the grabber 700 uu every 500 ms; the guest counts the share of frames (from first to last movement) in which the copy moved: 78% smoothed, 18% with 
+- Measuring smoothness: the host moves the grabber 700 uu every 500 ms; the guest counts the share of frames (from first to last movement) in which the copy moved: 78% smoothed, 18% with
 osmooth.
 - Real Steam playtest guest log: `SerializeNewActor failed` for Tesla/Grabber/ExitPortal: the engine channel to those actors failed on the guest there (streaming sublevel not yet loaded when the
   channel opened). It does not happen in the zone fixture. If it happens, the guest has no copy and the effects below find nothing (logged `found=false`); the damage still arrives (anomalies.lua).

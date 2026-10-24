@@ -1,5 +1,7 @@
 # PT3-look: what the guest sees and hears wrong (first Steam play, #7 #13 #10 #2)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 ## Observations
 - #7 Impact Hammer = BP_Tool_Target_Breaker. Held, it has a visible `/Engine/BasicShapes/Cylinder` StaticMeshComponent (HammerRotator child,
   scale 0.1 x 0.1 x 1, bounds radius 70.7) next to the real parts (SM_Tool_Breaker_01 radius 67). hands.lua took the biggest part as the

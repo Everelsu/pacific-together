@@ -1,5 +1,7 @@
 # Garage stations for the guest (D21, G2)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19, lane E. How the Fabrication, Tinker and Detailing stations work for one player, and what the guest needs
 so the host performs each action with the shared resources. Sources: UE4SS dumps (`local/dumps`), station and UI
 Blueprints extracted from `pakchunk0` and listed with `tools/kdis/` (`local/research-extract/laneE/dis/`, git-ignored), scenario

@@ -1,5 +1,9 @@
 # PT2 Steam join (M6, S1, S2, D14), lane pt2-steam
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+October 23 follow-up: UE traffic and the running-game invite/join callback succeeded between two real accounts; see [../../NOTES.md](../../NOTES.md). Cold-start invites and vanished-host handling remain separate checks.
+
 Goal: players join through Steam instead of typing an IP. Groundwork: `docs/spikes/X6.md`.
 
 ## What is built

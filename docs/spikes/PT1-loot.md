@@ -1,5 +1,7 @@
 # PT1 loot: world-vehicle cargo and dropped items (playtest 1, bugs A and B)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 ## Observations
 - Wreck trunk contents (`BP_TemplatePart_TrunkContents_C`, 24 in the zone fixture) and box-truck cargo (`BP_TemplatePart_TruckBedContainer_C`, not in the fixture) are template parts (kind P) whose items live in the part's ItemInstance container (`BFL_ItemPropertyUtilityFns.GetInstanceContainer`). P sync carried only item spec, pitch, roll, mesh: the guest copy had other contents and changes never travelled.
 - Before the fix lootcar failed 21/25 (`20261021-221946-pt1-loot-lootcar`: guest copy lacked the host's items, host kept them). Fixed 24/24 (`20261021-230355-pt1-loot-lootcar`), mutation nocarloot 22/24 (`20261021-231552-pt1-loot-lootcar-nocarloot`).

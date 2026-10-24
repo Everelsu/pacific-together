@@ -1,5 +1,9 @@
 # PT3 world: the guest's world differs from the host's (first Steam play #1, #15, #7b, #5)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+Later October 24 work also mirrors host garage-door unlock/open/shut state. Guest anchor pickup still duplicates on the host; see [../../NOTES.md](../../NOTES.md).
+
 Lane pt3-world, branch worktree-agent-a28acfaa7505fc85b. Scenarios: `worlddoors` (fixture garage), `worldzone` (fixture zone).
 
 ## Observations
@@ -25,7 +29,7 @@ Lane pt3-world, branch worktree-agent-a28acfaa7505fc85b. Scenarios: `worlddoors`
 - loot.lua: kind R lines carry "br" for a broken generator; the host sends `S|id|br` when `Broken` flips; the guest applies the game's
   own broken look (Broken, glass mesh, light 0, highlight off). Mutation noplasma.
 
-## Guesses / Unknowns / gaps
+## Guesses and open questions at the time
 - #5 not reproduced: in the open the host's transmuter reaches the guest. Guess: in a small building the guest's own spawn pass rolled an
   ARDA container (a prop, not a BP_Lootable_Base_C or ResourceBase, so loot's purge does not remove it) at the same spot, and it hides
   or replaces the copy. Needs a hand check in such a building (list the guest's actors within 200 uu of the host's transmuter).

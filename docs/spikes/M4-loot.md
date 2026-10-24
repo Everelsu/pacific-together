@@ -1,5 +1,7 @@
 # M4 loot: shared items, containers and trunk (W1, W2, C6, G1, P2, P3)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane items, 2026-10-21. Code: `mod/PacificTogether/Scripts/ids.lua` (containers as `archetype=count` strings, apply to a
 container) and `loot.lua` (entities, scan, messages on `net.lua` kind `g.loot.b`). Scenario: `lootsync` (zone fixture, host and
 guest, mutation `nointent`; `hold` keeps both sides up for the live console).

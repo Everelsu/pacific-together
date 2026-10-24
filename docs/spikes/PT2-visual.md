@@ -1,5 +1,7 @@
 # PT2 visual: what one player sees that the other does not
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane pt2-visual, 2026-10-22. Module `mod/PacificTogether/Scripts/visual.lua` (messages `g.vis.*`, mutation `novisual`).
 Scenarios `visual` (zone fixture) and `visualgarage` (garage fixture), see "Results". Method: two-player repl session on the lane's pair
 (`-Fixture garage`, then `zone`; zone also reached the real way, `TravelToNextLeg`), host/guest diffs with the game MCP `compare` and Lua

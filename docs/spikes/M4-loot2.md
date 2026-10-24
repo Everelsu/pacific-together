@@ -1,5 +1,7 @@
 # M4 loot 2: item state, wrecks, lootable visuals, garage storage
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane itemsx, 2026-10-21. Code: `ids.lua` (per-item state), `loot.lua` (kinds B, P, flags, garage tags, pieces). Scenario: `lootsync2`
 (zone fixture: wrecks, state, visuals, trunk; garage fixture: trunk state and garage storage; mutation `nolootsync2`). Builds on `M4-loot.md`.
 

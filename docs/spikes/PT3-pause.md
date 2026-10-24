@@ -1,5 +1,7 @@
 # PT3 pause: inventories must not pause the host's world, "Paused by host" label
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Module `mod/PacificTogether/Scripts/pause.lua` (new), label in `overlay.lua`; message `g.pause.s` (host to guest, "1" or "0", resent every second while paused). Scenario `pausehost`, mutation `nopause`.
 
 ## Observations

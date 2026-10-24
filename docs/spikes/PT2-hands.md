@@ -1,5 +1,7 @@
 # PT2 hands: the other player's item, tool use, light and carry
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Module `mod/PacificTogether/Scripts/hands.lua`, messages `g.hands.s` (hand state, both ways, on change and every 3 s) and `g.hands.use` (a use press, both ways). Scenario `hands` (fixture `garage`), mutation `nohands`.
 Status: see the end of this file (Results). Lane pt2-hands, test pair `C:\PTLanes\pt2-hands`, port 7931.
 

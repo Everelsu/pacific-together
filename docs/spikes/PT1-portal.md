@@ -1,5 +1,7 @@
 # pt3-portal: exit portals and story pickups on the guest (2026-10-24)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 ## Observations
 - Steam play: guest logged `SerializeNewActor failed to find/spawn actor` for level-placed actors of `<zone>_Mission_Sub`
   (exit portals, Q01 radio bits, Tesla, grabbers).

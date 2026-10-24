@@ -1,5 +1,7 @@
 # PT2 stations: the guest uses the garage stations (PLAN G2, D21)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane pt2-stations. Code: `mod/PacificTogether/Scripts/stations.lua` (FEATURES "stations"), small additions in `garage.lua` (`M.applying`, `M.installedOn`,
 `M.hostHas`), scenario `stations` (`tools/run-test.ps1 -Scenario stations -Fixture garage -Headless`, mutation `nostations`); the old one-game research
 probe is now `stationsprobe`. Research behind it: `docs/research/garage-stations.md`.

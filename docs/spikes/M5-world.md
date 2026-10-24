@@ -1,5 +1,7 @@
 # M5 world lane: run state, anomalies, story bystander (W3, W4, W6, G3)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-21. Mod: `mod/PacificTogether/Scripts/world.lua`. Scenario: `worldsync` (fixture `gateway`, mutation `noworldsync`).
 Results (`local/test-results/`): `20261021-112743-world-worldsync` 27/27; mutation `20261021-114320-world-worldsync-noworldsync` 20/27
 (7 sync checks fail); regressions `20261021-113417-world-session` 40/40, `20261021-114000-world-sessiontravel` 54/54.
@@ -39,7 +41,7 @@ Same time of day, rain/fog, same instability value, same storm (position, wall r
 (Tourists, bollards, grabbers, Tesla), moving with 250 ms to 2 s granularity; the gateway the host picked is the picked exit on the
 guest too, and portals the host does not have are gone. The guest starts no quests; the host's story plays only on the host.
 
-## Gaps (known, not done today)
+## Gaps at the time
 
 - Anomaly effects on the guest's own character (grab, shock, steal, tourist step) run on the guest's local copies of the logic
   (Role 1, tick off, timers still run): partial. Tourists still creep toward camera 0 of the host (docs/research/tourists.md).

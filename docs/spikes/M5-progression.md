@@ -1,5 +1,7 @@
 # M5 progression: the guest holds the host's progression (D2, D6)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Shipping code: `mod/PacificTogether/Scripts/progression.lua` (+ `M.flush()` in `backpack.lua`, `"progression"` in `main.lua` FEATURES).
 Test: `test/PacificTogetherTest/Scripts/scenarios/progsync.lua`, mutation `noprog`. Pair `C:\PTLanes\prog`, port 7941, headless.
 

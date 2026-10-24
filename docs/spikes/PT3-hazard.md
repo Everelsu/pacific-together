@@ -1,5 +1,7 @@
 # PT3-hazard: radiation on the guest (#8), wheel damage look (#9), repeating story lines (#4)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 ## #8 radiation (fixed, scenario `radiation`)
 Observations
 - Zone Rural_Forest_Radio_Scylla_02, live probe: host 8 `BP_VolCascade_Radiation_C` (5 with Max Local Radiation > 0), guest 3 (all Max 0, level-placed). `BP_HazardManager_C["Is Radiation Greater at Point"]` at a host volume: host true, guest false.

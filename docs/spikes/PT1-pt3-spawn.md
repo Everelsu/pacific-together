@@ -1,5 +1,7 @@
 # PT3 spawn: guest seated as DRIVER on a zone join (Steam playtest #3, #17)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Observations
 - Steam playtest guest log (local/playtest-20261023-steam/UE4SS-last.log): `PT|car riding ... offset=63.4,-31.5,-8.2` right after the zone join and
   `offset=51.4,-40.6,-11.8` after the garage rejoin: car-local Y < 0 is the driver seat. No `PT|car seated` line: our seat() never ran, the game attached it.

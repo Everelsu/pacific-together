@@ -1,5 +1,7 @@
 # Crash reports (D16, Q9)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19, lane E. How the game sends crash reports and how the mod can turn uploads off without touching game
 files. Sources: the copy's install files (read only), `DefaultEngine.ini` / `BaseEngine.ini` from `pakchunk0`, the
 CrashReportClient's own pak, Sentry UHT headers, crash folders from earlier runs in `local/test-results`, scenario

@@ -1,5 +1,7 @@
 # PT2 map: the other player on the ARC map and the HUD (P8, D17 second half)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-22, lane `pt2-map`. Module `mod/PacificTogether/Scripts/mapmark.lua` (+ "mapmark" in FEATURES), scenario `mapmark` (fixture `zone`, mutation `nomapmark`).
 Builds on `docs/research/arc-marker.md` (map icon registers) and `nametag.lua` (close range).
 

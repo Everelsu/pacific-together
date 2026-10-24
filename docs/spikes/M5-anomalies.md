@@ -1,5 +1,7 @@
 # M5 anomalies lane: hazards act on both players (W6, W7, D19)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-21. Mod: `mod/PacificTogether/Scripts/anomalies.lua`. Scenario: `anomalies` (fixture `zone`, mutation `noanom`); Tourists: `tourist` with `PT_MUTATE=mod` (garage).
 
 ## Observations
@@ -27,7 +29,7 @@
   it sets the flag while a guest's camera sees the Tourist (the game's own test: within 2000 uu, dot > 0.3) and clears it when it was ours.
   Proven in the garage (`tourist` scenario, mode `mod`): `seen=true flag=true forced=true`, moved 0.
 
-## Gaps (not done)
+## Gaps at the time
 
 - Grab/steal anomalies (PhysicsGrabber, Pickpocket/PartStealer, Abductor, Can Opener) and the car's own health receivers (`AC_CarHealthReceiver`) were
   not changed: the host's car takes them (the car is the host's). The guest being grabbed/pickpocketed is not handled.

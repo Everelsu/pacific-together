@@ -1,6 +1,8 @@
 # PT3-perf: host hitches in the real Steam play, polling to hooks
 
-Research only (2026-10-23 night, no game run, no code changed). Sources: `local/playtest-20261023-steam/host-UE4SS.log`
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+Initial research: October 23 night; implementation and measured results follow below (October 24). Sources: `local/playtest-20261023-steam/host-UE4SS.log`
 (host = friend, 0.0.6-dev-e56651f, 38 one-minute `PT|perf` windows), the code at that commit, `local/atlas`, NOTES
 "2026-10-22 night: frame-time pass". Not repeated here (already done): FindAllOf is cheap by hash tables, wreck-part reads
 within 30 m, StaticFindObject/RegisterHook of unloaded paths, controller/world/BFL caches, loot budgets per frame.
@@ -35,40 +37,9 @@ Site = `main.lua` `caller()` line, which is the line after the `LoopInGameThread
   `carfeel.lua:42` (CarManager and MusicManager, several per tick), `upgrades.lua`, `world.lua` (ToD, Storm manager),
   `stations.lua`. These are the 26 CarManager lookups per second.
 
-What each loop does per tick (read from the code):
-
-1. **car.lua:740 `hostTick`** (4 Hz). `theCar(true)` (cached list; per car `inWorld` + `gone`: GetWorld, two GetFullName,
-   K2_GetActorLocation). `carManager()` (FindAllOf). `moveArc`: two FindAllOf of the Gobbler classes with GetFullName per
-   hit, though a slot is moved once (`arcDone`). `sample`: `equipped()` (FindAllOf InventoryManager +
-   GetCarEquippedContainer), 6x `GetDoorState`, parking brake, then for every equipped slot (about 25-35): `itemOf` (TMap
-   ForEach), `archPath` (`Archetype:GetFullName()` + string ops), `manifestation()` (UFunction with FName and tag struct),
-   `readPart` (1-3 UFunctions), string.format. Then `doorParts` (GetAttachedActors, GetClass:GetFName:ToString for every
-   attached actor) and per door IsSimulatingPhysics + two transforms. About 100-200 Lua-to-UE calls per tick, which fits
-   4.9 ms. It sends only when the string changed or every 3 s, so nearly all the work rebuilds the same text.
-2. **car.lua:753** (50 ms, measured 15.6 per second). `theCar(true)`, `doorParts` every 2 s, per door (6) `valid`,
-   `IsSimulatingPhysics`, and the angular velocity of simulating ones. 1.1 ms average although nothing swings most of the
-   time. While a door swings it calls the full `hostTick()` at 20 Hz: the 63 slow lines (avg 35 ms) are those calls.
-3. **visual.lua:552 `hostTick`** (250 ms beat). `levelPackages` every 2 s (cheap). `paintLines` every 500 ms: `eachPart`
-   repeats the car slot walk of item 1 (equipped, ForEach, itemOf, slotName, manifestation), then per part `tintOf`
-   (K2_GetComponentsByClass), `GetTintableProperties`, up to 3 GetFullName. `propsHost` every second: a sweep over
-   `FindAllOf("Actor")` (about 2600 in a zone) with `kindOf` per actor in 4 ms slices, then the diff of the whole result
-   and `bpLine` state strings for placed Blueprint props, `FindAllOf PlayerController`, a distance sort.
-4. **carfeel.lua:265 `hostCarTick`** (10 Hz). `carCar()` (`require("car")` + `theCar`), `sample`: FindAllOf CarManager,
-   `ownedBy` twice (FindAllOf AC_CarAudio_C and Speedometer, GetOwner/GetAttachParentActor + two GetFullName per object),
-   SpeedArm read, string.format; resend at 1 Hz when unchanged.
-5. **anomalies2.lua:104** (10 Hz). FindAllOf grabbers (6-8 per zone), `live()` (GetFullName per grabber), per grabber
-   `CoreFloatingMesh:K2_GetComponentLocation`, `GetFName():ToString()`, `IsOverlappingActor` per guest. Does nothing
-   unless a guest is within 700 uu.
-6. **loot.lua:721** (2 Hz). `scanChanges` over every entity (about 300): lootables `GetNumItems` + `flagsOf`; wreck parts
-   every 10 s round robin or 2 s near a player. `scanMoves`: `K2_GetActorLocation` of every world item every tick.
-   `scanHost` every 2 s, `flush`.
-7. **world.lua:228** (4 Hz). FindAllOf `BP_Base_Hazard_C`, `live` (GetFullName), `IsA`, `GetFName:ToString`,
-   `K2_GetActorLocation`, `core()` (property read, IsValid, component location) per hazard. Most never move.
-8. **carfeel.lua:282 `radioTick`** (5 Hz). Two FindAllOf (MusicManager, CarManager) + three property reads. Mostly lookups.
-9. **progression.lua:118** (0.5 Hz, only with a guest). `snapshot` walks the whole `GlobalWhiteboard.Entries` map,
-   `UnlockedNodes`/`PurchasedNodes` with GetFullName per node, the logbook and `LegStates`, builds four sorted string
-   lists and compares them. 6 ms average, 35 ms max.
-10. **nametag.lua:104** (20 Hz). About 6 UFunctions per other player per tick plus GetFullName. Small.
+The hot loops repeatedly rebuilt car/paint state and looked up managers, parts and audio components.
+Door motion also invoked the full car snapshot at 20 Hz. These code observations motivated the changes below;
+line numbers and baseline costs describe the older commit.
 
 ## Derived
 
@@ -146,38 +117,6 @@ fire (unproven; hook the function that causes the change instead). Never hook a 
 4. Is the door bit set in `H` early enough to start the swing watcher without a hook?
 5. There is no frame-time source: this log gives callback times only, not FPS. A before/after number is callback sums.
 
-## Change list for a worker (file by file, guard scenario)
-
-Measure first: take a 900 s run with a guest, record per-site `sum_ms` and the count of `PT|slow` lines; compare after.
-
-1. `mod/PacificTogether/Scripts/common.lua`: add `BP_ToDManager_C`, `BP_StormManager_C` to `SINGLE`; export
-   `common.first(class)` (cached `FindFirstOf` + IsValid). Guard: `worldsync`, `carfeel`, `upgrades`, `stations`.
-2. `car.lua`: `first` -> `common.first`; split `sample` into H every tick and P cached (1 Hz or dirty); `archPath` cache;
-   one shared `doorParts` cache; `moveArc` every 5 s; swing loop gated by `swingUntil` set by host hooks on
-   `AttemptOpen`/`AttemptShut`/`OnConstraintBroken_Event_0` (in `hookAll`; the existing callbacks return for non-client,
-   add the host branch) and by an `R` line or door bit change in `hostTick`. Guard: `carsync` (state, door swing seen by
-   the guest at 20 Hz, parts), `carenter`, `carexit`, `guestparts`, `guestact`, `arckey`, `garagesync`. Add to `carsync`
-   a check that the swing loop does no work while no door moved (a debug counter `car.swingWork`).
-3. `carfeel.lua`: `first` -> `common.first`; per-car cache of `ownedBy` results. Guard: `carfeel` (radio, horn, wipers,
-   playlist).
-4. `visual.lua`: `paintLines` on dirty or 5 s; sweep every 10 s after the first complete one (`sweepEvery`, `reset()`
-   restores 2 s); `eachPart` over the cached car slots. Guard: `visual` (28 checks), `visualgarage`, `zonejoin`.
-   Watch `guest_removed_mesh_gone` (NOTES round 5): a 10 s sweep needs that check's timeout at 12 s or more.
-5. `anomalies2.lua`: grabber list cache, distance gate, `live()` without per-tick GetFullName. Guard: `anomalies2`,
-   `anomalies`.
-6. `loot.lua`: `scanMoves` near players and every second tick; `BoundOnEventItemCountChanged` dirty flag with 10 s
-   fallback. Guard: `lootsync`, `lootsync2`, `lootcar`, `playpath` (p2 and p6 are known flakes on the baseline too).
-7. `world.lua`: cached hazard list for the position loop. Guard: `worldsync`, `anomalies2` (grabber core).
-8. `progression.lua`: fingerprint before the full snapshot, 20 s fallback. Guard: `progsync`, `storyprog`.
-9. `nametag.lua`: 100 ms while the tag is invisible. Guard: `nametag`.
-10. New probe scenario `perfprobe` (add `perfprobe = @(2, 600)` to `$Defaults` in `tools/run-test.ps1`, `$AutoJoin`
-    too): host registers counters on the hooks in Unknowns 1-3, installs and removes a part, opens/shuts a door,
-    paints; logs `PT|probe <hook> n=<k>`. Its result decides the hook parts of items 2, 3 and 6 (keep the timer
-    fallbacks for any hook that does not fire).
-11. Suite once after the merges (NOTES "suite once at end"), then a 900 s `carsync` and `visual` and read the host's
-    `PT|perf`/`PT|slow`: target is car.lua loop sums under a quarter of the table above and no slow line above 40 ms in
-    an idle 10 minutes.
-
 ## Results (lane pt3-perf, 2026-10-24 night)
 
 Scenario carsync (garage fixture, host drives with a guest), host log, callbacks per minute window; baseline folder
@@ -191,12 +130,10 @@ Scenario carsync (garage fixture, host drives with a guest), host log, callbacks
 | carfeel radioTick (200 ms) | 236 ms / 229 = 1.0 ms | 124 ms / 291 = 0.43 ms |
 | visual hostTick (250 ms) | 775 ms / 180 = 4.3 ms | 1578 ms / 420 = 3.8 ms (sweep unchanged, see below) |
 
-Done: item 1 (swing watcher: runs only while `swingUntil` is ahead, set by hooks AttemptOpen/AttemptShut/ObjectKicked/
-OnConstraintBroken_Event_0 and by a door-bit change; 2 s fallback pass; `car.swingWork` counter), item 2 (part lines at 1 Hz,
-dirty on UpdatedCarEquip; one shared doorParts cache; moveArc every 5 s), item 4 (`common.first`, ToD/Storm in SINGLE, used by
-car, carfeel, upgrades; per-car `ownedBy` cache), item 3 partly (paint on SetPaint/SetDecal/SetTintingEnabled or every 5 s),
-item 5 partly (grabber list refetched every 1 s, nothing when no guest pawn), item 7 (hazard list refetched every 5 s),
-item 9 (nametag 10 Hz while every tag is invisible). Not done: 6 (loot), 8 (progression: guest-side tests wait on 2 s pushes).
+Implemented: door-swing work gated by hooks/door changes with a two-second fallback; part lines cached for one second
+and invalidated by equipment changes; shared door/manager/audio caches; ARC repositioning every five seconds;
+paint hooks plus fallback; cached grabber/hazard lists; slower invisible-name-tag updates.
+Loot dirty-event conversion and progression fingerprinting were not implemented in this pass.
 
 Probes (PT|probe lines in the host log): `BP_CarManager_C:UpdatedCarEquip` FIRES on the listen host (carsync). `BP_TintableComponent_C`
 SetPaint and SetDecal FIRE on the host on a garage paint (visualgarage). The door hooks did not show a fire in carsync (the

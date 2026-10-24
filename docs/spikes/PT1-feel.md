@@ -1,5 +1,7 @@
 # PT1 feel: radios and car feel for the guest
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Module `mod/PacificTogether/Scripts/carfeel.lua`, messages `g.feel.r` (radio state, both ways), `g.feel.pl` (playlist order, host to guest), `g.feel.k` (station skip, both ways), `g.feel.c` (car values, host to guest). Scenario `carfeel`, mutation `nofeel`.
 Results: pass `20261022-001900-pt1-feel-carfeel` (41/41), mutation `20261022-010210-pt1-feel-carfeel-nofeel` (28/41, 13 feel checks fail).
 

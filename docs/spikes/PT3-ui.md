@@ -1,5 +1,7 @@
 # PT3-ui: guest immersion (guestui.lua)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Observations
 - Guest Esc: the controller's PauseMenu input event runs, then `BP_UIManager "Set Pause Menu Opened"` -> `PauseGame` -> `SetGamePaused`; on a client `UGameplayStatics::SetGamePaused` returns false (checked live), and the game shows the menu widget only on success. So Esc was dead.
 - Hook `/Game/Systems/Managers/BP_UIManager.BP_UIManager_C:Set Pause Menu Opened` fires for Lua calls and for the pause widget's own close call; the class is not loaded at mod start (hook from a loop).

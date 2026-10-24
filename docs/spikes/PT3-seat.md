@@ -1,5 +1,9 @@
 # PT3 seat: guest legs under the car (#12), slow car entry (#14)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+Later October 24 work added an explicit seat message and per-frame attachment checks; the earlier slow-entry conclusion below is superseded. See [../../NOTES.md](../../NOTES.md).
+
 ## Observations
 - carsit baseline (20261024-040742-pt3-seat-carsit): seated guest body, both sides: ALS_MovementMode 1, foot_l 91 uu below the car origin.
 - Setting ALS_MovementMode 5 (what the game sets for its own character in the car, PDP_MainCharacter ubergraph) leaves foot/pelvis/head heights unchanged live (garage, VisibilityBasedAnimTickOption forced to 0): no sitting pose behind it.

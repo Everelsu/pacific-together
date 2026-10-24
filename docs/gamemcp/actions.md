@@ -1,6 +1,6 @@
 # Game MCP actions
 
-Tools that make a player do things in a RUNNING test game, one call each, for exploring the car (M3) and items (M4)
+Tools that make a player do things in a RUNNING test game, one call each, for exploring gameplay
 without writing a scenario first. Part of the `pacific-game` MCP (`docs/GAME-MCP.md`); code in
 `tools/gamemcp/ext_actions.py` (tools, journal, promote) and `test/PacificTogetherTest/Scripts/mcp_actions.lua` (the
 actions, run on the game thread). Test pairs only, never the real install.
@@ -53,62 +53,17 @@ the numbers in the result, add a mutation, run it with the command in its header
 -Headless -Fixture <f> -FixturesDir <main>\local\fixtures`). `eval`/`call` entries are replayed with `T.mcp_run`.
 Actions in a scenario: `id = T.act_begin(name, opts)` then `T.act_done(id)` -> `done, text, ok`.
 
-## Self-test and real outputs
+## Validation
 
-`python tools/gamemcp/selftest_actions.py --root C:/PTLanes/<lane> --port <n>` starts a 1-player headless session from the
-garage fixture and drives the MCP over stdio like an agent (worktrees find the main checkout's `local/fixtures` themselves;
-`session_start` also takes `fixtures_dir`). 30/30 checks pass; it takes about 2 minutes plus the game start. Trimmed output:
+`python tools/gamemcp/selftest_actions.py --root C:/PTLanes/<lane> --port <n>` starts a headless garage session.
+The original run recorded 30/30 tool checks; its promoted scenario recorded 27/27 completion checks. These are
+historical tool checks, not gameplay-sync acceptance tests. Replace generated TODOs with state assertions and mutations.
 
-```
-walk 5 m: move_to {location: [2800, 3386, 125], radius: 20}
-  path: PDP_MainCharacter:"Command Move Forward/Backward"(1.0) every frame + control rotation towards the target
-  result: arrived (within 20 uu)
-  from (2300.0, 3386.0, 106.8) to (2780.8, 3386.0, 126.7), 19 uu left (horizontal), walked 481 uu in 1.4 s
-
-jump
-  jumped: peak 98.8 uu above take-off, airborne 0.91 s, landed (MovementMode 1)
-
-interact {target: ".../Garage_Art.Garage_Art:PersistentLevel.BP_Door_Single_GarageToStore"}
-  fired: InteractPressed(BP_Door_Single_C BP_Door_Single_GarageToStore), InteractReleased(...)
-  target changes: AnimStart 15.0->89.999992370605, AnimTarget 15.0->0.0, IsClosing false->true
-
-interact {target: "nearest BP_Garage_InOutBox_C"}
-  fired: InteractPressed(BP_Garage_InOutBox_C ...), InteractReleased(...)
-  after:  backpack_items=0 menu_open=true ... (menu closed again by the tool)
-  target changes: OUTbox_lid_NewTrack_0_... 0.0->1.0
-
-enter_car
-  path: the game's own door interaction (driver door handle -> door opens, character enters)
-  ... playerCarState=1 (1 = in car) pawn=PDP_MainCharacter_C
-
-drive {throttle: 1, seconds: 5}
-  before: pos (-3821.7, -1708.9, 180.8) speed 35 uu/s (1.2 km/h) ... gearbox=0 parkingBrake=false playerCarState=1
-  after:  pos (-1896.6, -644.6, 110.0) speed 804 uu/s (28.9 km/h) ...
-  moved 2200 uu (22.0 m) horizontally, 2196 uu along the car's forward axis, top speed 804 uu/s (28.9 km/h)
-
-give_item {item: "Raw_Scrap_Steel", count: 3}
-  calls ok: 3/3, backpack count of Resource_Raw_Scrap_Steel: 0 -> 3
-  backpack slot 0: Resource_Raw_Scrap_Steel x3
-
-pickup {target: <spawned BP_WorldItem_C>}   inventory -> backpack slot 0: Resource_Raw_Scrap_Steel x4
-drop {slot: 0}
-  path: ItemSlot:TransferSingleIntoContainer(hand) + BP_InventoryManager:PlayerDropHandItem ... backpack+hand items 4 -> 3
-```
-
-The journal of that run promoted to a scenario (`promote(name="selftest_actions_demo")`, 20 steps) and replayed with
-`run-test.ps1 -Scenario selftest_actions_demo -Clients 1 -Headless -Fixture garage`: 27/27 checks (22 planned step checks,
-every action finished without error). It proves nothing beyond that until the TODO checks are filled in.
-
-Remote player, checked by hand (2 players, headless, the host spawned and possessed a `PDP_MainCharacter_C` for the guest as
-in X13/`carlib.lua`): on `side=client`, `jump` and `give_item` work, and `interact` on `nearest BP_Garage_InOutBox_C` fires
-`InteractPressed` in the guest's game and opens its inventory menu and the box lid there; the host's box stayed closed and its
-backpack empty. That is the guest-local behaviour of X4, reported by the result's `note:` line, not a synced interaction.
-
-## Limits, said plainly
+## Limits
 
 - **Remote player (`side=client`)**: the actions run the guest's OWN game. `interact`/`pickup` work through the game's path
-  there only when the guest has its own `PDP_MainCharacter_C` (the host spawns and possesses one, M2/X13), and their effect is
-  client-local: nothing reaches the host (X4, `docs/spikes/X4.md` in lane C). Without a character the tools fail with
+  there only when the guest has its own `PDP_MainCharacter_C` (the host spawns and possesses one, M2/X13), and execute locally. Shipping gameplay modules may forward those actions to the host; the tool itself does not.
+  Check both sides to establish synchronization. Without a character the tools fail with
   "no character: the controlled pawn is ...". The car tools refuse `side=client`.
 - `interact` and `pickup` **teleport** to a spot with a clear line of sight (said in the result); they do not walk there.
   Use `move_to` first when walking matters.
