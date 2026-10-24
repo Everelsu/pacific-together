@@ -2,7 +2,7 @@
 --   pause menu   the guest's Esc did nothing: the game opens its pause menu only when UGameplayStatics::SetGamePaused succeeds,
 --                and a client's SetGamePaused is always false. After "Set Pause Menu Opened" the guest shows/hides the menu widget
 --                itself; the world is not paused (a guest cannot pause the host's world).
---   seat hint    "X  Exit car" at the bottom while the guest is seated
+--   seat hint    "X  Exit car" above the hotbar while the guest is seated
 --   loading      "Joining host...", "Loading...", "Waiting for host..." in the screen centre until the guest can move
 --   fade         a short fade to black and back when the guest is seated or leaves its seat
 --   unstick      the End key does what F8 does (laptop keyboards need Fn for F8); the console command "ptunstick" too
@@ -57,15 +57,16 @@ local function build()
     local canvas = StaticConstructObject(StaticFindObject("/Script/UMG.CanvasPanel"), tree, FName("PTGuestUiRoot"))
     tree.RootWidget = canvas
     local n = { widget = w, cache = {} }
-    local function put(t, y)
+    local function put(t, y, x)
+        x = x or 0.5
         local slot = canvas:AddChildToCanvas(t)
-        slot:SetAnchors({ Minimum = { X = 0.5, Y = y }, Maximum = { X = 0.5, Y = y } })
+        slot:SetAnchors({ Minimum = { X = x, Y = y }, Maximum = { X = x, Y = y } })
         slot:SetAlignment({ X = 0.5, Y = 0.5 })
         slot:SetPosition({ X = 0, Y = 0 })
         slot:SetAutoSize(true)
     end
     n.msg = text(tree, "PTGuestUiMsg", 30); put(n.msg, 0.45)
-    n.hint = text(tree, "PTGuestUiHint", 20); put(n.hint, 0.9)
+    n.hint = text(tree, "PTGuestUiHint", 20); put(n.hint, 0.78, 0.62) -- above the hotbar and right of it (at 0.9 it sat on the inventory cells)
     canvas:SetVisibility(3); w:SetVisibility(3)
     w:AddToViewport(Z)
     return n
