@@ -5,7 +5,46 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-10-24
+
+Network protocol 3: host and guest both need 0.0.7.
+
+### Added
+- The other player has a body: Djecka's survivor model, animated, with the legs hidden while sitting in the car.
+- The guest's Esc menu opens, "X  Exit car" shows while seated, "Joining host...", "Loading..." and "Waiting for host..."
+  show while the game loads, and the screen fades when the guest takes or leaves the seat. End (and F8) resets stuck controls.
+- With a guest connected only the host's Esc menu pauses the game (inventories, map and logbook no longer freeze the guest);
+  the guest sees "Paused by host".
+- Player upgrades (backpacks, armour, suits, gloves, boots) reach the guest from the host's save.
+- Chains the host breaks on the garage's side doors break for the guest too; doors the host opens or shuts follow.
+- Radiation hurts the guest; flat tyres, ARC anchor structures, broken plasma generators, exit portals and story pickups show
+  on the guest; the Spark Tower, landmines, bollards and grabbers react to the guest even far from the host.
+- Cyrillic names in name tags.
+
 ### Fixed
+- The guest was thrown out on joining a zone from a bigger save ("Reliable buffer overflow"): the host now paces what it sends
+  and holds the bulky parts until the guest's character has arrived (after a junction it arrived 48 s late, now about 1 s).
+- After a junction the guest fell through the map on leaving the car, or stood stuck and was pulled back: the guest's walking
+  and collision are switched back on after the exit, and it is placed where the game places a driver getting out.
+- The guest's game could crash at random moments, mostly on joining a zone: our key presses (X, End, F8, ping) ran mod code on
+  a second thread. Keys are now read on the game thread.
+- The guest's car stayed in the garage while the host drove out (and the guest fell through the zone after it): the car now
+  always reaches the guest, however far it goes.
+- A guest respawned into the car body tore off doors and wheels and launched the car: the guest is moved to the passenger seat
+  at once.
+- The guest no longer spawns in the driver's seat, sits in the roof, or waits seconds for its seat; X works.
+- The host's frame time: the car's state took 3.9 ms per tick (now 1.0) and went out whole many times a second (52 KB/s of the
+  guest's connection; now at most twice a second).
+- The guest's garage upgrade counts were double the host's.
+- Story lines no longer repeat; the Impact Hammer no longer looks huge on the other player; the scraping sound no longer sticks
+  on the guest; a guest rejoining while seated no longer crashes.
+
+### Known issues
+- An anchor the guest picks up stays on the host's side (it can be deposited twice).
+- Tutorial steps the guest does alone are not shared with the host.
+- Re-entering the car through the driver's door showed the driver's pose once in hand play (not reproduced in tests).
+
+### Also fixed
 - Both games stuttered every second or two in a zone (the host's loot check alone took 200-300 ms, the guest froze for
   half a second on joining). The mod now remembers what it looked up instead of searching again, checks far-away wreck
   parts a few at a time, and spreads the big jobs (a guest's first copy of the zone's loot) over many frames. The host's
@@ -13,7 +52,7 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 - A guest joining a zone could be thrown out and rejoin right away: the host sent the zone's loot before the guest's game
   had finished loading. The host now waits until the guest asks for it.
 
-### Added
+### Also added
 - The guest sees the zone's buildings and props (houses, gas station, walls, doors, fences, crates) like the host.
 
 ## [0.0.6] - 2026-10-22

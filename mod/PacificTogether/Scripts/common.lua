@@ -1,7 +1,7 @@
 local UEHelpers = require("UEHelpers")
 
 local M = {
-    MOD_VERSION = "0.0.6",
+    MOD_VERSION = "0.0.7",
     PROTOCOL_VERSION = 3,
 }
 
