@@ -499,6 +499,7 @@ end
 
 -- X8: once the host attached us, hold the replicated offset; the pawn arrives attached but far off its seat
 local riding = nil
+if os.getenv("PT_MUTATE") ~= "noridefree" then RegisterLoadMapPreHook(function() if riding then CancelDelayedAction(riding.loop); riding = nil end end) end
 local function seatErr(char, car)
     local o = char.AttachmentReplication.LocationOffset
     return dist(toLocal(car, char:K2_GetActorLocation()), vec(o.X, o.Y, o.Z))
@@ -542,6 +543,8 @@ local function ride(char, car)
     local fixes = 0
     local loop
     loop = LoopInGameThreadWithDelay(1, function()
+        -- the pawn and car of a world that was freed: reading them is an access violation pcall cannot catch (guest rejoin crash)
+        if os.getenv("PT_MUTATE") ~= "noridefree" and not (valid(char) and valid(car)) then CancelDelayedAction(loop); riding = nil; return end
         local ok = pcall(function()
             if not same(char:GetAttachParentActor(), car) then
                 log("PT|car left the seat (fixes=%d)", fixes)

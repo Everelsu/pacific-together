@@ -833,3 +833,9 @@ Unknowns / not fixed
 - #10 scrapper sound left playing, #12 legs under the car, #14 slow car entry, #17 40-60 s stall (assumed same cause as #3).
 - Landmines still creep toward the host only; the guest's radiation copies have no visuals; a host pause opened before the guest
   joined is not refused; host health read 97 once after a Tesla shot at the guest (anomtesla run, unverified).
+
+## 2026-10-24 night: the guest's rejoin crash in mapmark (pt3-crash)
+
+Observations: crash (EXCEPTION_ACCESS_VIOLATION, 0x1e31c0cc0 / 0xffffffffffffffff) in 3 of 3 mapmark runs on main, about 50% of runs with mutate and ~0 of 6 with the fix. CrashContext call stack symbolized with dbghelp + UE4SS.pdb: Lua `obj.Property` read -> UObjectBase::prepare_to_handle -> UStruct::FindProperty -> TFieldIterator (a freed object's class pointer). Tracing every loop for 6 s after the load map (run 20261024-032013-pt3-crash-mapmark-noridefree): the last loop entered was car.lua's seat-hold loop (`ride`, 1 ms).
+Derived: that loop kept `char`/`car` of the old world through the guest's rejoin and called `char:GetAttachParentActor()` without a validity check (pcall cannot catch an access violation). Fix in car.lua: the loop checks valid(char) and valid(car) first and cancels itself; a LoadMapPre hook cancels it. Mutation PT_MUTATE=noridefree switches both off.
+Results: mapmark 22/22 twice with the fix (20261024-032235, -032333), noridefree: 2 of 3 runs pass by luck, 1 crashes (-032625); sessionrejoin 36/36 (-032823), guestdeath (zone) 30/30 (-034615).
