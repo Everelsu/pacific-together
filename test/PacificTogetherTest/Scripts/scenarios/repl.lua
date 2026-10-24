@@ -35,5 +35,8 @@ return function(T)
             hold,
         }
     end
-    return { T.onMap("RB_MainMenu", 90), T.join("repl_client_joined", mapName, 240, 30), hold }
+    -- the shipping mod joins (PT_JOIN, run-test's AutoJoin) so it also rejoins after the host's map loads (junctions)
+    return { T.onMap("RB_MainMenu", 90),
+             { check = "repl_client_joined", timeout = 240, cond = function() return T.netMode() == "client" and T.map() ~= "RB_MainMenu" end },
+             hold }
 end

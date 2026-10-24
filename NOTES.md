@@ -375,3 +375,15 @@ Changes
 Unknowns
 - Anchors picked up by the guest stay on the host (deposited twice): loot sync gap, not looked at.
 - Parked, not needed now: local/wip-after-0f7fb78.patch (window 32, move-buffer watcher).
+
+## 2026-10-24 night: owner hand play of 0.0.7 on an MCP live session (logs local/playtest-20261024-coop16, coop17)
+
+Observations
+- coop16: the guest went back to the main menu when the host travelled to the junction (Highway_Forest_01) and did not rejoin. Its
+  shipping mod logged `role=host join=nil`: in MCP/repl sessions the test bot joined with its own `open`, so the shipping guest had
+  no rejoin. The host closing the connection on the map load (`LoadMap ...?listen`, NetDriver shutdown) is the normal path.
+- coop17, after the fix: the owner played garage -> Highway_Forest_03 -> Rural_Forest_Town_Sasquatch_82 -> Rural_Forest_Radio_Scylla_02
+  -> garage with the guest rejoining at every map; owner: "come back with my guest in one piece". 0 PT|error on either side.
+
+Changes
+- run-test.ps1: `repl` is in $AutoJoin; repl.lua's guest only waits for the connection (the shipping mod joins and rejoins).
