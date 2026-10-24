@@ -131,7 +131,8 @@ so several can sit in one SaveGames folder.
 |---|---|---|---|
 | `garage` | 7 | `RB_Garage` | story mode, car and character, stocked by the game's debug events (biggest container 457 items, anchor juice +5 each); no missions done |
 | `zone` | 8 | `Rural_Forest_Radio_Scylla_02` | a real run map (started by the game's own `TravelToNextLeg`), car and character, ARC charge about 4 |
-| `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0; that a gateway can then be summoned is not proven |
+| `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0 (`MaxCharge` 1.0, so the screen counts it charged); the game's own exit selection (`GobblerScreen:OnExitUseComplete(portal)`) sets the gateway (2026-10-24); the nearest portals are ~1.1 km from the car |
+| `garage-return` | 1 | `RB_Garage` | back from a run through the exit portal's own return (`TravelToGarage(2, ...)`), loot in the car (trunk 129 items on the guest); fixture.txt has the steps |
 
 - `run-test.ps1 -Fixture garage[,zone,gateway]` moves the host copy's `Saved\SaveGames` aside, copies the fixtures' `.sav`
   files in, sets `PT_FIXTURE`, and puts the original folder back after the run (a leftover `.ptbak` from a killed run is
@@ -156,7 +157,7 @@ test bots, so you can try things yourself. The guest joins the host by itself (`
 menu until the host listens); the host's shipping mod listens like a real player's. The test mod stays inert (no `PT_SCENARIO`).
 
 - `tools/play-local.ps1`: both stop at the main menu; start or load a game on the host, the guest joins once it listens.
-- `tools/play-local.ps1 -Fixture garage|zone`: the host loads that fixture save (the test mod's `repl` scenario does only
+- `tools/play-local.ps1 -Fixture garage|zone|gateway|garage-return`: the host loads that fixture save (the test mod's `repl` scenario does only
   that), the guest follows. The host copy's own saves are put back when the script ends.
 - `-Root` (default `C:\PacificTogetherTest`), `-Port`. It refuses to start while a game from `-Root` runs, waits until
   both games are closed (Ctrl+C closes them) and prints each side's `UE4SS.log` path.
