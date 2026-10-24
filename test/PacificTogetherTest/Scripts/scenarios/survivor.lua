@@ -3,7 +3,7 @@
 --   other_mannequin_invisible  its own mesh keeps the game's invisible material (the parts are what is drawn)
 --   own_has_no_parts     our own body has none
 --   part_on_bone         the parts sit on their bones (hand_r, foot_l, head, spine_02): within 3 uu
---   part_follows_walk    both sides walk 3 s; the other's hand part moved more than 100 uu and is on its bone again within 4 uu
+--   part_follows_walk    both sides move 300 uu; the other's hand part moved more than 100 uu and is on its bone again within 4 uu
 -- Run: tools/run-test.ps1 -Scenario survivor -Headless      Mutation nosurvivor: survivor.lua off, the parts checks FAIL.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -21,17 +21,27 @@ return function(T)
         return w
     end
     local ON = { "hand_r", "foot_l", "head", "spine_02" }
-    local before
-    local function handPos() return L.survivorParts(other()).hand_r:K2_GetComponentLocation() end
+    local function handPos() local v = L.survivorParts(other()).hand_r:K2_GetComponentLocation(); return { X = v.X, Y = v.Y, Z = v.Z } end
     local steps = {}
     local function add(s) steps[#steps + 1] = s end
-    local function walk(secs)
-        local t0
-        return { check = "walk_" .. T.ROLE, timeout = secs + 10, cond = function()
-            local me = L.own()
-            t0 = t0 or os.clock()
-            me:AddMovementInput(me:GetActorForwardVector(), 1.0, false)
-            return os.clock() - t0 > secs
+    -- AddMovementInput did not move either character in the garage: the host moves both characters 200 uu back and forth for 12 s
+    -- (it replicates; the sides run out of step, so the other's hand is sampled over the whole window)
+    local lo, hi, n = nil, nil, 0
+    local function walk()
+        return { check = "walk_" .. T.ROLE, timeout = 30, cond = function()
+            -- a guest's own teleport is corrected by the host: the host moves both characters (the guest's through authority)
+            if T.ROLE == "host" then
+                for _, c in ipairs({ L.own(), L.guestChar() }) do
+                    local l, f = c:K2_GetActorLocation(), c:GetActorForwardVector()
+                    local k = (n % 2 == 0) and 200 or -200
+                    c:K2_TeleportTo({ X = l.X + f.X * k, Y = l.Y + f.Y * k, Z = l.Z + 20 }, c:K2_GetActorRotation())
+                end
+            end
+            n = n + 1
+            local h = handPos()
+            lo = lo and math.min(lo, h.X + h.Y) or h.X + h.Y
+            hi = hi and math.max(hi, h.X + h.Y) or h.X + h.Y
+            return n >= 12
         end }
     end
     add(T.onMap("RB_MainMenu", 90))
@@ -63,14 +73,12 @@ return function(T)
         T.log("PT|info survivor worst offset %.2f", w)
         return w < 3
     end })
-    add({ run = function() before = handPos() end })
-    add(walk(3))
-    add({ wait = 1.5 })
+    add(walk())
+    add({ wait = 6 })
     add({ check = r .. "_part_follows_walk", timeout = 20, cond = function()
-        local o = other()
-        local moved, w = d3(before, handPos()), worst(o, ON)
-        T.log("PT|info survivor walk moved %.0f worst %.2f", moved, w)
-        return moved > 100 and w < 4
+        local w = worst(other(), ON)
+        T.log("PT|info survivor settled worst %.2f hand range %.0f", w, (hi or 0) - (lo or 0))
+        return w < 4 and (hi or 0) - (lo or 0) > 100
     end })
     add({ wait = 3 })
     return steps

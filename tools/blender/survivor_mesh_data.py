@@ -28,6 +28,13 @@ def norm(a):
 parts = []  # (bone, mat, [(pos, normal)] per tri-vertex triple lists)
 
 def emit(bone, mat, tris):
+    # counter-clockwise seen from outside (Blender): swap two corners of any triangle whose winding disagrees with its normals
+    for t in tris:
+        a, b, c = t[0][0], t[1][0], t[2][0]
+        w = cross(sub(b, a), sub(c, a))
+        n = add(add(t[0][1], t[1][1]), t[2][1])
+        if sum(x * y for x, y in zip(w, n)) < 0:
+            t[1], t[2] = t[2], t[1]
     parts.append((bone, mat, tris))
 
 def basis(d):
