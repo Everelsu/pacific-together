@@ -321,6 +321,17 @@ local function hostTick()
 end
 
 -- C1: seat the guest at the mirrored seat and attach it (movement and collision off on both sides)
+-- Steam playtest #12: a seated guest body stands at seat height, its legs hang under the car. The game has no sitting pose (its own
+-- driver's body is never shown; ALS_MovementMode 5 changes nothing visible), so the legs are hidden while the guest sits.
+local LEG_BONES = { "thigh_l", "thigh_r" }
+local function sitPose(char, on)
+    if os.getenv("PT_MUTATE") == "nosit" then return end
+    pcall(function()
+        for _, b in ipairs(LEG_BONES) do
+            if on then char.Mesh:HideBoneByName(FName(b), 0) else char.Mesh:UnHideBoneByName(FName(b)) end
+        end
+    end)
+end
 local seated = {} -- host: guest character full name -> true while our seat() holds it (the game attaches a new character as DRIVER, playtest 2026-10-23)
 local function seat(char, car)
     seated[char:GetFullName()] = true
@@ -337,6 +348,7 @@ local function seat(char, car)
     local r = car:K2_GetActorRotation()
     char:K2_SetActorLocationAndRotation(toWorld(car, lp), { Pitch = 0, Yaw = r.Yaw, Roll = 0 }, false, {}, true)
     char:K2_AttachToActor(car, NONE, 1, 1, 1, false)
+    sitPose(char, true)
     log("PT|car seated %s at %.1f,%.1f,%.1f", char:GetFullName(), lp.X, lp.Y, lp.Z)
 end
 
@@ -368,6 +380,7 @@ net.on("g.car.exit", function(pc)
     if not char or not car or not same(char:GetAttachParentActor(), car) then return end
     seated[char:GetFullName()] = nil
     char:K2_DetachFromActor(1, 1, 1)
+    sitPose(char, false)
     -- beside the driver's door, a little up so the capsule clears the sill
     local p = car:K2_GetActorLocation()
     local r = car:GetActorRightVector()
@@ -511,6 +524,7 @@ local function stopRide(char)
     if riding then CancelDelayedAction(riding.loop) end
     riding = nil
     if valid(char) then
+        sitPose(char, false)
         pcall(function() char:SetActorEnableCollision(true) end)
         pcall(function() char.CharacterMovement:SetComponentTickEnabled(true); char.CharacterMovement:SetMovementMode(1, 0) end)
     end
@@ -543,6 +557,7 @@ local function ride(char, car)
         char:K2_SetActorRelativeLocation(vec(o.X, o.Y, o.Z), false, {}, true)
     end
     place()
+    sitPose(char, true)
     local fixes = 0
     local loop
     loop = LoopInGameThreadWithDelay(1, function()
