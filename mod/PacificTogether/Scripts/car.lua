@@ -310,6 +310,12 @@ local function hostTick()
     if #guests == 0 then lastSent, lastGuests = nil, 0; return end
     local car, cm = theCar(true), carManager()
     if not car or not cm then return end
+    -- past the default 150 m net cull (from the guest's camera, which rides the guest's copy) the car stopped replicating: frozen in
+    -- the garage while the host drove off, and in a zone the guest's world never streamed in around the real car (fell through)
+    if os.getenv("PT_MUTATE") ~= "norelevant" and not car.bAlwaysRelevant then
+        car.bAlwaysRelevant = true
+        log("PT|car always relevant for the guest")
+    end
     if os.clock() - arcAt > 5 then arcAt = os.clock(); moveArc(car) end -- a slot is moved once
     local s = sample(car, cm)
     if not s then return end

@@ -874,3 +874,11 @@ Observations
 
 Unknowns
 - Whether the doubled upgrade tags make the guest see extra stations/storage.
+- coop-garage hand play (logs local/playtest-20261024-coop1): the host drove out to the junction and the guest's car stayed in the
+  garage (lights still synced: our own message), the guest's exit put it at the real spot but the car was back in the garage;
+  in the zone every guest exit fell through the ground (died 3x, twice). Cause: the player car was not bAlwaysRelevant; its net
+  cull is 150 m and the garage exit trigger is 234 m from the car. Seen from the guest's camera (riding the guest's frozen copy)
+  the car left relevance and stopped replicating, and the guest's world did not stream in around the real car. Fix: the host sets
+  the car bAlwaysRelevant while a guest is connected. carrelevant (car moved 300 m, again after the 5 s relevance timeout) 17/17,
+  mutation norelevant 16/17.
+- Not looked into yet: while the host was in the junction's route menu, the guest's car kept moving (owner).
