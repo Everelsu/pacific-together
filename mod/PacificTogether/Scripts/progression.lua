@@ -28,6 +28,7 @@ end
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
 local function pm() local m = FindFirstOf("BP_ProgressionManager_C"); return valid(m) and m or nil end
 local function gstate() local g = FindFirstOf("BaseGenericGraphState"); return valid(g) and g or nil end
+local function mcm() local m = FindFirstOf("BP_MainCharacterManager_C"); return valid(m) and m or nil end
 local function path(o) return o:GetFullName():match("^%S+ (.+)$") end
 local function short(o) return o:GetFName():ToString() end
 local function split(s) local r = {}; for p in s:gmatch("[^;]+") do r[#r + 1] = p end; return r end
@@ -36,8 +37,14 @@ local function split(s) local r = {}; for p in s:gmatch("[^;]+") do r[#r + 1] = 
 
 local function snapshot()
     local m = pm()
-    local s = { wb = {}, un = {}, rt = {}, lb = {} }
+    local s = { wb = {}, un = {}, rt = {}, lb = {}, pu = {} }
     if not m then return s end
+    -- player upgrades (backpack size, hotbar, insulated gloves, radiation curve) are archetypes the save gives the host's
+    -- character manager; the guest's list stays empty (owner, 2026-10-24)
+    local c = mcm()
+    if c then
+        c.PlayerUpgradesUnlocked:ForEach(function(_, o) local a = o:get(); if valid(a) then s.pu[#s.pu + 1] = path(a) end end)
+    end
     m.GlobalWhiteboard.Entries:ForEach(function(k, v)
         local tag = k:get().TagName:ToString()
         if not skipTag(tag) then s.wb[#s.wb + 1] = string.format("%s=%.4f", tag, v:get()) end
@@ -125,16 +132,22 @@ end)
 
 local got = false
 
+-- the host's tags as last received (a section comes in several chunks): garage.lua's InstallSpecificUpgrade on the guest counts
+-- its installs on top of the copied WB.GarageUpgrades.* values (Inventory.InstallCount 8 vs the host's 4), so they are written again
+local hostWb = {}
+RegisterLoadMapPreHook(function() hostWb = {} end)
 local function applyWb(data)
     local m = pm()
     if not m then return end
+    for _, e in ipairs(split(data or "")) do
+        local tag, v = e:match("^([%w_%.]+)=(%-?[%d%.]+)$")
+        if tag and tonumber(v) then hostWb[tag] = tonumber(v) end
+    end
     local w, have = m.GlobalWhiteboard, {}
     w.Entries:ForEach(function(k, v) have[k:get().TagName:ToString()] = v:get() end)
     local n = 0
-    for _, e in ipairs(split(data)) do
-        local tag, v = e:match("^([%w_%.]+)=(%-?[%d%.]+)$")
-        v = tonumber(v)
-        if tag and v and not skipTag(tag) and (have[tag] == nil or math.abs(have[tag] - v) > 0.001) then
+    for tag, v in pairs(hostWb) do
+        if not skipTag(tag) and (have[tag] == nil or math.abs(have[tag] - v) > 0.001) then
             w:SetTagFloat({ TagName = FName(tag) }, v)
             n = n + 1
             if n <= 3 then log("PT|prog guest tag %s %s -> %.2f", tag, tostring(have[tag]), v) end
@@ -198,7 +211,26 @@ local function applyLb(data)
     end
 end
 
-for sec, fn in pairs({ wb = applyWb, un = applyUn, rt = applyRt, lb = applyLb }) do
+local function applyPu(data)
+    local c = mcm()
+    if not c then return end
+    local have = {}
+    c.PlayerUpgradesUnlocked:ForEach(function(_, o) local a = o:get(); if valid(a) then have[path(a)] = true end end)
+    for _, p in ipairs(split(data)) do
+        if not have[p] then
+            local o = StaticFindObject(p)
+            if not valid(o) then pcall(LoadAsset, p); o = StaticFindObject(p) end
+            if valid(o) then
+                c["Add Player Upgrade"](c, o) -- the game's own: adds it and rebuilds pack layout, hotbar and damage curves
+                log("PT|prog guest player upgrade %s", p:match("[^.]+$"))
+            end
+        end
+    end
+end
+
+function M.reapplyWb() if safety.guest() and next(hostWb) then pcall(applyWb, nil) end end
+
+for sec, fn in pairs({ wb = applyWb, un = applyUn, rt = applyRt, lb = applyLb, pu = applyPu }) do
     net.on("g.prog." .. sec, function(_, data)
         if not safety.guest() then return end
         if not got then ov.post("Host progress applied", "good") end

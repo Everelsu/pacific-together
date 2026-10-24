@@ -393,10 +393,25 @@ net.on("g.car.exit", function(pc)
     seated[char:GetFullName()] = nil
     char:K2_DetachFromActor(1, 1, 1)
     sitPose(char, false)
-    -- beside the driver's door, a little up so the capsule clears the sill
-    local p = car:K2_GetActorLocation()
-    local r = car:GetActorRightVector()
-    local out = vec(p.X - r.X * 250, p.Y - r.Y * 250, p.Z + 80)
+    -- the game's own exit spot for the driver (traces for a free, grounded place): a fixed 2.5 m to the left put the guest inside the
+    -- ground or a rail on a highway (hand play 2026-10-24, stuck under the road); beside the driver's door when it finds none
+    local out
+    if os.getenv("PT_MUTATE") ~= "noexitspot" then
+        pcall(function()
+            local o = {}
+            car:LocateSafeExitPoint(o)
+            local t = o.Transform and o.Transform.Translation
+            local c = car:K2_GetActorLocation()
+            if t and not o.Failed_UsingSafetyTrace and (t.X - c.X) ^ 2 + (t.Y - c.Y) ^ 2 < 600 ^ 2 then out = vec(t.X, t.Y, t.Z + 20) end
+        end)
+    end
+    local from = out and "game" or "offset"
+    if not out then
+        local p = car:K2_GetActorLocation()
+        local r = car:GetActorRightVector()
+        out = vec(p.X - r.X * 250, p.Y - r.Y * 250, p.Z + 80)
+    end
+    log("PT|car exit spot %.0f,%.0f,%.0f (%s)", out.X, out.Y, out.Z, from)
     char:K2_SetActorLocation(out, false, {}, true)
     -- the guest's own pawn is autonomous: the host's move is not replicated to it, so it places itself
     net.toGuest(pc, "g.car.out", string.format("%.2f|%.2f|%.2f", out.X, out.Y, out.Z))

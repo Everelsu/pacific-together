@@ -882,3 +882,41 @@ Unknowns
   the car bAlwaysRelevant while a guest is connected. carrelevant (car moved 300 m, again after the 5 s relevance timeout) 17/17,
   mutation norelevant 16/17.
 - Not looked into yet: while the host was in the junction's route menu, the guest's car kept moving (owner).
+
+## 2026-10-24 afternoon: guest dropped on join (reliable buffer), doors, player upgrades, exit spot (lead, owner away)
+
+Observations
+- netflow (host bursts 400 x 1 KB at the guest in the garage), flow control off: host engine log `LogNetPartialBunch: Warning:
+  SendBunch: Reliable partial bunch overflows reliable buffer! ... BP_PlayerController_MainCharacter_C ... NumOutRec: 254`, the
+  channel closes, the guest times out 60 s later; no message of the burst arrives (16/17). The same overflow as the Steam play and
+  the coop-garage/zone joins ("loot full list for the guest: 234 entities" just before).
+- A 1000-byte chunk of ours is 2 reliable partial bunches (3 when a byte is >= 0x80: the FString goes out as UTF-16). The first
+  flow-control try counted chunks against a window of 150, i.e. ~300 bunches: it overflowed the same way.
+- Player upgrades (backpacks, armour, suits, gloves, boots: IA_PlayerEquipment_*) are archetypes in
+  BP_MainCharacterManager.PlayerUpgradesUnlocked, from the save; "Add Player Upgrade" adds one and calls RebuildPlayerUpgrades
+  (pack layout, hotbar count, zap immunity, radiation curve). The guest's list was empty.
+- Garage side doors are map-placed BP_Door_Single with a chain lock (LockStrength, BP_LockedComponent, OnUnlockedTag added to
+  the whiteboard; the lock state is decided at BeginPlay from the whiteboard). Only guest -> host was mirrored.
+- Doubled WB.GarageUpgrades on the guest: progression writes the host's values, then garage.lua's InstallSpecificUpgrade on the
+  guest counts its installs on top; the host only resends a section when it changes, so it stayed doubled.
+- Highway_Forest_01 hand play (local/playtest-20261024-coop2): the guest was placed 2.5 m left of the car (fixed offset) and
+  ended under the road; host log `ServerMove: TimeStamp expired: 0.024161, CurrentTimeStamp: 8.716180` right after the exit
+  (before the 150 ms repossess).
+
+Changes
+- net.lua: host -> guest flow control counted in bunches (window 160 of 256), nothing sent before the guest's first ack on the
+  connection (10 s at most), window reset after 20 s without an ack. Guest acks 10x/s while messages come, every 2 s anyway.
+  PROTOCOL_VERSION 3 (host and guest must both have it). netflow 17/17, mutation noflow 16/17.
+- progression.lua: player upgrades section (g.prog.pu), guest applies with "Add Player Upgrade"; the guest keeps the host's
+  whiteboard and writes it again after each garage install (M.reapplyWb from garage.lua).
+- visual.lua: host lists its placed garage doors' states (g.vis.pd, on change and every 10 s); the guest unlocks with
+  ForceUnlockDoor (chain break sound and particles) or sets open/shut with "Set Door from State".
+- car.lua: the guest's exit spot is the car's LocateSafeExitPoint (the game's driver exit trace) within 6 m, else the old offset.
+  Mutation noexitspot.
+- Scenarios: worlddoors + guest_door_unlocked_by_host, guest_door_follows_host_press; progsync + guest_got_host_player_upgrade;
+  garagesync + guest_garage_upgrade_counts_equal; runloop takes -Fixture (coop-garage = the owner's save).
+
+Unknowns
+- Guest -> host has no flow control (few, small messages so far).
+- Whether the guest's own crafted player upgrade should reach the host (only host -> guest is synced).
+- Tutorial progress made by the guest alone (Oppy) and the route-menu car movement: not looked into.

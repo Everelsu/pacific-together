@@ -10,6 +10,16 @@ return function(T)
     local C = require("scenarios.carlib")(T)
     local function alive(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
     local function real(o) return alive(o) and not o:GetFullName():find("/Engine/Transient", 1, true) end
+    -- WB.GarageUpgrades.* (install counts): the guest's were double the host's after the stations came over (hand play 2026-10-24)
+    local function wbup()
+        local L = {}
+        T.first("BP_ProgressionManager_C").GlobalWhiteboard.Entries:ForEach(function(k, v)
+            local t = k:get().TagName:ToString()
+            if t:find("^WB%.GarageUpgrades%.") then L[#L + 1] = string.format("%s=%.0f", t, v:get()) end
+        end)
+        table.sort(L)
+        return table.concat(L, ",")
+    end
     local function door(front)
         for _, d in ipairs(FindAllOf("BP_GarageDoor_C") or {}) do
             if real(d) and (d.IsFrontGarageDoor and true or false) == front then return d end
@@ -106,6 +116,11 @@ return function(T)
         end })
         add({ check = "host_has_parts", timeout = 10, cond = function() return ups() == "111" end })
         add({ check = "guest_gets_fax_shredder_destabilizer", timeout = 40, cond = function() return g("t.up") == "111" end })
+        add({ check = "guest_garage_upgrade_counts_equal", timeout = 30, cond = function()
+            local h, gu = wbup(), g("t.wbup")
+            if h ~= gu then T.log("PT|info wbup host=%s guest=%s", h, tostring(gu)) end
+            return h == gu
+        end })
         -- the car leaves: yard -> rear door -> garage -> front door -> road
         local WP, idx, last, started = { { -1800, -1000 }, { -700, -496 }, { 400, -496 }, { 2500, -496 } }, 1, nil, nil
         add({ run = function()
@@ -143,6 +158,7 @@ return function(T)
         say("t.front", string.format("%.3f", pos(true)))
         say("t.exit", switchOn("GSS_Garage_ExitGateOpened") and "1" or "0")
         say("t.up", ups())
+        say("t.wbup", wbup())
         local c = theCar()
         say("t.car", string.format("%.0f", c and c:K2_GetActorLocation().X or -99999))
         local p = g("t.press")

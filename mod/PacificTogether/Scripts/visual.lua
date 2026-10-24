@@ -421,6 +421,49 @@ net.on("g.vis.unlock", function(_, name)
     log("PT|visual guest unlocked door %s: %s, state=%s", name, d and "unlocked on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
 end)
 
+-- The host's map-placed doors (garage side rooms: chains broken with the impact hammer or a prybar, open or shut) go the other way
+-- too: the guest's copy stayed chained and shut (owner, 2026-10-24). The host lists "path=state" (g.vis.pd), the guest applies a
+-- door's state when the host's changes: a lock with the game's ForceUnlockDoor (chain break sound and particles), open or shut with
+-- "Set Door from State".
+local function placedDoors()
+    local r = {}
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do
+        for _, d in ipairs(FindAllOf(c) or {}) do
+            if live(d) and d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then r[fpath(d)] = d end
+        end
+    end
+    return r
+end
+local function doorStates()
+    local L = {}
+    for name, d in pairs(placedDoors()) do L[#L + 1] = name .. "=" .. tostring(d.CurrentState) end
+    table.sort(L)
+    return table.concat(L, "\n")
+end
+local hostDoorState = {} -- guest: door path -> the host's last state
+RegisterLoadMapPreHook(function() hostDoorState = {} end)
+net.on("g.vis.pd", function(_, data)
+    if not M.enabled then return end
+    local doors
+    for name, st in data:gmatch("([^\n=]+)=(%d+)") do
+        local hs = tonumber(st)
+        if hostDoorState[name] ~= hs then
+            hostDoorState[name] = hs
+            doors = doors or placedDoors()
+            local d = doors[name]
+            if d then
+                local gs = d.CurrentState
+                if gs >= 3 and hs < 3 then
+                    pcall(function() d:ForceUnlockDoor() end)
+                    log("PT|visual host unlocked placed door %s", name:match("[^.:]+$"))
+                elseif gs < 3 and hs < 3 and gs ~= hs then
+                    pcall(function() d["Set Door from State"](d, hs) end)
+                end
+            end
+        end
+    end
+end)
+
 local function make(f)
     local asset, l, r, s = dict[f[3]], f[4], f[5], f[6]
     local x, y, z = nums(l)
@@ -546,6 +589,7 @@ local function hookPaint()
     end
     paintHooked = ok
 end
+local lastDoors
 local function hostTick()
     beat = beat + 1
     if not M.ready then return end
@@ -560,6 +604,10 @@ local function hostTick()
         if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
     if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end -- shortcut: a 10 s rescan broke "door follows the host within 3 s"
+    if beat % 4 == 0 and mapName() == "RB_Garage" then -- zone doors are the game's prefab copies above (and a zone's list could pass the 32 KB message cap)
+        local d = doorStates()
+        if d ~= "" and (d ~= lastDoors or beat % 40 == 0) then lastDoors = d; net.toGuests("g.vis.pd", d) end
+    end
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
         if q then net.toGuests("g.vis.p", q) end

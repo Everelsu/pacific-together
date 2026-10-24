@@ -3,6 +3,9 @@
 --   host_door_unlocked_by_guest_pry   the guest works the lock of Garage_Exterior_Rear the way the prybar does (BP_LockedComponent:WorkLock):
 --                                     the guest's door opens (guest_door_open), the host's door leaves the locked state (3) within 5 s
 --   host_door_pressed_by_guest        the guest presses E on the (now open) door (Highlight, as E does): the host's door changes state again
+--   guest_door_unlocked_by_host       the other way (owner 2026-10-24: chains the host broke with the impact hammer stayed on the guest):
+--                                     the host works the lock of another chained door, the guest's copy unlocks within 5 s
+--   guest_door_follows_host_press     the host presses E on Garage_Exterior_Rear, the guest's door takes the host's state
 -- Run: tools/run-test.ps1 -Scenario worlddoors -Fixture garage -Headless [-Root .. -Port ..]   Mutation novisual: visual.lua inert on both sides.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -44,7 +47,25 @@ return function(T)
             T.log("PT|info host door %s state=%s (was %s)", DOOR, tostring(d.CurrentState), got["s0"])
             return got["t.pressed"] ~= nil and tostring(d.CurrentState) ~= got["s0"]
         end })
-        add({ wait = 2 })
+        add({ run = function()
+            local other
+            for _, d in ipairs(FindAllOf("BP_Door_Single_C") or {}) do
+                if d:IsValid() and d.CurrentState >= 3 and not d:GetFullName():find("/Engine/Transient", 1, true) then other = d end
+            end
+            got.other = other and other:GetFullName():gsub("^%S+ ", "") or "none"
+            T.log("PT|info host works the lock of %s", got.other)
+            if other then other.BP_LockedComponent:WorkLock(other.LockStrength, true, nil, {}, {}, {}) end
+            PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.hostdoor", got.other)
+        end })
+        add({ wait = 8 })
+        add({ run = function()
+            local d = door()
+            d.Highlight:InteractPressed(nil)
+            d.Highlight:InteractReleased(nil)
+        end })
+        add({ wait = 4 })
+        add({ run = function() PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.hostpressed", tostring(door().CurrentState)) end })
+        add({ wait = 15 })
         return steps
     end
 
@@ -69,6 +90,19 @@ return function(T)
             door().Highlight:InteractReleased(nil)
             PTNative_MsgToHost(T.localPC():GetAddress(), "t.pressed", "1")
         end },
-        { wait = 15 },
+        { check = "guest_door_unlocked_by_host", timeout = 60, cond = function()
+            poll()
+            local p = got["t.hostdoor"]
+            if not p or p == "none" then return false end
+            for _, d in ipairs(FindAllOf("BP_Door_Single_C") or {}) do
+                if d:IsValid() and d:GetFullName():gsub("^%S+ ", "") == p then return d.CurrentState < 3 end
+            end
+        end },
+        { check = "guest_door_follows_host_press", timeout = 40, cond = function()
+            poll()
+            local s = got["t.hostpressed"]
+            T.log("PT|info guest door state=%s host=%s", tostring(door().CurrentState), tostring(s))
+            return s ~= nil and tostring(door().CurrentState) == s
+        end },
     }
 end

@@ -2,7 +2,7 @@ local UEHelpers = require("UEHelpers")
 
 local M = {
     MOD_VERSION = "0.0.6",
-    PROTOCOL_VERSION = 2,
+    PROTOCOL_VERSION = 3,
 }
 
 function M.log(fmt, ...) print("[PacificTogether] " .. string.format(fmt, ...) .. "\n") end
