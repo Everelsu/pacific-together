@@ -326,6 +326,8 @@ end
 local LEG_BONES = { "thigh_l", "thigh_r" }
 local function sitPose(char, on)
     if os.getenv("PT_MUTATE") == "nosit" then return end
+    local ok, sv = pcall(require, "survivor")
+    if ok then sv.sit(char, on) end
     pcall(function()
         for _, b in ipairs(LEG_BONES) do
             if on then char.Mesh:HideBoneByName(FName(b), 0) else char.Mesh:UnHideBoneByName(FName(b)) end
