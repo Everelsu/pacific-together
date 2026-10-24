@@ -924,3 +924,36 @@ Unknowns
 - Guest -> host has no flow control (few, small messages so far).
 - Whether the guest's own crafted player upgrade should reach the host (only host -> guest is synced).
 - Tutorial progress made by the guest alone (Oppy) and the route-menu car movement: not looked into.
+
+## 2026-10-24 evening: hand play on the local pair, guest falling after a junction (coop3..coop12 logs in local/)
+
+Observations
+- Host at ~5 FPS while the owner played the guest window (high settings, two games on one GPU): the guest's pawn came late and its
+  moves expired. The test copies now run on Low (GameUserSettings.ini sg.*=0, .ptbak-quality backups).
+- Our traffic per kind (net.lua logs it every 30 s): g.car.s 1552 KB / 30 s (~52 KB/s of the guest's 100 KB/s), the whole car state
+  (~5 KB: every part with its asset path) resent whenever a number drifted while driving.
+- After a junction (TravelToNextLeg) the host pushed ~1 MB of loot lists (1774 entities), world positions and radiation volumes at a
+  guest still loading: its pawn arrived 48 s after the host spawned it; the guest left the car 4 s later into a half-loaded world.
+- After the exit's repossess the host had the guest's character at MOVE_None, collision off (the game's possession sees "the player
+  is in the car": the host, driving). With that fixed the host's copy still fell: the capsule itself was NoCollision (profile
+  Custom), set by the game when it put the joining guest in the car.
+- A guest respawned into the car body tore off doors, a panel and a wheel within the 250 ms seat check.
+- Guest crashes this session: my console probe (a trace hit's weak pointer read on the guest) and the test mod's watchers running on
+  the guest (FindAllOf on a freed actor); a live Lua reload of the host in a zone crashed it. None of these run in normal play.
+
+Changes
+- car.lua: car state at most twice a second (the H line: ignition, gear, lights, handbrake, doors still at once); the game-attach seat
+  check every frame; after the exit's repossess walking, actor collision and capsule collision go back on (mutation noexitwalk);
+  ground diagnostics at the exit spot on both sides.
+- net.lua: until the guest reports its character (g.net.ready) only g.car/pause/health/net/ping go out, the rest waits (90 s at most;
+  mutation noready); bytes per kind logged every 30 s.
+- guestui.lua: logs what the guest has while it has no character.
+- Scenario zoneexit (fixture coop-zone): host in its car, guest seated, junction travel, the game seats the rejoined guest, it leaves,
+  walks away from the car and jumps; neither side may see it more than 3 m below the exit spot. 33/33; mutation noexitwalk 32/32 fails
+  host_guest_stays_on_ground. Pawn after travel: 1 s (was 48 s).
+- Regression on this code: carsync, lootsync, progsync, garagesync, guestdeath, carexit, runloop 49/49, sessionrejoin, zonespawn,
+  guestui, worlddoors, carsit, netflow: 13/13.
+
+Unknowns
+- Anchors picked up by the guest stay on the host (deposited twice): loot sync gap, not looked at.
+- Parked, not needed now: local/wip-after-0f7fb78.patch (window 32, move-buffer watcher).

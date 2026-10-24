@@ -60,25 +60,54 @@ local function flowFor(pc)
     end
     return f
 end
+-- Until the guest's own character has arrived (g.net.ready) only these go out; the rest waits. After a junction the host pushed ~1 MB
+-- of loot lists, world positions and radiation volumes at a guest still loading: its character came 48 s late and it left the car
+-- into a half-loaded world and fell through it (zoneexit, 2026-10-24).
+local URGENT = { "g.car.", "g.pause.", "g.health.", "g.net.", "g.ping." }
+local function urgent(kind)
+    for _, p in ipairs(URGENT) do if kind:sub(1, #p) == p then return true end end
+    return false
+end
 local function drain(f)
     if f.acked == nil then
         if os.clock() - f.at < 10 then return end
         f.acked = 0
         log("PT|net no ack from the guest 10 s after its controller appeared, sending")
     end
+    if not f.ready and (os.getenv("PT_MUTATE") == "noready" or os.clock() - f.at > 90) then
+        f.ready = true
+        log("PT|net guest not ready 90 s after its controller appeared, sending everything")
+    end
     while #f.queue > 0 do
-        local m = f.queue[1]
+        local i = 1
+        if not f.ready then
+            while i <= #f.queue and not urgent(f.queue[i][1]) do i = i + 1 end
+            if i > #f.queue then return end
+        end
+        local m = f.queue[i]
         local out = 0
         for _, c in ipairs(f.inflight) do out = out + c end
         if out > 0 and out + m[3] > WINDOW then return end
-        table.remove(f.queue, 1)
+        table.remove(f.queue, i)
         if not PTNative_MsgToGuest(f.pc:GetAddress(), m[1], m[2]) then return end
         f.inflight[#f.inflight + 1] = m[3]
     end
 end
+-- bytes sent per kind, logged every 30 s (the guest's pawn waited minutes behind our traffic, hand play 2026-10-24)
+local byKind, byAt = {}, os.clock()
 function M.toGuest(pc, kind, data)
     if not (pc:IsValid() and PTNative_MsgToGuest ~= nil) then return false end
     data = data or ""
+    byKind[kind] = (byKind[kind] or 0) + #data
+    if os.clock() - byAt > 30 then
+        local L = {}
+        for k, v in pairs(byKind) do L[#L + 1] = { k, v } end
+        table.sort(L, function(a, b) return a[2] > b[2] end)
+        local s = {}
+        for i = 1, math.min(8, #L) do s[i] = string.format("%s=%.0fK", L[i][1], L[i][2] / 1024) end
+        log("PT|net bytes per kind in %.0f s: %s", os.clock() - byAt, table.concat(s, " "))
+        byKind, byAt = {}, os.clock()
+    end
     if os.getenv("PT_MUTATE") == "noflow" then return PTNative_MsgToGuest(pc:GetAddress(), kind, data) end
     local f = flowFor(pc)
     f.queue[#f.queue + 1] = { kind, data, costOf(data) }
@@ -97,6 +126,14 @@ LoopInGameThreadWithDelay(100, function()
             end
             pcall(drain, f)
         end
+    end
+end)
+M.on("g.net.ready", function(pc)
+    local f = flowFor(pc)
+    if not f.ready then
+        f.ready = true
+        log("PT|net guest ready after %.1f s, %d messages waiting", os.clock() - f.at, #f.queue)
+        drain(f)
     end
 end)
 M.on("g.net.ack", function(pc, data)
@@ -148,8 +185,8 @@ local function sender(address)
 end
 
 -- guest: messages got from the host since this map's connection, reported for the host's flow control
-local received, ackSent = 0, -1
-RegisterLoadMapPreHook(function() received, ackSent = 0, -1 end)
+local received, ackSent, readySent = 0, -1, false
+RegisterLoadMapPreHook(function() received, ackSent, readySent = 0, -1, false end)
 local function dispatch()
     if not PTNative_MsgPoll then return end
     while true do
@@ -175,7 +212,14 @@ end)
 -- the guest's ack: ten times a second while messages come in, every 2 s anyway (the host holds its messages until the first)
 local ackAt = 0
 LoopInGameThreadWithDelay(100, function()
-    if common.netMode() ~= "client" or (received == ackSent and os.clock() - ackAt < 2) then return end
+    if common.netMode() ~= "client" then return end
+    if not readySent then -- the host holds everything but urgent messages until our own character is here
+        local p = localPC() and localPC().Pawn
+        if p and p:IsValid() and p:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter")) then
+            readySent = M.toHost("g.net.ready", "") and true or false
+        end
+    end
+    if received == ackSent and os.clock() - ackAt < 2 then return end
     ackSent, ackAt = received, os.clock()
     pcall(M.toHost, "g.net.ack", tostring(received))
 end)

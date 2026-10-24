@@ -152,6 +152,24 @@ LoopInGameThreadWithDelay(100, function()
     if not okU then log("PT|error guestui %s", tostring(e)) end
 end)
 
+-- while the guest has no character on a map: what it has instead, every 5 s (the pawn never arrived for minutes, hand play
+-- 2026-10-24: received and not possessed, or never received?)
+LoopInGameThreadWithDelay(5000, function()
+    pcall(function()
+        if not guest() or (loading and os.clock() - loading < 30) then return end
+        local pc = UEHelpers.GetPlayerController()
+        if not valid(pc) or (valid(pc.Pawn) and pc.Pawn:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter"))) then return end
+        local s = {}
+        for _, c in ipairs(FindAllOf("PDP_MainCharacter_C") or {}) do
+            if valid(c) then
+                local l, o = c:K2_GetActorLocation(), c:GetOwner()
+                s[#s + 1] = string.format("%s role=%d at %.0f,%.0f,%.0f owner=%s", c:GetFName():ToString(), c.Role, l.X, l.Y, l.Z, valid(o) and o:GetFName():ToString() or "none")
+            end
+        end
+        log("PT|guestui no character: pc=%s pawn=%s chars=[%s]", pc:GetFName():ToString(), valid(pc.Pawn) and pc.Pawn:GetFName():ToString() or "none", table.concat(s, "; "))
+    end)
+end)
+
 -- unstick -------------------------------------------------------------------------------------------------------------------
 local function unstick()
     local car = package.loaded["car"]

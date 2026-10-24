@@ -302,7 +302,7 @@ local function hostHooks()
     hostHooked = all
 end
 
-local lastSent, lastAt, lastGuests = nil, 0, 0
+local lastSent, lastAt, lastGuests, lastH = nil, 0, 0, nil
 local arcAt = -10
 local function hostTick()
     hostHooks()
@@ -320,9 +320,13 @@ local function hostTick()
     local s = sample(car, cm)
     if not s then return end
     local t = now()
-    if #guests ~= lastGuests or s ~= lastSent or t - lastAt > 3 then
+    -- the whole state (~5 KB: every part with its asset path) went out whenever a number drifted: 52 KB/s of the guest's 100 KB/s
+    -- while driving, and the guest's own pawn waited minutes for room (hand play 2026-10-24). Ignition, gear, lights, handbrake and
+    -- doors (the H line) still go at once; the rest at most twice a second.
+    local h = s:match("^[^\n]*")
+    if #guests ~= lastGuests or h ~= lastH or (s ~= lastSent and t - lastAt >= 0.5) or t - lastAt > 3 then
         net.toGuests("g.car.s", s)
-        lastSent, lastAt, lastGuests = s, t, #guests
+        lastSent, lastAt, lastGuests, lastH = s, t, #guests, h
     end
 end
 
@@ -341,6 +345,18 @@ local function sitPose(char, on)
     end)
 end
 local seated = {} -- host: guest character full name -> true while our seat() holds it (the game attaches a new character as DRIVER, playtest 2026-10-23)
+-- what is under a spot on this side: "z=<impact z>" or "none" (diagnostic for the guest falling through the map after leaving the car)
+local function groundAt(who, p)
+    local ok, r = pcall(function()
+        local hit = {}
+        local KSL = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
+        local got = KSL:LineTraceSingle(who, vec(p.X, p.Y, p.Z + 50), vec(p.X, p.Y, p.Z - 3000), 0, false, { who }, 0, hit, true, {}, {}, 0)
+        local h = hit.OutHit or hit
+        return got and string.format("z=%.0f", h.ImpactPoint.Z) or "none"
+    end)
+    return ok and r or ("err " .. tostring(r))
+end
+
 local function seat(char, car)
     seated[char:GetFullName()] = true
     local lp = PASSENGER
@@ -415,15 +431,38 @@ net.on("g.car.exit", function(pc)
     log("PT|car exit spot %.0f,%.0f,%.0f (%s)", out.X, out.Y, out.Z, from)
     char:K2_SetActorLocation(out, false, {}, true)
     -- the guest's own pawn is autonomous: the host's move is not replicated to it, so it places itself
+    log("PT|car exit ground here %s", groundAt(char, out))
     net.toGuest(pc, "g.car.out", string.format("%.2f|%.2f|%.2f", out.X, out.Y, out.Z))
     char:SetActorEnableCollision(true)
     pcall(function() char.CharacterMovement:SetMovementMode(1, 0) end)
     -- The guest sends no moves while seated, so the server's forced updates move its clock for the guest on and every move
     -- after the exit was dropped for about as long as the ride (frozen on the host, 2026-10-23). Unpossess resets the
     -- server's prediction data, Possess makes the client reset its own (proven live: moves accepted at once).
+    -- The possess runs the game's single-player possession, which sees "the player is in the car" (the HOST, driving) and freezes
+    -- the guest again: movement off, collision off; on the guest's side it fell through the road on its first jump (hand play
+    -- 2026-10-24, host showed MOVE_None and no collision). Walking and collision go back on right after, and once more later.
+    local function walk()
+        if os.getenv("PT_MUTATE") == "noexitwalk" then return end
+        if valid(char) and not valid(char:GetAttachParentActor()) then
+            char:SetActorEnableCollision(true)
+            -- the game puts a guest who joins while the host drives in the car with its capsule's own collision off (NoCollision,
+            -- profile Custom): with the actor's collision back on it still fell through the ground on the host (zoneexit)
+            if char.CapsuleComponent:GetCollisionEnabled() == 0 then char.CapsuleComponent:SetCollisionEnabled(3) end -- QueryAndPhysics
+            char.CharacterMovement:SetMovementMode(1, 0)
+        end
+    end
     ExecuteInGameThreadWithDelay(150, function()
-        local ok, e = pcall(function() if valid(pc) and valid(char) then pc:UnPossess(); pc:Possess(char) end end)
+        local ok, e = pcall(function() if valid(pc) and valid(char) then pc:UnPossess(); pc:Possess(char); walk() end end)
         if not ok then log("PT|error car repossess %s", tostring(e)) end
+        ExecuteInGameThreadWithDelay(500, function()
+            pcall(walk)
+            pcall(function()
+                local cap = char.CapsuleComponent
+                log("PT|car guest after exit: mode=%d collision=%s capsule=%d static=%d dynamic=%d profile=%s", char.CharacterMovement.MovementMode,
+                    tostring(char:GetActorEnableCollision()), cap:GetCollisionEnabled(), cap:GetCollisionResponseToChannel(0), cap:GetCollisionResponseToChannel(1),
+                    cap:GetCollisionProfileName():ToString())
+            end)
+        end)
     end)
     log("PT|car guest left the car")
     ov.post(ov.other() .. " left the car")
@@ -432,8 +471,9 @@ end)
 net.on("g.car.hello", function() lastSent = nil end)
 
 -- A character spawned while the host drives is attached by the game to the DRIVER's seat (stuck there, X dropped it through the
--- ground, once launched the car; Steam playtest 2026-10-23 #3, #17). Not seated by us: move it to the passenger seat.
-LoopInGameThreadWithDelay(250, function()
+-- ground, once launched the car; Steam playtest 2026-10-23 #3, #17). Not seated by us: move it to the passenger seat. Checked every
+-- frame: within the old 250 ms a guest respawned into the car body tore off doors, a panel and a wheel (hand play 2026-10-24).
+LoopInGameThreadWithDelay(16, function()
     if not safety.active() or common.netMode() ~= "listen" or os.getenv("PT_MUTATE") == "nozonefix" then return end
     pcall(function()
         local car = theCar(true)
@@ -566,6 +606,7 @@ net.on("g.car.out", function(_, data)
     pcall(function() me:K2_DetachFromActor(1, 1, 1) end)
     stopRide(me)
     me:K2_SetActorLocation(vec(tonumber(x), tonumber(y), tonumber(z)), false, {}, true)
+    log("PT|car exit ground on the guest %s", groundAt(me, vec(tonumber(x), tonumber(y), tonumber(z))))
     -- the camera and the controls stayed with the car: camera frozen, no walking (local playtest 2026-10-22)
     local pc = localPC()
     pcall(function() pc:ResetIgnoreInputFlags() end)
