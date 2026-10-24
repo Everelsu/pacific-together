@@ -11,7 +11,7 @@ $Suite = [ordered]@{ # most affected by recent merges first, so a cut-short run 
     carfeel = "garage"; guestswap = "gateway"; pausemenu = "garage"; runloop = "garage"; worldsync = "gateway"; storysync = "garage"; storyprog = "garage"; overlay = "garage"; mapmark = "zone"; ping = "garage"; upgrades = "garage"; stations = "garage"; hands = "garage"; visual = "zone"; visualgarage = "garage"
     anomalies = "zone"; anomalies2 = "zone"; anomalies3 = "zone"; safety = ""; nametag = ""; sessiontravel = "garage"; sessionrejoin = ""
     zonejoin = ""; steamsession = ""
-    zonespawn = "zone"; guestui = "garage"; worlddoors = "garage"; worldzone = "zone"; radiation = "zone"; wheelflat = "zone"; portals = "gateway"; pausehost = "garage"; anomtesla = "zone"
+    zonespawn = "zone"; guestui = "garage"; worlddoors = "garage"; worldzone = "zone"; radiation = "zone"; wheelflat = "zone"; portals = "gateway"; pausehost = "garage"; anomtesla = "zone"; carsit = "garage"
 }
 $out = Join-Path $Repo "local\test-results\suite-$(Get-Date -f yyyyMMdd-HHmmss)$(if ($Shard) { '-' + ($Shard -replace '/', 'of') }).txt"
 $failed = @(); $ran = 0
