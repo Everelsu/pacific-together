@@ -4,7 +4,7 @@ rem First run: git -c url."https://github.com/".insteadOf="git@github.com:" subm
 setlocal
 set "VS="
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-for /f "usebackq delims=" %%i in (`call "%VSWHERE%" -latest -products * -property installationPath`) do set "VS=%%i"
+for /f "usebackq delims=" %%i in (`call "%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS=%%i"
 echo Visual Studio: %VS%
 if not defined VS (echo Visual Studio Build Tools not found & exit /b 1)
 rem vcvars64 looks for vswhere on PATH
