@@ -825,6 +825,13 @@ Observations (scenario runs, folders in local/test-results)
 - Full suite on main d818b35 (2 shards): 46/50. Reruns: lootcar 24/24 (flake). Fail twice: playpath p6 (guest ground pickup
   never reaches the host), guestparts (1-2 different checks per run), mapmark (guest crash after its death rejoin, same address
   0x1e31c0cc0 as 2026-10-23 16:36: pre-existing). Lanes pt3-regress (p6, guestparts) and pt3-crash (mapmark) started 03:00.
+- pt3-regress: p6 and the cutter check were test flakes (two chemicals 73 uu apart, near() took the first; a panel's drop is a
+  loot roll). pt3-crash: the guest's 1 ms ride loop (car.lua) read the old world's pawn after a rejoin while seated; now
+  validity-checked and cancelled at map change (section below). Lead: guestparts "door stays repaired by blowtorch" broke after
+  the perf merge (the host's part lines cached for 1 s sent the old health back); the cache is dropped after any guest
+  g.parts/g.act/g.swap message (net.tap, 24b9568).
+- Final on main 24b9568: playpath 39/39, carexit 29/29, mapmark 22/22 x2, zonespawn 34/34, sessionrejoin 36/36, guestparts
+  73/73 x2, guestswap 33/33, carsync 36/36, session 40/40. Zip dist/PacificTogether-0.0.6-dev-24b9568.zip.
 
 Unknowns / not fixed
 - #16 freeze after the ARC anchor: the ARC machine code never pauses, dilates time or repossesses; host log clean; cause on the
