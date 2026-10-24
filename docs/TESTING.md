@@ -132,6 +132,10 @@ so several can sit in one SaveGames folder.
 | `garage` | 7 | `RB_Garage` | story mode, car and character, stocked by the game's debug events (biggest container 457 items, anchor juice +5 each); no missions done |
 | `zone` | 8 | `Rural_Forest_Radio_Scylla_02` | a real run map (started by the game's own `TravelToNextLeg`), car and character, ARC charge about 4 |
 | `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0 (`MaxCharge` 1.0, so the screen counts it charged); the game's own exit selection (`GobblerScreen:OnExitUseComplete(portal)`) sets the gateway (2026-10-24); the nearest portals are ~1.1 km from the car |
+| `coop-garage` | 2 | `RB_Garage` | **for hand play**: the owner's own mid-story save (tutorial done, quests up to Q03; the owner copied it in), host backpack with the common tools, a guest tool kit in the car trunk (a guest's own backpack is not kept between local launches: its login name changes) |
+| `coop-zone` | 3 | `Wilderness_Forest_06` | `coop-garage` sent out by the game's `TravelToNextLeg`: 32 hazards, 4 exit portals |
+| `coop-gateway` | 5 | `Wilderness_Forest_06` | `coop-zone`; a selected gateway is not saved, so the test mod's repl scenario reopens it on load for any fixture named `*gateway*` (nearest portal, ~225 m; this car's ARC reads 0/0) |
+| `coop-return` | 6 | `RB_Garage` | back from `coop-gateway` through the exit portal's own return, loot in the car |
 | `garage-return` | 1 | `RB_Garage` | back from a run through the exit portal's own return (`TravelToGarage(2, ...)`), loot in the car (trunk 129 items on the guest); fixture.txt has the steps |
 
 - `run-test.ps1 -Fixture garage[,zone,gateway]` moves the host copy's `Saved\SaveGames` aside, copies the fixtures' `.sav`

@@ -851,3 +851,26 @@ Unknowns / not fixed
 Observations: crash (EXCEPTION_ACCESS_VIOLATION, 0x1e31c0cc0 / 0xffffffffffffffff) in 3 of 3 mapmark runs on main, about 50% of runs with mutate and ~0 of 6 with the fix. CrashContext call stack symbolized with dbghelp + UE4SS.pdb: Lua `obj.Property` read -> UObjectBase::prepare_to_handle -> UStruct::FindProperty -> TFieldIterator (a freed object's class pointer). Tracing every loop for 6 s after the load map (run 20261024-032013-pt3-crash-mapmark-noridefree): the last loop entered was car.lua's seat-hold loop (`ride`, 1 ms).
 Derived: that loop kept `char`/`car` of the old world through the guest's rejoin and called `char:GetAttachParentActor()` without a validity check (pcall cannot catch an access violation). Fix in car.lua: the loop checks valid(char) and valid(car) first and cancels itself; a LoadMapPre hook cancels it. Mutation PT_MUTATE=noridefree switches both off.
 Results: mapmark 22/22 twice with the fix (20261024-032235, -032333), noridefree: 2 of 3 runs pass by luck, 1 crashes (-032625); sessionrejoin 36/36 (-032823), guestdeath (zone) 30/30 (-034615).
+
+## 2026-10-24 day: hand play on the local pair (owner), test saves from the owner's own progress
+
+Observations
+- Guest car entry: the host seats the guest within 0.15 s of the door press, the guest noticed 4.6/13.9/4.8 s later (replicated
+  attachment); with the host's g.car.seat message 0.07 s (garage play 11:43). One seat 18 uu high (head in the roof): offset now
+  kept to the passenger seat when the game's transform is off by more than 8 uu. carsit 25/25; mutation noseatmsg also passes
+  headless (the delay only shows with rendering).
+- Guest crash on X (getting out): UE4SS dump (tools/dmpstack.py) -> luaH_next under luaL_traceback: a corrupted Lua state; the
+  carfeel NotifyOnNewObject callback from review fix d818b35 ran Lua off the game thread. Reverted to the game-thread poll
+  (bd71f8a). Zip ec2c96b has this crash; 10a86e0 does not.
+- "Host cannot interact" on the garage fixture: not a mod bug. Garage stations check the global whiteboard for
+  WB.Missions.QD_Q00_Mission_D.Completed (or Q00_Demo_Mission_B.ReplaceFlat.Completed) in K2_ShouldHighlight; the garage
+  fixture is a fresh story save without them. The guest's own tutorial moved on alone (OpenedRoutePlanner, Oppy talks for the
+  guest only): tutorial/objective progress done by the guest does not reach the host.
+- Guest's garage upgrade tags are double the host's (WB.GarageUpgrades.*: Inventory.InstallCount 8 vs 4, CraftingTable 2 vs 1):
+  the guest adds the host's values on top of its own instead of replacing them. Not fixed.
+- LoadBookmark and the quest manager's "Fake Complete Q00 & Q01" are blocked in the shipping build; forcing quest missions
+  live crashed the host (twice, once from a bad console call of mine). Test saves now come from the owner's own saves
+  (coop-garage/zone/gateway/return, docs/TESTING.md).
+
+Unknowns
+- Whether the doubled upgrade tags make the guest see extra stations/storage.
