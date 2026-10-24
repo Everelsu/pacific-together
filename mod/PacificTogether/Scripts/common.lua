@@ -74,6 +74,26 @@ function FindFirstOf(class)
     return o
 end
 -- the cached singleton or nil: module-local first() helpers looped FindAllOf (26 CarManager lookups a second on the host)
+-- Keys are polled on the game thread (PlayerController:IsInputKeyDown, edge-detected every 30 ms). A RegisterKeyBind callback runs Lua on
+-- UE4SS's own thread while the game thread runs Lua in the same state: even a one-line flag setter corrupted it (guest crashes in
+-- luaL_traceback / luaH_next, hand play 2026-10-24). M.onKey("X", fn): fn on the game thread when X goes down (UE key names).
+local keys, keyDown = {}, {}
+function M.onKey(name, fn) keys[#keys + 1] = { name, fn } end
+LoopInGameThreadWithDelay(30, function()
+    if #keys == 0 then return end
+    local pc = UEHelpers.GetPlayerController()
+    if not (pc and pc:IsValid()) then return end
+    for _, k in ipairs(keys) do
+        local ok, down = pcall(function() return pc:IsInputKeyDown({ KeyName = FName(k[1]) }) end)
+        down = ok and down == true
+        if down and not keyDown[k[1]] then
+            local okf, e = pcall(k[2])
+            if not okf then M.log("PT|error key %s %s", k[1], tostring(e)) end
+        end
+        keyDown[k[1]] = down
+    end
+end)
+
 function M.first(class)
     local o = FindFirstOf(class)
     if live(o) then return o end

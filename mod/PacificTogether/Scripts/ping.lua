@@ -202,11 +202,9 @@ LoopInGameThreadWithDelay(50, function()
     if not ok then log("PT|error ping %s", tostring(err)) end
 end)
 
--- middle mouse; if UE4SS has no such key (or cannot bind it) the fallback is G
-local KEY = (Key and Key.MIDDLE_MOUSE_BUTTON) and "MIDDLE_MOUSE_BUTTON" or "G"
-local function bind(k) return pcall(RegisterKeyBind, Key[k], function() wanted = true end) end
-local ok = bind(KEY)
-if not ok and KEY ~= "G" then KEY = "G"; ok = bind(KEY) end
+-- middle mouse (polled on the game thread, common.onKey)
+local KEY, ok = "MiddleMouseButton", true
+common.onKey(KEY, function() wanted = true end)
 -- the test mod is another Lua state: its scenario presses the key through the console ("ptping"), same handler
 pcall(RegisterConsoleCommandHandler, "ptping", function() wanted = true return true end)
 log("PT|ping key %s bound=%s", KEY, tostring(ok))

@@ -824,13 +824,13 @@ local function hookAll()
     end
     hooked = true
     -- leaving: key X while seated; the key only raises a flag (an ExecuteInGameThread per press crashed UE4SS when spammed, ping.lua)
-    pcall(RegisterKeyBind, Key.X, function() exitWanted = true end)
+    common.onKey("X", function() exitWanted = true end)
 end
 
 -- F8 on the guest: log what holds the controls, then give them back (camera and walking stayed locked after an exit,
 -- local playtest 2026-10-22, cause not found yet)
 local unstickWanted = false
-pcall(RegisterKeyBind, Key.F8, function() unstickWanted = true end)
+common.onKey("F8", function() unstickWanted = true end)
 local function unstick()
     local pc = localPC()
     local me = pc and pc.Pawn
