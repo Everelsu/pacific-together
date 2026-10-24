@@ -343,12 +343,16 @@ local function seat(char, car)
         local d = toLocal(car, t.Translation)
         lp = vec(d.X, -d.Y, d.Z)
     end)
+    -- the game's transform once came out 18 uu high (head in the roof, garage play 2026-10-24): only small corrections are kept
+    if dist(lp, PASSENGER) > 8 then lp = PASSENGER end
     pcall(function() char.CharacterMovement:DisableMovement() end)
     char:SetActorEnableCollision(false)
     local r = car:K2_GetActorRotation()
     char:K2_SetActorLocationAndRotation(toWorld(car, lp), { Pitch = 0, Yaw = r.Yaw, Roll = 0 }, false, {}, true)
     char:K2_AttachToActor(car, NONE, 1, 1, 1, false)
     sitPose(char, true)
+    -- tell the guest at once: the engine's attachment replication reached it 4-14 s later (it stood frozen by the shut door)
+    if os.getenv("PT_MUTATE") ~= "noseatmsg" then pcall(function() net.toGuest(char.Controller, "g.car.seat", string.format("%.1f,%.1f,%.1f", lp.X, lp.Y, lp.Z)) end) end
     log("PT|car seated %s at %.1f,%.1f,%.1f", char:GetFullName(), lp.X, lp.Y, lp.Z)
 end
 
@@ -516,8 +520,9 @@ end
 -- X8: once the host attached us, hold the replicated offset; the pawn arrives attached but far off its seat
 local riding = nil
 if os.getenv("PT_MUTATE") ~= "noridefree" then RegisterLoadMapPreHook(function() if riding then CancelDelayedAction(riding.loop); riding = nil end end) end
-local function seatErr(char, car)
+local function seatErr(char, car, off)
     local o = char.AttachmentReplication.LocationOffset
+    if off and not same(char.AttachmentReplication.AttachParent, car) then o = off end
     return dist(toLocal(car, char:K2_GetActorLocation()), vec(o.X, o.Y, o.Z))
 end
 local function stopRide(char)
@@ -548,12 +553,14 @@ net.on("g.car.out", function(_, data)
     log("PT|car guest placed outside at %s,%s,%s view=%s", x, y, z, okv and view or "?")
 end)
 
-local function ride(char, car)
+local function ride(char, car, off)
     local cm = char.CharacterMovement
     pcall(function() cm:StopMovementImmediately(); cm:DisableMovement(); cm:SetComponentTickEnabled(false) end)
     pcall(function() char:SetActorEnableCollision(false) end)
     local function place()
         local o = char.AttachmentReplication.LocationOffset
+        -- the host's seat message comes before the replicated offset: its offset until the replicated one arrives
+        if off and not same(char.AttachmentReplication.AttachParent, car) then o = off end
         char:K2_SetActorRelativeLocation(vec(o.X, o.Y, o.Z), false, {}, true)
     end
     place()
@@ -569,7 +576,7 @@ local function ride(char, car)
                 stopRide(char)
                 return
             end
-            if seatErr(char, car) > 1 then
+            if seatErr(char, car, off) > 1 then
                 fixes = fixes + 1
                 if fixes <= 3 then log("PT|car seat guard n=%d", fixes) end
                 place()
@@ -581,6 +588,19 @@ local function ride(char, car)
     log("PT|car riding %s offset=%.1f,%.1f,%.1f", car:GetFullName(), char.AttachmentReplication.LocationOffset.X,
         char.AttachmentReplication.LocationOffset.Y, char.AttachmentReplication.LocationOffset.Z)
 end
+-- the host seated us (g.car.seat, sent with its attach): attach here at once instead of waiting seconds for the replicated attachment
+net.on("g.car.seat", function(_, data)
+    if common.netMode() ~= "client" then return end
+    local x, y, z = data:match("^([^,]*),([^,]*),(.*)$")
+    local me, car = localPC() and localPC().Pawn, theCar(false)
+    if not (x and valid(me) and car) or same(me:GetAttachParentActor(), car) then return end
+    local off = vec(tonumber(x), tonumber(y), tonumber(z))
+    local r = car:K2_GetActorRotation()
+    me:K2_SetActorRotation({ Pitch = 0, Yaw = r.Yaw, Roll = 0 }, true) -- facing forward, as the host seats the body
+    me:K2_AttachToActor(car, NONE, 1, 1, 1, false)
+    ride(me, car, off)
+    log("PT|car seated by the host message at %.1f,%.1f,%.1f", off.X, off.Y, off.Z)
+end)
 
 -- apply the host's state to our own car inventory (the manifestations on the replicated car follow it)
 local function applyState(data)

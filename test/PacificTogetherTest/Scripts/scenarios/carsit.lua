@@ -75,7 +75,11 @@ return function(T)
     add({ wait = 2 })
     add({ run = function() id = T.act_begin("door_press", {}) end })
     add({ check = "guest_door_press", timeout = 90, cond = function() local d, _, ok = T.act_done(id); return d and ok end })
+    -- garage play 2026-10-24: the guest waited 4-14 s for the replicated attachment after the host seated it
+    add({ check = "guest_seated_within_3s", timeout = 3, cond = function() return attached(T.myPawn()) end })
     add({ check = "guest_seated", timeout = 60, cond = function() return attached(T.myPawn()) end })
+    -- and once with its head in the roof (seat 18 uu high): the passenger seat sits at about -12 uu
+    add({ check = "guest_seat_height", timeout = 10, cond = function() return T.myPawn():GetRootComponent().RelativeLocation.Z < -5 end })
     add({ check = "guest_told_report", timeout = 120, cond = function() return has("t.report") end })
     add({ run = function() sendHost("t.r", sitInfo(T.myPawn())) end })
     add({ wait = 4 })
