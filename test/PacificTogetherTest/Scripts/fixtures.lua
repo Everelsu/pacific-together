@@ -11,11 +11,10 @@ return function(T)
     T.FIXTURES = FIXTURES
     -- fromMenu (default true): wait for the main menu first; false chains after another fixture (the game loads from any map)
     function T.loadFixture(name, fromMenu)
-        local f = FIXTURES[name]
-        if not f then -- fixture_save fixtures: run-test.ps1 passes "name=slot:map,..." from their fixture.json
-            local slot, map = (os.getenv("PT_FIXTURE_SPEC") or ""):match("[^,]*" .. name:gsub("%p", "%%%0") .. "=(%d+):([^,]+)")
-            f = slot and { slot = tonumber(slot), map = map }
-        end
+        -- run-test.ps1 passes "name=slot:map,..." from a fixture's fixture.json (fixture_save fixtures, or a remade zone fixture
+        -- on another run map: the game picks the zone at travel time); it wins over the table
+        local slot, map = (os.getenv("PT_FIXTURE_SPEC") or ""):match("[^,]*" .. name:gsub("%p", "%%%0") .. "=(%d+):([^,]+)")
+        local f = slot and { slot = tonumber(slot), map = map } or FIXTURES[name]
         assert(f, "unknown fixture " .. tostring(name))
         local steps = {}
         if fromMenu ~= false then steps[1] = T.onMap("RB_MainMenu", 90) end

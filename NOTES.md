@@ -722,3 +722,27 @@ Derived / theirs (not checked by us)
 
 Unknowns
 - A real E press on a door copy (trace + highlight) is not seen yet: the scenario presses the copy's Highlight directly.
+
+## 2026-10-24: a guest dropped every ~70 s on a big save (msg.cpp flow control)
+
+Hand playtest on a contributor's own long save (garage storage of 4165 items, a full trunk): the guest joined, got a body,
+and 1-2 s later the host closed the connection; the guest rejoined every ~70 s and sat body-less in between.
+
+Observations
+- Host `PenDriverPro.log`: `Closing connection. Can't send function 'ClientMessage' ... Reliable buffer overflow`
+  (later `Reliable partial bunch overflows reliable buffer`), right after the guest's hello: every module sent its full state
+  in one frame. `Ch MaxPacket: 1024`, so a 1000-char chunk is 2-3 partial bunches against UE's 256.
+- A fixed send rate (96 KB/s, 16 KB burst) still overflowed 2 s after the join: the joining guest confirms nothing while it
+  loads (`20261024-165420-a-bigjoin`).
+- Confirmed window: each side confirms received chunks once a frame (`PT1A|<count>`), a sender keeps at most 48 unconfirmed:
+  `bigjoin` 17/17, guest kept the same controller and body for 150 s; host `chunks_out=1745 queued_max=308`
+  (`20261024-171214-a-bigjoin`). Mutation `nopace` (every chunk at once, the old behaviour) dropped the guest after 2 s with the
+  same overflow (`20261024-165842-a-bigjoin-nopace`, run with the rate build; its nopace path is the same old send).
+- `PROTOCOL_VERSION` 2 -> 3: a version 2 peer never confirms and a version 3 sender would stall after 48 chunks.
+
+Derived
+- Any join with enough state (a long save) hits this; the owner's fixtures were small enough not to.
+
+Unknowns
+- Throughput over a real internet link (48 chunks per round trip, ~150 KB/s at 300 ms) is not measured.
+- `bigjoin` needs a big garage save as its `garage` fixture; the owner's fixture may not overflow at all.

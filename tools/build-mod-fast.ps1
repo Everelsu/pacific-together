@@ -46,7 +46,7 @@ if ($inc) { Die "CMakeLists adds include dirs ($($inc -join ', ')). Use tools\bu
 
 # toolchain
 $vsw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$vs = & $vsw -latest -products * -property installationPath
+$vs = & $vsw -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $vs) { Die 'Visual Studio Build Tools not found' }
 $ninja = "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
 
@@ -54,12 +54,13 @@ $ninja = "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
 $objRel = "$tgt\CMakeFiles\$tgt.dir\dllmain.cpp.obj"
 $cc = & $ninja -C $MainBuild -t commands $objRel | Select-Object -Last 1
 $ld = & $ninja -C $MainBuild -t commands "$tgt\$tgt.dll" | Select-Object -Last 1
-if ($cc -notmatch '^(?<cl>\S+cl\.exe) (?<args>.*?) /showIncludes /Fo\S+ /Fd\S+ /FS -c \S+$') { Die 'unexpected compile template' }
+# tool paths come quoted when they hold spaces ("C:\Program Files (x86)\...")
+if ($cc -notmatch '^"?(?<cl>[^" ]*(?: [^" ]+)*?cl\.exe)"? (?<args>.*?) /showIncludes /Fo\S+ /Fd\S+ /FS -c \S+$') { Die 'unexpected compile template' }
 $cl = $Matches.cl; $ccArgs = $Matches.args
 $mainSrc = "$mainRoot\native\PacificTogetherNative"
 if (-not $ccArgs.Contains("-I$mainSrc\.")) { Die 'main include path not found in template' }
 $ccArgs = $ccArgs.Replace("-I$mainSrc\.", "-I$src\.")
-if ($ld -notmatch '(?<wrap>"[^"]*cmake\.exe" -E vs_link_dll .*?) -- (?<link>\S+link\.exe) /nologo (?<args>.*?) && C:.WINDOWS') {
+if ($ld -notmatch '(?<wrap>"[^"]*cmake\.exe" -E vs_link_dll .*?) -- "?(?<link>[^" ]*(?: [^" ]+)*?link\.exe)"? /nologo (?<args>.*?) && C:.WINDOWS') {
     Die 'unexpected link template'
 }
 $wrap = $Matches.wrap; $linkExe = $Matches.link; $ldArgs = $Matches.args
@@ -92,7 +93,7 @@ $ldArgs = [regex]::Replace($ldArgs, '\s' + [regex]::Escape("$tgt\CMakeFiles\$tgt
 $ldArgs = $ldArgs.Replace("/out:$tgt\$tgt.dll", "/out:`"$fast\main.dll`"").Replace("/implib:$tgt\$tgt.lib", "/implib:`"$fast\main.lib`"").Replace("/pdb:$tgt\$tgt.pdb", "/pdb:`"$fast\main.pdb`"")
 Set-Content "$fast\link.rsp" -Encoding ASCII -Value $ldArgs
 $wrap = $wrap.Replace("--intdir=$tgt\CMakeFiles\$tgt.dir", "--intdir=`"$fast`"")
-$cmd += "cd /d `"$MainBuild`"`r`n$wrap -- $linkExe /nologo @`"$fast\link.rsp`" || exit /b 1`r`n"
+$cmd += "cd /d `"$MainBuild`"`r`n$wrap -- `"$linkExe`" /nologo @`"$fast\link.rsp`" || exit /b 1`r`n"
 Set-Content "$fast\build.cmd" -Encoding ASCII -Value $cmd
 
 Write-Host "compiling $(@($stale).Count) of $($cpps.Count) file(s), linking..."
