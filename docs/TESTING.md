@@ -152,7 +152,7 @@ so several can sit in one SaveGames folder.
 
 ## Playing by hand
 
-`tools/play-local.ps1` starts the two test copies windowed side by side (960x540 each, `-ResX/-ResY` to change) with no
+`tools/play-local.ps1` starts the two test copies windowed side by side (half the main screen each, 752x423 on a 1536-wide desktop; `-ResX/-ResY` to change) with no
 test bots, so you can try things yourself. The guest joins the host by itself (`PT_JOIN=127.0.0.1:<port>`, retried at the
 menu until the host listens); the host's shipping mod listens like a real player's. The test mod stays inert (no `PT_SCENARIO`).
 
