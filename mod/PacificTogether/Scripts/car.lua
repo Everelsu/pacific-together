@@ -397,13 +397,14 @@ net.on("g.car.exit", function(pc)
     -- ground or a rail on a highway (hand play 2026-10-24, stuck under the road); beside the driver's door when it finds none
     local out
     if os.getenv("PT_MUTATE") ~= "noexitspot" then
-        pcall(function()
-            local o = {}
-            car:LocateSafeExitPoint(o)
-            local t = o.Transform and o.Transform.Translation
+        local okE, e = pcall(function()
+            local o, f = {}, {}
+            car:LocateSafeExitPoint(o, f)
+            local t = o.Translation -- a struct out parameter's table gets the struct's fields
             local c = car:K2_GetActorLocation()
-            if t and not o.Failed_UsingSafetyTrace and (t.X - c.X) ^ 2 + (t.Y - c.Y) ^ 2 < 600 ^ 2 then out = vec(t.X, t.Y, t.Z + 20) end
+            if t and not f.Failed_UsingSafetyTrace and (t.X - c.X) ^ 2 + (t.Y - c.Y) ^ 2 < 600 ^ 2 then out = vec(t.X, t.Y, t.Z + 20) end
         end)
+        if not okE then log("PT|car safe exit point error %s", tostring(e)) end
     end
     local from = out and "game" or "offset"
     if not out then

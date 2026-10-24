@@ -913,6 +913,10 @@ Changes
   ForceUnlockDoor (chain break sound and particles) or sets open/shut with "Set Door from State".
 - car.lua: the guest's exit spot is the car's LocateSafeExitPoint (the game's driver exit trace) within 6 m, else the old offset.
   Mutation noexitspot.
+- Results on main: netflow 17/17 (noflow 16/17), runloop 49/49 on the garage fixture and 49/49 on coop-garage (the owner's save;
+  loot lists of 251 and 753 entities went out, no window reset), worlddoors 23/23, progsync 31/31, garagesync 35/35, carexit
+  29/29 (exit spot "game", 1.7 m beside the driver's door), guestdeath 30/30, zonespawn 34/34, sessionrejoin 36/36, portals
+  20/20, carsync 36/36. LocateSafeExitPoint from Lua takes one table per out parameter; a struct's table gets its fields.
 - Scenarios: worlddoors + guest_door_unlocked_by_host, guest_door_follows_host_press; progsync + guest_got_host_player_upgrade;
   garagesync + guest_garage_upgrade_counts_equal; runloop takes -Fixture (coop-garage = the owner's save).
 
