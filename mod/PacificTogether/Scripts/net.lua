@@ -12,6 +12,7 @@ local M = {}
 local handlers = {}
 
 function M.on(kind, fn) handlers[kind] = fn end
+M.heardAt = {} -- kind -> os.clock() when its last message was handled
 
 local function localPC()
     local pc = UEHelpers.GetPlayerController()
@@ -70,6 +71,7 @@ local function dispatch()
         elseif pc then
             local ok, err = pcall(fn, pc, data)
             if not ok then log("PT|error net %s %s", kind, tostring(err)) end
+            M.heardAt[kind] = os.clock()
         end
     end
 end

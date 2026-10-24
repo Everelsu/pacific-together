@@ -19,6 +19,10 @@ local function status()
 end
 
 log("PT|boot version=%s protocol=%d", common.MOD_VERSION, common.PROTOCOL_VERSION)
+-- Lua's default incremental collector let the heap swing 7-45 MB and paid for it in 20-50 ms pauses inside whichever loop
+-- allocated next (host car loop in carsync, 2026-10-24); generational (stable in UE4SS's Lua 5.4.7) keeps it near 8 MB:
+-- host frames over 30 ms 26 -> 6, worst 47-60 -> 25-29 ms
+collectgarbage("generational")
 
 -- hitch finder (playtest 2026-10-22: both games froze every 2-3 s): a loop or hook body over 30 ms is logged with where it was registered
 -- An error escaping a hook went back into UE4SS and the guest's game closed without a crash report (host dropped items next to

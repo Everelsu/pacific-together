@@ -204,6 +204,13 @@ local doorRest, doorSwung = {}, {} -- guest: part address -> the mesh's shut pos
 
 -- host -------------------------------------------------------------------------------------------------------------------
 
+local partLines, partsAt = nil, -1
+local PART_INTENTS = { "g.act.heal", "g.act.fuel", "g.act.bat", "g.act.arc", "g.parts.dmg", "g.swap.set" }
+local function partsTouched()
+    for _, k in ipairs(PART_INTENTS) do
+        if (net.heardAt[k] or -1) >= partsAt then return true end
+    end
+end
 local function sample(car, cm)
     local cont = equipped()
     if not cont then return end
@@ -217,19 +224,24 @@ local function sample(car, cm)
     local hb = false
     pcall(function() hb = car.VehicleController:GetParkingBrakeActive() end)
     local lines = { string.format("H\t%d\t%d\t%d\t%d\t%d", ign, cm.MyCarGearBox, cm.CarLightsOn and 1 or 0, hb and 1 or 0, doors) }
-    local n = 0
-    cont.Slots:ForEach(function(_, e)
-        local slot = e:get()
-        local it = itemOf(slot)
-        if it then
-            local name = slotName(slot)
-            local h, f, b
-            local m = manifestation(cm, name)
-            if m then h, f, b = readPart(propComps(m)) end
-            n = n + 1
-            lines[#lines + 1] = string.format("P\t%s\t%s\t%s\t%s\t%s", name, archPath(it), num(h), num(f), num(b))
-        end
-    end)
+    -- the parts (~45 slots, ~8 ms) once a second: read every 250 ms, and at 20 Hz while a door swings, they were the host's
+    -- biggest loop (2.4 s a minute in carsync, 2026-10-24); a guest's part intent re-reads them at once
+    if not partLines or os.clock() - partsAt >= 1 or partsTouched() then
+        partLines, partsAt = {}, os.clock()
+        cont.Slots:ForEach(function(_, e)
+            local slot = e:get()
+            local it = itemOf(slot)
+            if it then
+                local name = slotName(slot)
+                local h, f, b
+                local m = manifestation(cm, name)
+                if m then h, f, b = readPart(propComps(m)) end
+                partLines[#partLines + 1] = string.format("P\t%s\t%s\t%s\t%s\t%s", name, archPath(it), num(h), num(f), num(b))
+            end
+        end)
+    end
+    local n = #partLines
+    for _, l in ipairs(partLines) do lines[#lines + 1] = l end
     -- an open door's mesh simulates physics, which detaches it (its "relative" transform is then the world's): its pose
     -- goes in the car's own space
     local ct = car:GetTransform()
