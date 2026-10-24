@@ -722,3 +722,9 @@ Derived / theirs (not checked by us)
 
 Unknowns
 - A real E press on a door copy (trace + highlight) is not seen yet: the scenario presses the copy's Highlight directly.
+
+## 2026-10-24 night: the guest's rejoin crash in mapmark (pt3-crash)
+
+Observations: crash (EXCEPTION_ACCESS_VIOLATION, 0x1e31c0cc0 / 0xffffffffffffffff) in 3 of 3 mapmark runs on main, about 50% of runs with mutate and ~0 of 6 with the fix. CrashContext call stack symbolized with dbghelp + UE4SS.pdb: Lua `obj.Property` read -> UObjectBase::prepare_to_handle -> UStruct::FindProperty -> TFieldIterator (a freed object's class pointer). Tracing every loop for 6 s after the load map (run 20261024-032013-pt3-crash-mapmark-noridefree): the last loop entered was car.lua's seat-hold loop (`ride`, 1 ms).
+Derived: that loop kept `char`/`car` of the old world through the guest's rejoin and called `char:GetAttachParentActor()` without a validity check (pcall cannot catch an access violation). Fix in car.lua: the loop checks valid(char) and valid(car) first and cancels itself; a LoadMapPre hook cancels it. Mutation PT_MUTATE=noridefree switches both off.
+Results: mapmark 22/22 twice with the fix (20261024-032235, -032333), noridefree: 2 of 3 runs pass by luck, 1 crashes (-032625); sessionrejoin 36/36 (-032823), guestdeath (zone) 30/30 (-034615).
