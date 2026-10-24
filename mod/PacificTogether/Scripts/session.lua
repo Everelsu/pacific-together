@@ -4,6 +4,7 @@
 -- With no guest connected and no join address, nothing here changes the game.
 local UEHelpers = require("UEHelpers")
 local common = require("common")
+local survivor = require("survivor")
 local log = common.log
 
 local MENU = "RB_MainMenu"
@@ -132,7 +133,9 @@ local function refreshBodies()
         if inWorld(c, w) then
             local remote = not same(c, pc.Pawn) and not same(c, own)
             isolate(c, remote)
-            setBody(c, remote)
+            -- Djecka's survivor parts (survivor.lua) replace the visible mannequin when they are on
+            local sv = survivor and survivor.set(c, remote)
+            setBody(c, remote and not sv)
         end
     end
 end
