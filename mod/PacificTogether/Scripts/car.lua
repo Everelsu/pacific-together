@@ -216,6 +216,9 @@ local partLines, partCount, partsAt, partsCar = {}, 0, -1, nil
 local swingUntil, lastDoorBits = 0, nil
 local function swingFor(s) swingUntil = os.clock() + (s or 6) end
 RegisterLoadMapPreHook(function() doorCache, doorCacheCar, partsAt, partsCar = {}, nil, -1, nil end)
+-- a guest's part work (heal, damage, swap, fuel ...) is applied on the host first: a cached line would send the old state back
+-- for up to 1 s and the guest's repair flickered away (guestparts "door stays repaired" broke)
+net.tap = function(kind) if kind:find("^g%.parts%.") or kind:find("^g%.act%.") or kind:find("^g%.swap%.") then partsAt = -1 end end
 
 local function sample(car, cm)
     local cont = equipped()

@@ -131,8 +131,7 @@ return function(T)
                 PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.w_" .. tl.name, string.format("%.0f|%.0f|%.0f", p.x, p.y, p.z))
             end })
             add({ check = "host_panel_broken_by_guest_" .. tl.name, timeout = to(90), cond = function() return not alive(picked[i].a) end })
-            -- a panel's drop is a loot roll: the cutter's panel dropped nothing in 2 of 5 runs (host and guest agree, checked below)
-            if tl.name ~= "cutter" then add({ check = "host_dropped_by_guest_" .. tl.name, timeout = to(30), cond = function() return worldItems() > base.items end }) end
+            -- a panel's drop is a loot roll (cutter: nothing in 2 of 5 runs, prybar once too): no drop check, host and guest agreeing is checked below
             add({ wait = 6 })
             add({ run = function() base.after = worldItems(); PTNative_MsgToGuest(L.remotePCs()[1]:GetAddress(), "t.cnt_" .. tl.name, "") end })
             add({ check = "guest_items_grew_like_host_" .. tl.name, timeout = to(60), cond = function()

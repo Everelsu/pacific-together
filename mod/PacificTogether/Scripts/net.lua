@@ -70,6 +70,7 @@ local function dispatch()
         elseif pc then
             local ok, err = pcall(fn, pc, data)
             if not ok then log("PT|error net %s %s", kind, tostring(err)) end
+            if M.tap then pcall(M.tap, kind) end -- after the handler: car.lua drops its part cache once a guest changed a part
         end
     end
 end
