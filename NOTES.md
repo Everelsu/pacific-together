@@ -832,6 +832,11 @@ Observations (scenario runs, folders in local/test-results)
   g.parts/g.act/g.swap message (net.tap, 24b9568).
 - Final on main 24b9568: playpath 39/39, carexit 29/29, mapmark 22/22 x2, zonespawn 34/34, sessionrejoin 36/36, guestparts
   73/73 x2, guestswap 33/33, carsync 36/36, session 40/40. Zip dist/PacificTogether-0.0.6-dev-24b9568.zip.
+- pt3-seat: the game has no sitting pose for a character in the car (its driver is never drawn; ALS_MovementMode 5 changes no
+  bone); the seated guest's thigh bones are hidden on both sides and shown again on exit (carsit 23/23, nosit 21/23). The torso
+  floats at seat height: to be looked at by hand. #14 slow entry: no avoidable wait found (docs/spikes/PT3-seat.md).
+  On main ec2c96b: carsit 23/23, carsync 36/36, guestdeath 30/30, lootcar 24/24, carfeel 42/42, mapmark 22/22.
+  Zip for the next playtest: dist/PacificTogether-0.0.6-dev-ec2c96b.zip.
 
 Unknowns / not fixed
 - #16 freeze after the ARC anchor: the ARC machine code never pauses, dilates time or repossesses; host log clean; cause on the
