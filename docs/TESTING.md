@@ -150,6 +150,13 @@ so several can sit in one SaveGames folder.
   copy `odsaveN.sav` from `<root>\client1\PenDriverPro\Saved\SaveGames` into `local\fixtures\<name>\`. Never copy saves from
   the real install. `UserNewGame(slot, CHALLENGE)` (expedition) hangs and then crashes the game, do not use it.
 
+## Crash dumps
+
+`python -I tools/dmpstack.py <ue4ss/crash_*.dmp> <folder with UE4SS.dll and UE4SS.pdb>` prints the exception address and the
+UE4SS and game frames found on the crashing stack, symbolized (a stack scan, not a real unwind). Example, 2026-10-24: `luaH_next`
+under `luaL_traceback` (a corrupted Lua table while an error was reported) pointed at a `NotifyOnNewObject` callback running Lua
+off the game thread.
+
 ## Playing by hand
 
 `tools/play-local.ps1` starts the two test copies windowed side by side (half the main screen each, 752x423 on a 1536-wide desktop; `-ResX/-ResY` to change) with no
