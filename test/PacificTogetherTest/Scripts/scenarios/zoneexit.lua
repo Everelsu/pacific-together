@@ -6,7 +6,7 @@
 -- Checks: the guest walks 1.5 m on both sides, its jump leaves the ground, and its own pawn and the host's copy of it stay within 3 m
 -- below the exit spot for 10 s. Then it gets back in through the DRIVER's door (owner: it sat like a driver, the seat guard fought the
 -- game's own entry 229 times in 3 s) and must stay at the passenger seat for 3 s.
--- Run: tools/run-test.ps1 -Scenario zoneexit -Fixture coop-zone -Headless     Mutations: hostout (the host leaves the car first), noexitwalk (walking and collision not restored after the exit's repossess)
+-- Run: tools/run-test.ps1 -Scenario zoneexit -Fixture coop-zone -Headless     Mutations: hostout (the host leaves the car first), noexitwalk (walking and collision not restored after the exit's repossess), noseatguard (the guest forwards its seating jolt to the host)
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local log = T.log
@@ -55,13 +55,20 @@ return function(T)
         add({ check = "guest_seated", timeout = 120, cond = function() local g = L.guestChar(); return g ~= nil and attached(g) end })
         local map0
         add({ wait = 3 })
+        -- the guest's seating jolt on its side was forwarded to the host as an anomaly hit (hand play: 60 / 19.8 after each junction)
+        local hits = 0
         add({ run = function()
+            pcall(RegisterHook, "/Game/Characters/Player/Components/AC_PlayerHealthReceiverHelper.AC_PlayerHealthReceiverHelper_C:MessageBind_MSG_Base_Damage_C", function(self, payload)
+                local r, p, me = self:get(), payload:get(), T.myPawn()
+                if me and r:GetOwner():GetAddress() == me:GetAddress() and p.Damage > 0 then hits = hits + 1; log("PT|info host hit %.1f", p.Damage) end
+            end)
             map0 = T.map()
             StaticFindObject("/Game/Systems/ScriptingLibraries/BFL_ProgressionHelpers.Default__BFL_ProgressionHelpers_C"):TravelToNextLeg(T.world())
         end })
         add({ check = "host_on_next_zone", timeout = 300, cond = function() return T.map() ~= map0 and T.netMode() == "listen" and L.gameplay(T.map()) and T.myPawn() ~= nil end })
         add({ check = "host_guest_back_in_car", timeout = 400, cond = function() local g = L.guestChar(); return g ~= nil and attached(g) end })
         add({ wait = 12 })
+        add({ check = "host_not_hurt_by_guest_seating", timeout = 1, cond = function() return hits == 0 end })
         if T.MUTATE == "hostout" then
             add({ wait = 3 })
             add({ run = function() id = T.act_begin("exit_car", {}) end })

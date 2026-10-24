@@ -25,7 +25,8 @@ and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
   shared; the guest can repair, scrap, refuel, remove and install parts. Engine audio, instruments, lights and supported
   car-upgrade effects follow the host.
 - **Loot and world:** shared containers, pickups, abandoned cars and garage storage, with item condition preserved
-  on handover. Zone props, weather, time, instability, storms, gateways and many anomaly interactions are synchronized.
+  on handover. Zone props, instability, storms, gateways and many anomaly interactions are synchronized; weather and
+  time of day are sent but were seen to differ in hand play.
 - **Run and progression:** travel through junctions and return to the garage together, including shared run failure.
   The guest sees the host's research, garage and player upgrades, missions, journal and radio dialogue, and can use
   supported garage stations and summon a gateway through the ARC. The host owns the world and save; the guest's own
@@ -38,13 +39,16 @@ and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
 This is still a preview, with known gameplay gaps:
 
 - Anchors picked up by the guest can remain on the host and be deposited twice.
+- Some anomalies are not visible to the guest (seen: the noisy car-repairing one and the "tictac"), and weather and time
+  of day were different for host and guest in the October 24 hand play.
 - Tutorial steps completed by the guest alone are not shared with the host.
 - Re-entering through the driver's door showed the driver's pose once in hand play; automated tests have not reproduced it.
 - Driving and route planning remain host-only. Detailing and buying quirk hints are also host-only, and the Chrono
   Dilator is disabled in co-op.
 
-Version 0.0.7 addresses join-buffer overflows, guest seating and collision after junction travel, key-handling crashes
-and synchronization stalls. Automated two-instance scenarios cover these systems, but passing those checks does not
+A full expedition (garage, a junction, two zones and back) was played by hand with a guest on October 24 with no mod
+errors or crashes. Version 0.0.7 addresses join-buffer overflows, guest seating and collision after junction travel,
+key-handling crashes and synchronization stalls. Automated two-instance scenarios cover these systems, but passing those checks does not
 replace further human playtesting. Recorded results are in [NOTES.md](NOTES.md); the runner and test-copy workflow are
 documented in [docs/TESTING.md](docs/TESTING.md).
 

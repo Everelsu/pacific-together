@@ -387,3 +387,24 @@ Observations
 
 Changes
 - run-test.ps1: `repl` is in $AutoJoin; repl.lua's guest only waits for the connection (the shipping mod joins and rejoins).
+
+Log analysis of coop17 (19:08-19:27, 5 map loads; local/playtest-20261024-coop17)
+- Rejoin: guest ready 2.3-3.4 s after each load (8.2 s on Sasquatch_82, a 352-entity loot list first); the game seated it
+  every time; every exit restored walking and collision. No crash, no new dumps.
+- Bug: each rejoin forwarded an anomaly hit to the host: MSG_Damage_Physical_Impact 60 (twice) and 19.8 (twice), in the same
+  second as "car guest attached by the game". The seating jolts the car on the guest's side, the host's body there is hit,
+  anomalies.lua sends it to the host. Headless zoneexit -Mutate noseatguard reproduced it (guest forwarded 60, host applied).
+  The host's health read 100 0.5 s later, so whether it lands on health or the car (DistributeMode 2) is unknown.
+- Fix (anomalies.lua): the guest forwards nothing for 20 s after a map load (mutation noseatguard turns this off).
+  zoneexit got the check host_not_hurt_by_guest_seating (counts damage binds on the host's own character from the travel
+  to 12 s after seating). NOT RUN: the owner stopped the tests; the check's first, health-based version passed under the
+  mutation (sampled too late), the bind-counting version has not run with or without the fix.
+- Traffic host -> guest 3-10 KB/s of 100 KB/s: g.car.s up to ~8 KB/s driving, g.world.pos ~4 KB/s on Sasquatch_82,
+  g.garage.up ~2 KB/s and g.story.done ~0.8 KB/s are deliberate full resends. Worst hitches: guest's first join, net.lua:209
+  272 ms, garage.lua:220 161 ms; later frames under 100 ms.
+- Engine noise only: ServerMove timestamps expired (two games on one PC), 376 unresolved-guid warnings for a runtime-spawned
+  garage crafting table the guest stood on, bollard SERVER_Start/Stop without an owning connection (known, anomalies3).
+
+Owner-seen bugs, to fix later
+- Some anomalies invisible to the guest: the noise-making one that repairs the car, and the "tictac".
+- Weather and time of day were different for host and guest (README had claimed both synchronized).

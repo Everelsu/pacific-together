@@ -5,6 +5,16 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+### Fixed
+
+- The host no longer takes a 20-60 point hit each time the guest rejoins after a junction (the game seating the guest jolted
+  the car on the guest's side and that hit was forwarded to the host).
+
+### Known issues
+
+- Some anomalies are invisible to the guest: the noisy one that repairs the car, and the "tictac" (owner hand play 2026-10-24).
+- Weather and time of day can differ between host and guest (owner hand play 2026-10-24).
+
 ## [0.0.7] - 2026-10-24
 
 Network protocol **3**: both players need 0.0.7.

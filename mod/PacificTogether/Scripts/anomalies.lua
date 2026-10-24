@@ -74,12 +74,18 @@ local function isHostBody(receiver)
         and owner:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter"))
 end
 
+-- guest: the game seating the rejoined guest jolts the car on the guest's side and hurts the host's body there (hand play
+-- 2026-10-24: 60 and 19.8 forwarded to the host after every junction, 2-8 s after the load). shortcut: a real hit on the host's
+-- body in the guest's world in the first 20 s of a map is dropped too; anchor to the seating instead if that matters
+local loadedAt, GUARD = 0, os.getenv("PT_MUTATE") == "noseatguard" and 0 or 20 -- mutation noseatguard: zoneexit
+RegisterLoadMapPostHook(function() loadedAt = os.clock() end)
+
 local function pre(self, payload)
     if not (M.enabled and safety.active()) then return end
     local guest = safety.guest()
     local rec, p = self:get(), payload:get()
     if not (valid(rec) and valid(p)) then return end
-    if guest then if not isHostBody(rec) then return end elseif not isGuestPawn(rec) then return end
+    if guest then if not isHostBody(rec) or os.clock() - loadedAt < GUARD then return end elseif not isGuestPawn(rec) then return end
     local dmg = p.Damage
     local key, now = p:GetAddress(), os.clock()
     if key == lastPayload and now - lastAt < 0.5 then return end
