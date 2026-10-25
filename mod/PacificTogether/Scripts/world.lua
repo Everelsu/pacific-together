@@ -12,7 +12,7 @@ local safety = require("safety")
 local log = common.log
 local ov = require("overlay")
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "noworldsync" } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noworldsync", mutate = os.getenv("PT_MUTATE") } -- the test mutation switches the module off
 
 local function first(c) for _, o in ipairs(FindAllOf(c) or {}) do if o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) then return o end end end
 local function live(o) return o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) and not o:GetFullName():find("/Engine/Transient", 1, true) end
@@ -135,6 +135,16 @@ local function applyTime(s)
         if not (cur and cur:IsValid() and cur:GetFullName():gsub("^%S+ ", "") == s.preset) then
             local c = StaticFindObject(s.preset)
             if c and c:IsValid() then tod["Set New TOD Target"](tod, c) end
+        end
+    end
+    -- the guest's manager lost its sim actor and the sim never heard of preset changes (hand play 2026-10-24: host in rain, guest dry):
+    -- relink, and feed the sim the manager's target preset when it still runs another one
+    if M.mutate ~= "nosimlink" then
+        local sim = first("ToD_Simulation_C")
+        if sim and not (tod.ToDSimulationActor and tod.ToDSimulationActor:IsValid()) then tod:SetupToDSimulationActor() end
+        local want = tod["Target TOD Preset"]
+        if sim and want and want:IsValid() and sim.CurrentPresetObject:IsValid() and sim.CurrentPresetObject:GetClass():GetFullName() ~= want:GetFullName() then
+            sim:WeatherChangeEvent(want)
         end
     end
     -- overrides by identifier: add or replace the host's, remove the rest

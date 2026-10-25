@@ -15,7 +15,7 @@ local net = require("net")
 local safety = require("safety")
 local log = common.log
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual" } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual", mutate = os.getenv("PT_MUTATE") } -- the test mutation switches the module off
 M.zone = os.getenv("PT_VISUAL_ZONE") ~= "0" -- the zone props mirror: on (2026-10-23, host sweep cached and spread, guest 8 ms per tick); PT_VISUAL_ZONE=0 turns it off
 
 local RF_WasLoaded = 0x00080000 -- placed in the map file: the guest has it already
@@ -178,6 +178,8 @@ local function state(o)
     if ok and type(v) == "number" then t[#t + 1] = "st=" .. v end
     ok, v = pcall(function() return o.IsBroken end)
     if ok and v then t[#t + 1] = "br=1" end
+    ok, v = pcall(function() return o.SuccessfullyGrabbed end) -- an ARC anchor structure someone pulled: the other side's copy goes
+    if ok and v == true then t[#t + 1] = "tk=1" end
     return table.concat(t, ";")
 end
 local function smaLine(o, name)
@@ -326,6 +328,7 @@ local function fields(line)
 end
 
 local function applyState(a, st)
+    if st:find("tk=1", 1, true) then pcall(function() a:K2_DestroyActor() end) return end
     if st:find("br=1", 1, true) then
         pcall(function() -- crates and fences are "complex", cones and signs "simple" destructibles; both take the break impulse
             local z = vec(0, 0, 0)
@@ -419,6 +422,44 @@ net.on("g.vis.unlock", function(_, name)
     local d = hostDoor(name)
     if d and d.CurrentState >= 3 then d:ForceUnlockDoor() end -- the game's own unlock (WorkLock); it opens the door as it does for the guest
     log("PT|visual guest unlocked door %s: %s, state=%s", name, d and "unlocked on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
+end)
+
+-- ARC anchor structures (BP_Spawn_Anchor_*): the guest's pull of its copy gives the guest the anchor item, so the host's structure must be
+-- taken too, else the host pulls it again and the same anchor is deposited twice (hand play 2026-10-24). The host marks its structure taken
+-- the way the game does after a pull (no item); its "tk=1" state removes the guest's copy, which also covers the host pulling one first.
+local ANCHOR_FN = "/Game/Gameplay/Resources/AnchorBase/BP_Spawn_Anchor_Base_01.BP_Spawn_Anchor_Base_01_C:Long Grab Complete"
+local anchorHooked = false
+local function hookAnchors()
+    if anchorHooked or M.mutate == "noanchorsync" then return end
+    -- a post hook never fires for this Blueprint function: the pre hook looks again once the pull has run
+    anchorHooked = pcall(RegisterHook, ANCHOR_FN, function(self)
+        if not (M.enabled and safety.guest()) then return end
+        local a = self:get()
+        ExecuteInGameThreadWithDelay(300, function()
+            if not (live(a) and a.SuccessfullyGrabbed == true) then return end -- inventory full: nothing was taken
+            local name = doorName(a)
+            if name then
+                net.toHost("g.vis.anchor", name)
+                log("PT|visual guest pulled anchor %s", name)
+            end
+        end)
+    end)
+end
+net.on("g.vis.anchor", function(_, name)
+    if not M.enabled then return end
+    for _, o in ipairs(FindAllOf("BP_Spawn_Anchor_Base_01_C") or {}) do
+        if live(o) and (fpath(o) == name or o:GetFName():ToString() == name) and not fpath(o):find("/Engine/Transient", 1, true) then
+            if not o.SuccessfullyGrabbed then
+                o.SuccessfullyGrabbed = true
+                for _, f in ipairs({ "AddAnchorPulledTag", "AnchorTaken", "removeAnchorGoo" }) do pcall(o[f], o) end
+                pcall(function() o.Highlight:SetActive(false, false) end)
+                pcall(function() o.GrabbableMesh:K2_DestroyComponent(o) end)
+            end
+            log("PT|visual guest pulled anchor %s: taken on the host", name)
+            return
+        end
+    end
+    log("PT|visual guest pulled anchor %s: not on the host", name)
 end)
 
 -- The host's map-placed doors (garage side rooms: chains broken with the impact hammer or a prybar, open or shut) go the other way
@@ -633,7 +674,8 @@ local function guestTick()
     if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
     if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
-    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end -- map-placed doors (garage)
+    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end
+    if beat % 40 == 5 then try("anchorhook", hookAnchors) end -- map-placed doors (garage)
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
     if beat % 20 == 0 then
         local n = 0
