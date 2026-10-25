@@ -14,6 +14,7 @@ if os.getenv("PT_MUTATE") == "nooverlay" then
     function M.other() return "Player" end
     function M.settled() return false end
     function M.hostPaused() end
+    function M.transition() end
     return M
 end
 
@@ -69,6 +70,7 @@ local function build()
     local function add(t) box:AddChildToVerticalBox(t):SetHorizontalAlignment(3) end -- right
     n.label = text(tree, "PTVersion", 18, "label"); add(n.label)
     n.status = text(tree, "PTStatus", 16, "status"); add(n.status)
+    n.arc = text(tree, "PTArc", 16, "status"); n.arc:SetVisibility(1); add(n.arc) -- "ARC 3.0 / 7.0": the device sits behind the seats in co-op (D12)
     for i = 1, LINES do
         n.lines[i] = text(tree, "PTFeed" .. i, 16, "info")
         n.lines[i]:SetVisibility(1)
@@ -82,7 +84,7 @@ local function build()
     return n
 end
 
-local pausedAt = nil -- when the host last said it is paused (see M.hostPaused)
+local pausedAt, transitionOn = nil, false -- when the host last said it is paused (see M.hostPaused); a map transition hides the banner
 local function set(t, key, value) -- only touch the widget when something changed
     if ui.cache[key] ~= value then ui.cache[key] = value; t:SetText(FText(value)) end
 end
@@ -97,7 +99,7 @@ end
 
 local function render()
     local now = os.clock()
-    local pv = (pausedAt and now - pausedAt < 3) and 3 or 1
+    local pv = (pausedAt and now - pausedAt < 3 and not transitionOn) and 3 or 1
     if ui.cache.pv ~= pv then
         ui.cache.pv = pv
         ui.banner:SetVisibility(pv)
@@ -144,6 +146,8 @@ end
 
 -- the host's world is paused (Esc menu): pause.lua tells us every second; the label lapses 3 s after the last word
 function M.hostPaused(on) pausedAt = on and os.clock() or nil end
+-- transition.lua: the guest is on the host's loading screen or faded out (the host's world is paused while it spawns: no banner)
+function M.transition(on) transitionOn = on end
 
 -- the other player's name as this side knows it
 function M.other() return hostName or next(names) or "Player" end
@@ -172,6 +176,21 @@ local function realName(ps)
     return not n:find("PT|", 1, true) and n ~= "" and n or nil
 end
 
+-- ARC energy, in run maps during a session: the guest's values are the host's (guestact.lua g.act.arc)
+local function arcText()
+    local screen = common.first("BP_Carpart_Internal_GobblerScreen_C")
+    if not screen then return "" end
+    local c, m = {}, {}
+    screen:GetAnchorCharge(c, m)
+    return string.format("ARC %.1f / %.1f", c.CurrentCharge, m.MaxCharge)
+end
+local function arc(show)
+    local ok, str = pcall(arcText)
+    str = (show and ok) and str or ""
+    set(ui.arc, "arc", str)
+    local v = str == "" and 1 or 3
+    if ui.cache.av ~= v then ui.cache.av = v; ui.arc:SetVisibility(v) end
+end
 local function status()
     local mode = common.netMode()
     local w = UEHelpers.GetWorld()
@@ -225,6 +244,7 @@ local function status()
     set(ui.status, "status", str)
     local v = str == "" and 1 or 3
     if ui.cache.sv ~= v then ui.cache.sv = v; ui.status:SetVisibility(v) end
+    arc(connected and valid(w) and not UEHelpers.GetGameplayStatics():GetCurrentLevelName(w, true):ToString():find("Garage", 1, true))
 end
 
 -- A map change frees the widget with its world, and a call on the dead handle crashed the game (AV in a guest's zone load):
