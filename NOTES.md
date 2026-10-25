@@ -438,3 +438,17 @@ Changes
   GobblerScreen's GetAnchorCharge (the guest's values are the host's through guestact.lua's g.act.arc mirror). PROTOCOL_VERSION 4.
 - Scenarios: transition (coop-zone; host hold seen and released, guest screen at the drop, before its character, removed after),
   arcui (gateway; both ARC lines equal); run-test/run-suite registration.
+
+Results (lane pair C:\PTLanes\immersion, port 7851, headless unless said; folders in local/test-results)
+- transition (coop-zone) 26/26 (20261025-113502): host held 2.5-2.8 s (the guest connected during the host's spawn and was ready at
+  once), guest screen up at the host's "load" message, before its character, removed on "go". Mutation notransition 23/26
+  (20261025-113737): host_held_loading_screen_for_guest, client_screen_shown_at_drop, client_screen_shown_until_placed fail.
+- arcui (gateway) 18/18 (20261025-114149): both lines "ARC 7.0 / 1.0".
+- Rendered pair (coop-zone, MCP session, TravelToNextLeg on the host 11:45:46; local/immersion/*.png, PrintWindow captures of both
+  windows every 3 s): the guest's window showed the game's loading screen with "WAITING FOR HOST..." 1.5 s after the host's LoadMap
+  (guest-loading-screen-at-host-load.png; the frame 5 s earlier is the zone, guest-before-host-load.png) and kept it for the whole
+  107 s the host took to load and spawn (two rendered games on one GPU), the host held its own screen 4.5 s until the guest's
+  character was there, both went to the world on the host's "go" (host-after-transition-arc-line.png: host in the new zone with
+  "ARC 0.0 / 0.0" under the status; guest-arc-line-overlay.png: the guest's line). Owner observation on this rendered pair: the shared
+  load worked and the guest showed "waiting for host" on the loading screen. Not captured: the host's held screen itself (the hold
+  began 9 s after the capture loop ended) and the "fade"/"route" notices (the direct travel call has no junction fade).
