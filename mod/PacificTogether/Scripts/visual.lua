@@ -674,8 +674,8 @@ local function guestTick()
     if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
     if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
-    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end
-    if beat % 40 == 5 then try("anchorhook", hookAnchors) end -- map-placed doors (garage)
+    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end -- map-placed doors (garage)
+    if beat % 40 == 5 then try("anchorhook", hookAnchors) end -- ARC anchor structures (zones)
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
     if beat % 20 == 0 then
         local n = 0
