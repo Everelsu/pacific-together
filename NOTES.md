@@ -408,3 +408,41 @@ Log analysis of coop17 (19:08-19:27, 5 map loads; local/playtest-20261024-coop17
 Owner-seen bugs, to fix later
 - Some anomalies invisible to the guest: the noise-making one that repairs the car, and the "tictac".
 - Weather and time of day were different for host and guest (README had claimed both synchronized).
+
+## 2026-10-25 worldsync lane: weather/time of day and duplicated anchors (branch lane/worldsync)
+
+Observations
+- Weather: host and guest managers agree on time of day, target preset, overrides and fog (world.lua already sends them once a second).
+  What differed was the guest's lighting simulation: in a live pair (`Wilderness_Forest_06`, then `Rural_Forest_Radio_Scylla_02`) the guest's
+  `BP_ToDManager_C.ToDSimulationActor` was invalid while the level's `ToD_Simulation_C` existed, and after the host switched the preset
+  (`Set New TOD Target` with ToD_Preset_AcidRain) the guest manager's target followed but the guest simulation's `CurrentPresetObject` stayed
+  on ForestSullen: directional light 2.26 vs 0.87, skylight 1.47 vs 5.02, precipitation 0 vs 1, wetness and wind low. Calling
+  `SetupToDSimulationActor` on the guest fixed the reference; calling `sim:WeatherChangeEvent(target)` fixed the preset, light and rain.
+- The sim binds `TODPresetTargetChanged` in its own begin-play; on the guest that binding evidently never took effect (cause unknown, see below).
+- Anchors: the zone's `BP_Spawn_Anchor_*` structures are host-spawned; the guest has non-replicated copies from visual.lua (named
+  `..._C_2147...`, host names are GUIDs). Pulling a copy on the guest runs the game's own `Long Grab Complete` (item to the guest, mesh gone);
+  nothing reached the host, so its structure stayed pullable. The host's own pull marks `SuccessfullyGrabbed` and leaves the actor.
+- RegisterHook post callbacks never fire for the Blueprint function `BP_Spawn_Anchor_Base_01_C:Long Grab Complete` (the pre hook does).
+
+Changes
+- world.lua (guest, once a second): relink the manager to the sim when the reference is invalid; run `WeatherChangeEvent` when the sim's preset
+  class differs from the manager's target. Mutation `nosimlink` turns it off.
+- visual.lua: guest pre-hook on `Long Grab Complete` (checks `SuccessfullyGrabbed` 300 ms later) sends `g.vis.anchor <key>`; the host marks its
+  structure taken the way the game does (flag, AddAnchorPulledTag, AnchorTaken, removeAnchorGoo, highlight off, grab mesh gone). Prop state
+  gained `tk=1` (SuccessfullyGrabbed), applied on the guest by removing the copy: a host pull removes the guest's copy. The deposit path
+  (g.act.anchor) is unchanged, so a pulled anchor is deposited once. Mutation `noanchorsync`. No wire-format change to existing messages
+  (new message `g.vis.anchor`, extra state field): PROTOCOL_VERSION not bumped.
+- New scenarios `weathersync` (fixture zone or garage) and `anchordup` (fixture zone), registered in run-test.ps1 and run-suite.ps1.
+
+Unknowns
+- Why the sim's delegate binding is missing on the guest (the manager is a game-instance object that outlives levels; the sim's begin-play
+  may find another manager or none): not investigated, the guest relink is a once-a-second reconciliation, not a root fix.
+- Rendered comparison (screenshots) of host and guest sky was not done; the evidence is simulation properties.
+- Map transitions with the new code are covered only by the smoke set below, not by a weather-specific travel scenario.
+
+Results (all runs headless, one pair, root C:\PTLanes\worldsync, port 7841)
+- weathersync -Fixture zone 22/22, -Fixture garage 22/22; -Mutate nosimlink 19/22 (fails guest_sim_linked, guest_runs_host_preset, guest_precipitation_matches).
+- anchordup -Fixture zone 22/22; -Mutate noanchorsync 21/22 (fails host_anchor_taken_by_guest).
+- Smoke set on this branch: session 40/40, travel 23/23, body 20/20, sessionrejoin 36/36, zonejoin 14/14, safety 30/30.
+- zoneexit -Fixture coop-zone 37/37 and with -Mutate noseatguard 37/37: host_not_hurt_by_guest_seating passes with the guard OFF too in this
+  headless run, so the check does not yet discriminate (the seating jolt did not reproduce this time); the fix itself stays unproven by test.
