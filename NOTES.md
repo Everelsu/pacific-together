@@ -408,3 +408,33 @@ Log analysis of coop17 (19:08-19:27, 5 map loads; local/playtest-20261024-coop17
 Owner-seen bugs, to fix later
 - Some anomalies invisible to the guest: the noise-making one that repairs the car, and the "tictac".
 - Weather and time of day were different for host and guest (README had claimed both synchronized).
+
+## 2026-10-25 immersion lane: map transitions as a co-op game shows them, ARC energy on the overlay (docs/spikes/PT6-immersion.md)
+
+Observations (headless MCP probes on coop-zone, hooks with timestamps; details and the full event order in the spike)
+- Host travel: `TravelToNextLeg` -> `LoadMap` in the same frame; the game's `LoadingScreen_C` (on the game instance, kept across maps)
+  gets `K2_OnBeginLoad` there, `HoldLoadingScreen` when the spawning manager starts, `K2_OnLevelLoaded`, 28-32 s of spawning, then
+  `FinishLoadingScreen` -> `K2_OnLevelReady` (FadeGoal 0) -> `FinishAndSpawnPlayer`; the widget's own tick fades it out in 0.9 s.
+  The engine adds/removes its Slate widget directly (`IsInViewport()` false); the world is not paused while it is up.
+- Guest: the host's close takes the guest world's `NetDriver` away within 60 ms (GameState, world and `netMode()` "client" stay); the
+  native rejoin browses back at once, then 15-25 s on the old map without a pawn and without a loading screen, its own load (the
+  engine shows the screen there, `K2_OnBeginLoad` fires after our LoadMap pre-hook), then the world visible with no pawn until the
+  host's own spawn is done. `K2_OnLevelLoaded`/`K2_OnLevelReady` never fire on a client.
+- Setting `FadeGoal = 1`, `FadeDirection = true` after `K2_OnLevelReady` keeps the host's screen up (21 s tried); `FadeGoal = 0`,
+  `FadeDirection = false` fades it out as the game does. `AddToViewport`/`RemoveFromParent` of the same widget on the guest shows
+  and hides the game's screen (TRAVELING..., throbber, the state text can be set). No errors or crashes in any probe.
+- A message sent in the host's LoadMap pre-hook reaches the guest before the close when it skips the flow-control queue (seen 2/2
+  once g.trans bypassed it; queued behind other traffic it was lost 1/1).
+
+Changes
+- transition.lua (new): host tells the guest "route" (BP_ProgressionManager:Open Map UI), "fade" (first update of the EnterExit
+  `Fadeout` / ExitPortal `Final Transition Fade In` timelines), "load" (LoadMap pre) and "go"; after its own load it holds the game's
+  loading screen (state text "WAITING FOR <name>...") until the guest's g.net.ready, 60 s at most ("<name> did not load in time").
+  Guest: camera fade to black on "fade" (undone after 15 s if no travel follows), the game's loading screen from "load" or the
+  NetDriver drop through its own load until "go" (fallback: own character + 8 s; 150 s cap), then a 0.8 s fade-in; feed lines
+  "Host is choosing a route", "Host is travelling", "Waiting for <name> to load".
+- net.lua: `M.ready(pc)` callback on g.net.ready; g.trans skips the queue. overlay.lua: no "Paused by host" banner during a transition;
+  new line "ARC <collected> / <required>" (TextBlock PTArc) under the status in run maps during a session, from the local
+  GobblerScreen's GetAnchorCharge (the guest's values are the host's through guestact.lua's g.act.arc mirror). PROTOCOL_VERSION 4.
+- Scenarios: transition (coop-zone; host hold seen and released, guest screen at the drop, before its character, removed after),
+  arcui (gateway; both ARC lines equal); run-test/run-suite registration.

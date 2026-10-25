@@ -109,6 +109,8 @@ function M.toGuest(pc, kind, data)
         byKind, byAt = {}, os.clock()
     end
     if os.getenv("PT_MUTATE") == "noflow" then return PTNative_MsgToGuest(pc:GetAddress(), kind, data) end
+    -- transition.lua's one-word notices skip the queue: after a map load they would wait behind the loot lists for the guest
+    if kind == "g.trans" then return PTNative_MsgToGuest(pc:GetAddress(), kind, data) end
     local f = flowFor(pc)
     f.queue[#f.queue + 1] = { kind, data, costOf(data) }
     drain(f)
@@ -134,6 +136,7 @@ M.on("g.net.ready", function(pc)
         f.ready = true
         log("PT|net guest ready after %.1f s, %d messages waiting", os.clock() - f.at, #f.queue)
         drain(f)
+        if M.ready then pcall(M.ready, pc) end -- transition.lua lets go of the held loading screen
     end
 end)
 M.on("g.net.ack", function(pc, data)

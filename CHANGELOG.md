@@ -5,6 +5,15 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+Network protocol **4**: both players need this version.
+
+### Added
+
+- Map transitions look like a co-op game's: the guest fades out with the host and sees the game's own loading screen from the
+  host's map load until both are in; the host's loading screen waits for the guest (60 s at most) so neither sees the world alone.
+  Notices: "Host is choosing a route", "Host is travelling", "Waiting for <name> to load".
+- "ARC <collected> / <required>" on the overlay in run maps: the device sits behind the seats in co-op, out of view.
+
 ### Fixed
 
 - The host no longer takes a 20-60 point hit each time the guest rejoins after a junction (the game seating the guest jolted
