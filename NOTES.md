@@ -408,3 +408,32 @@ Log analysis of coop17 (19:08-19:27, 5 map loads; local/playtest-20261024-coop17
 Owner-seen bugs, to fix later
 - Some anomalies invisible to the guest: the noise-making one that repairs the car, and the "tictac".
 - Weather and time of day were different for host and guest (README had claimed both synchronized).
+
+## 2026-10-25 radio lane (worker, worktree C:\PTLanes\radio, branch lane/radio)
+
+Details and probes: [docs/spikes/PT6-radio.md](docs/spikes/PT6-radio.md).
+
+Observations
+- RadioPlaylist is a queue; SkipTrack takes a random front entry and moves it to the end (the last entry is the playing track). Filling the
+  front with one track makes SkipTrack play exactly it (about 0.3 s); the list shrinks to 2 and is restored from DefaultRadioPlaylist.
+- Custom music folder is `<game>\PenDriverPro\Custom\Radio`; with `RadioSource=1` the library scans it at start (4 files found), but in every
+  probe the scanned files did not enter RadioPlaylist. A synthetic custom MusicTrack forced through SkipTrack did become CurrentRadioTrack,
+  WmfMedia then failed to open my generated wav and the game moved on.
+- A loose BP_CarPart_Internal_Radio_C without a parent exists next to the car's; calling ChangeChannel on it does nothing.
+- Rendered 2-client run `radio` (local/test-results/20261025-114756-radio-radio): 34/34. Earlier runs 28/34, 30/34, 32/34 x2 failed
+  on test bugs and one real bug (guest's custom-file list sent without the key prefix, so the host skipped shared files).
+- The coordinator then limited runs to headless; the radio scenario cannot run headless (CurrentRadioTrack is invalid with -nosound), so the
+  noradio mutation was started rendered and stopped before finishing: NO mutation result.
+
+Derived
+- carfeel's radio half became radio.lua: guest changes are intents (g.radio.i), the host applies them and sends state (g.radio.s) to
+  both players with the current track key; 5 s heartbeat; restart of the track on join and map load; protocol 3 -> 4.
+- Custom files match by lower-case file name (cheap, the game itself names tracks by file); no hash.
+
+Unknowns
+- That anything is audible; the song position on the two sides (no seek from Lua); how the real library gets files into the playlist;
+  a real custom mp3/ogg played on both sides. Needs a hand check with two players and real files.
+
+Smoke set (headless, one run at a time, root C:\PTLanes\radio port 7861): session 40/40, travel 23/23, body 20/20, sessionrejoin 36/36,
+safety 30/30, zonejoin 12/14 first (guest stayed at the main menu, host_two_pcs/client_connected_zone timed out; the machine was loaded by
+three lanes) and 14/14 on the immediate rerun. carfeel was not rerun after losing its skip/playlist checks (lead's suite run).
