@@ -530,3 +530,14 @@ Unknowns
 Smoke set (headless, one run at a time, root C:\PTLanes\radio port 7861): session 40/40, travel 23/23, body 20/20, sessionrejoin 36/36,
 safety 30/30, zonejoin 12/14 first (guest stayed at the main menu, host_two_pcs/client_connected_zone timed out; the machine was loaded by
 three lanes) and 14/14 on the immediate rerun. carfeel was not rerun after losing its skip/playlist checks (lead's suite run).
+
+## 2026-10-25 lead: full suite on 8488bcb and release 0.0.8
+
+Observations (folders in local/test-results, 2026-10-25)
+- Full suite (60 scenarios, 1-3 headless pairs in parallel): 55 passed first time. lootsync, guestcraft, worldzone failed under 2-3 pairs
+  and passed on a single-pair rerun (load). stations and anomalies3 failed again on a single pair.
+- anomalies3 fails `guest_pushed_by_bunny` (10 s window) on 2fe120d too (20261025-134026): not caused by today's lanes.
+- stations: the guest's own CureCarQuirk returns Removed=false (`guest cured quirk: false`), then 8 checks fail (42/50), quirk-independent.
+  Today with the weather relink on 4 of 7 runs failed, with it off/absent 1 of 7 (nosimlink 20261025-141046); the same failure is in
+  3 runs of 2026-10-22. Derived: an intermittent failure in the guest cure path or its test, older than this release. Cause unknown.
+- 0.0.8 (0195e6a) packaged and published as GitHub pre-release v0.0.8; native DLL unchanged (0.0.7).
