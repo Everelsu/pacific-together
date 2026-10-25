@@ -38,7 +38,20 @@ Hold experiment on the host (hook after `K2_OnLevelReady`: `FadeGoal = 1`, `Fade
   and garage gate; `BP_LevelTransition_ExitPortal:Final Transition Fade In Timeline`, zone exit and return to garage), ~1 s before
   the travel. The junction menu is `BP_ProgressionManager:Open Map UI`.
 
+## Rendered check (2026-10-25 11:45, two windowed clients on one GPU, PrintWindow captures every 3 s: local/immersion/)
+
+- The host's load and spawn took 107 s with both windows rendered (10-45 s headless). The guest's window showed the game's loading
+  screen with "WAITING FOR HOST..." 1.5 s after the host's LoadMap and for the whole 107 s; the host held its own screen 4.5 s
+  after its spawn until the guest's character was there; both went to the world on "go". The owner watched this pair: the shared
+  load worked, the guest showed "waiting for host" on the loading screen.
+- The guest's first reconnect attempt to the still-loading host timed out after 60 s and the native rejoin browsed again (the
+  existing flow); our screen stayed up through it.
+- `HighResShot` captures no UMG: window captures (PrintWindow) are the way to show UI state.
+
 ## Unknowns
 
 - Whether a message sent in the host's LoadMap pre-hook reaches the guest before the close (the guest's own drop detection covers it).
-- Rendered look of the held screen (status page index 0 forced so the state text shows): see the screenshots in NOTES.
+- The host's held screen was not captured (the hold began 9 s after the capture loop ended; headless state: FadeGoal 1, text set,
+  status page 0). The "fade" and "route" notices were only exercised by hook registration (the direct TravelToNextLeg call skips
+  the junction's own fade and menu): hand play at a real junction is the proof.
+- The guest's own death/respawn does not touch this: the drop test is the world's NetDriver, which death leaves alone (not tested).

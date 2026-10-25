@@ -443,7 +443,8 @@ Results (lane pair C:\PTLanes\immersion, port 7851, headless unless said; folder
 - transition (coop-zone) 26/26 (20261025-113502): host held 2.5-2.8 s (the guest connected during the host's spawn and was ready at
   once), guest screen up at the host's "load" message, before its character, removed on "go". Mutation notransition 23/26
   (20261025-113737): host_held_loading_screen_for_guest, client_screen_shown_at_drop, client_screen_shown_until_placed fail.
-- arcui (gateway) 18/18 (20261025-114149): both lines "ARC 7.0 / 1.0".
+- arcui (gateway) 18/18 (20261025-114149): both lines "ARC 7.0 / 1.0". Mutation nooverlay 15/18 (20261025-115116): the three
+  ARC checks fail (no widget).
 - Rendered pair (coop-zone, MCP session, TravelToNextLeg on the host 11:45:46; local/immersion/*.png, PrintWindow captures of both
   windows every 3 s): the guest's window showed the game's loading screen with "WAITING FOR HOST..." 1.5 s after the host's LoadMap
   (guest-loading-screen-at-host-load.png; the frame 5 s earlier is the zone, guest-before-host-load.png) and kept it for the whole
@@ -452,3 +453,13 @@ Results (lane pair C:\PTLanes\immersion, port 7851, headless unless said; folder
   "ARC 0.0 / 0.0" under the status; guest-arc-line-overlay.png: the guest's line). Owner observation on this rendered pair: the shared
   load worked and the guest showed "waiting for host" on the loading screen. Not captured: the host's held screen itself (the hold
   began 9 s after the capture loop ended) and the "fade"/"route" notices (the direct travel call has no junction fade).
+- Smoke set on ca8e214+ (headless, one at a time, 11:51-12:09): session 40/40, travel 23/23, body 20/20, sessionrejoin 36/36,
+  zonejoin 14/14, safety 30/30 (folders 20261025-1154.. to -120900-immersion-*).
+
+Unknowns / not done
+- Hand play at a real junction (route menu -> "Host is choosing a route", the junction's fade -> guest fade, the garage gate and
+  the exit portal) has not happened: those hooks were registered but only the direct travel path ran. The route-menu car movement
+  on the guest (NOTES 2026-10-24 day) is unchanged.
+- The host's world runs (not paused) while it holds its loading screen; a stuck guest costs the host up to 60 s standing at the
+  spawn with the screen up. The "<name> did not load in time" path was not exercised.
+- The radio lane also moves PROTOCOL_VERSION to 4: one bump is enough after the merge.

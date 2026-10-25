@@ -31,8 +31,9 @@ and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
   The guest sees the host's research, garage and player upgrades, missions, journal and radio dialogue, and can use
   supported garage stations and summon a gateway through the ARC. The host owns the world and save; the guest's own
   saves are protected while joined.
-- **Interface:** session status and activity feed, guest loading and seat prompts, and shared pause when the host opens
-  Esc. The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
+- **Interface:** session status and activity feed, guest loading and seat prompts, shared pause when the host opens
+  Esc, the game's own loading screen on both sides through map changes (each waits for the other), route/travel notices and
+  an ARC energy readout. The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
 
 ## Limitations and testing
 
