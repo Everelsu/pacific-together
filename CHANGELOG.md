@@ -5,7 +5,9 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
-Network protocol **4**: both players need this version.
+## [0.0.8] - 2026-10-25
+
+Network protocol **4**: both players need 0.0.8.
 
 ### Added
 
@@ -13,16 +15,22 @@ Network protocol **4**: both players need this version.
   host's map load until both are in; the host's loading screen waits for the guest (60 s at most) so neither sees the world alone.
   Notices: "Host is choosing a route", "Host is travelling", "Waiting for <name> to load".
 - "ARC <collected> / <required>" on the overlay in run maps: the device sits behind the seats in co-op, out of view.
+- The guest can use the car radio and the garage stereo through the host, and both hear the same track, started together
+  on every track change, join and map load. A custom track the other player does not have (matched by file name) is skipped.
 
 ### Fixed
 
+- Weather and lighting follow the host on the guest: the guest's sky simulation never took the host's weather changes.
+- An anchor the guest pulls is taken on the host too (and one the host pulls disappears for the guest), so it can be
+  deposited only once.
 - The host no longer takes a 20-60 point hit each time the guest rejoins after a junction (the game seating the guest jolted
-  the car on the guest's side and that hit was forwarded to the host).
+  the car on the guest's side and that hit was forwarded to the host). Not reproduced in tests yet.
 
 ### Known issues
 
 - Some anomalies are invisible to the guest: the noisy one that repairs the car, and the "tictac" (owner hand play 2026-10-24).
-- Weather and time of day can differ between host and guest (owner hand play 2026-10-24).
+- Radio position can drift within a track (the game has no seek); real custom-music files are untested.
+- Tutorial steps done by the guest alone do not advance the host.
 
 ## [0.0.7] - 2026-10-24
 
