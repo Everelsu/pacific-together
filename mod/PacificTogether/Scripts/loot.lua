@@ -273,7 +273,12 @@ local function scanHost()
             m.Inventories_Garage:ForEach(function(k)
                 local tag = k:get().TagName:ToString()
                 -- the Toolbox locker is a lootable's container (synced as that lootable); the guest has no container under its tag
-                if tag:find("^Stations%.Install%.Inventory%.") and not tag:find("Toolbox", 1, true) then names[#names + 1] = tag end
+                -- Mount.NN: the picture frames' contents (neon signs, posters, trophies); the guest's frames stood empty (playtest
+                -- 2026-10-24), an item put in a frame's container shows on the wall at once
+                local frame = tag:find("^Stations%.Install%.Mount%.") and os.getenv("PT_MUTATE") ~= "noframes" -- tests only: frames off
+                if (tag:find("^Stations%.Install%.Inventory%.") or frame) and not tag:find("Toolbox", 1, true) then
+                    names[#names + 1] = tag
+                end
             end)
         end)
     end
@@ -680,8 +685,11 @@ LoopInGameThreadWithDelay(16, function()
     while head <= #inbox and os.clock() - t < BUDGET do
         local l = inbox[head]
         inbox[head], head = nil, head + 1
+        local t1 = os.clock()
         local ok, err = pcall(handle, l, guest)
         if not ok then log("PT|error loot line %s %s", l:sub(1, 40), tostring(err)) end
+        -- one line that alone holds the frame (playtest 2026-10-24: up to 863 ms in this loop on a big save)
+        if os.clock() - t1 > 0.05 then log("PT|slow loot line %.0f ms %d bytes %s", (os.clock() - t1) * 1000, #l, l:sub(1, 60)) end
     end
     if head > #inbox then inbox, head = {}, 1 end
 end)

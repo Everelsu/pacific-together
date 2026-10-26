@@ -34,39 +34,46 @@ local function split(s) local r = {}; for p in s:gmatch("[^;]+") do r[#r + 1] = 
 
 -- host: the four sections as arrays of strings ------------------------------------------------------------------------
 
-local function snapshot()
+-- one section of the host's progression as a sorted list of entries
+local SECTIONS = { "wb", "un", "rt", "lb" }
+local function section(sec)
     local m = pm()
-    local s = { wb = {}, un = {}, rt = {}, lb = {} }
-    if not m then return s end
-    m.GlobalWhiteboard.Entries:ForEach(function(k, v)
-        local tag = k:get().TagName:ToString()
-        if not skipTag(tag) then s.wb[#s.wb + 1] = string.format("%s=%.4f", tag, v:get()) end
-    end)
-    local g = gstate()
-    if g then
-        g.UnlockedNodes:ForEach(function(n) s.un[#s.un + 1] = "U" .. path(n:get()) end)
-        g.PurchasedNodes:ForEach(function(n) s.un[#s.un + 1] = "P" .. path(n:get()) end)
-    end
-    local rs = m.WorldState
-    if valid(rs) then
-        local cur = valid(rs.CurrentLeg) and short(rs.CurrentLeg.ShapeLeg) or "-"
-        s.rt[1] = string.format("@%d,%s", rs.CurrentPhase, cur)
-        rs.LegStates:ForEach(function(k, v)
-            local l = v:get()
-            if l.RevealState ~= 0 or l.Visited or l.Discovered then
-                s.rt[#s.rt + 1] = string.format("%s:%d%d%d%d", short(k:get()), l.RevealState, l.Visited and 1 or 0, l.Discovered and 1 or 0, l.Active and 1 or 0)
-            end
+    local r = {}
+    if not m then return r end
+    if sec == "wb" then
+        m.GlobalWhiteboard.Entries:ForEach(function(k, v)
+            local tag = k:get().TagName:ToString()
+            if not skipTag(tag) then r[#r + 1] = string.format("%s=%.4f", tag, v:get()) end
         end)
-    end
-    local lb = m.LogBook
-    if valid(lb) then
-        for i = 1, #lb.Entries do
-            local o = lb.Entries[i].DataObject
-            if valid(o) then s.lb[#s.lb + 1] = path(o) end
+    elseif sec == "un" then
+        local g = gstate()
+        if g then
+            g.UnlockedNodes:ForEach(function(n) r[#r + 1] = "U" .. path(n:get()) end)
+            g.PurchasedNodes:ForEach(function(n) r[#r + 1] = "P" .. path(n:get()) end)
+        end
+    elseif sec == "rt" then
+        local rs = m.WorldState
+        if valid(rs) then
+            local cur = valid(rs.CurrentLeg) and short(rs.CurrentLeg.ShapeLeg) or "-"
+            r[1] = string.format("@%d,%s", rs.CurrentPhase, cur)
+            rs.LegStates:ForEach(function(k, v)
+                local l = v:get()
+                if l.RevealState ~= 0 or l.Visited or l.Discovered then
+                    r[#r + 1] = string.format("%s:%d%d%d%d", short(k:get()), l.RevealState, l.Visited and 1 or 0, l.Discovered and 1 or 0, l.Active and 1 or 0)
+                end
+            end)
+        end
+    else
+        local lb = m.LogBook
+        if valid(lb) then
+            for i = 1, #lb.Entries do
+                local o = lb.Entries[i].DataObject
+                if valid(o) then r[#r + 1] = path(o) end
+            end
         end
     end
-    for _, t in pairs(s) do table.sort(t) end
-    return s
+    table.sort(r)
+    return r
 end
 
 local function send(sec, list, to)
@@ -81,14 +88,19 @@ local function send(sec, list, to)
 end
 
 local lastSent = {}
-local function broadcast(force, to)
-    local s = snapshot()
-    for sec, list in pairs(s) do
+-- secs: the sections to read now (all of them for a guest's hello)
+local function broadcast(force, to, secs)
+    for _, sec in ipairs(secs or SECTIONS) do
+        local t0 = os.clock()
+        local list = section(sec)
+        local t1 = os.clock()
         local h = table.concat(list, ";")
         if force or lastSent[sec] ~= h then
             lastSent[sec] = h
             send(sec, list, to)
         end
+        local t2 = os.clock()
+        if t2 - t0 > 0.05 then log("PT|slow prog %s read %.0f ms send %.0f ms (%d entries)", sec, (t1 - t0) * 1000, (t2 - t1) * 1000, #list) end
     end
 end
 
@@ -113,17 +125,43 @@ local function hookPenalty()
     if penaltyHooked then log("PT|prog penalty hook registered") end
 end
 
--- host loop: push what changed
-LoopInGameThreadWithDelay(2000, function()
+-- host loop: push what changed, one section per pass. All four every 2 s took 2.1 s a minute on a long save's host (1250
+-- whiteboard tags, a full logbook), up to 1.8 s in one pass (rendered profile, 2026-10-24); a change now arrives within ~4 s.
+local nextSec = 0
+LoopInGameThreadWithDelay(1000, function()
     if not penaltyHooked and pm() then hookPenalty() end -- the Blueprint class loads after the main menu
     if safety.guest() or #net.guests() == 0 then lastSent = {}; return end
-    local ok, err = pcall(broadcast, false)
+    nextSec = nextSec % #SECTIONS + 1
+    local ok, err = pcall(broadcast, false, nil, { SECTIONS[nextSec] })
     if not ok then log("PT|error prog host %s", tostring(err)) end
 end)
 
 -- guest: write into our own managers -----------------------------------------------------------------------------------
 
 local got = false
+
+-- The guest's work is queued and done a few ms a frame: a long save's logbook and whiteboard came as three 28 KB messages each and
+-- one message held a rendered guest's frame 300-500 ms (AddEntry and SetTagFloat notify the game's listeners each time, 2026-10-24)
+local work, head = {}, 1
+local pending = {} -- what is queued and not done yet: a repeated list (the host's resend) does not queue it twice
+local function queue(key, fn)
+    if pending[key] then return end
+    pending[key] = true
+    work[#work + 1] = { key, fn }
+end
+LoopInGameThreadWithDelay(16, function()
+    if head > #work then return end
+    local t = os.clock()
+    while head <= #work and os.clock() - t < 0.004 do
+        local w = work[head]
+        work[head], head = nil, head + 1
+        pending[w[1]] = nil
+        local ok, err = pcall(w[2])
+        if not ok then log("PT|error prog apply %s %s", w[1], tostring(err)) end
+    end
+    if head > #work then work, head = {}, 1 end
+end)
+RegisterLoadMapPostHook(function() work, head, pending = {}, 1, {} end)
 
 local function applyWb(data)
     local m = pm()
@@ -135,12 +173,13 @@ local function applyWb(data)
         local tag, v = e:match("^([%w_%.]+)=(%-?[%d%.]+)$")
         v = tonumber(v)
         if tag and v and not skipTag(tag) and (have[tag] == nil or math.abs(have[tag] - v) > 0.001) then
-            w:SetTagFloat({ TagName = FName(tag) }, v)
             n = n + 1
             if n <= 3 then log("PT|prog guest tag %s %s -> %.2f", tag, tostring(have[tag]), v) end
+            pending["wb" .. tag] = nil -- the newest value wins
+            queue("wb" .. tag, function() local m2 = pm(); if m2 then m2.GlobalWhiteboard:SetTagFloat({ TagName = FName(tag) }, v) end end)
         end
     end
-    if n > 0 then log("PT|prog guest whiteboard %d tags set", n) end
+    if n > 0 then log("PT|prog guest whiteboard %d tags queued", n) end
 end
 
 local function applyUn(data)
@@ -153,14 +192,15 @@ local function applyUn(data)
     for _, e in ipairs(split(data)) do
         local kind, p = e:sub(1, 1), e:sub(2)
         if have[kind] and not have[kind][p] then
-            local node = StaticFindObject(p)
-            if valid(node) then
-                if kind == "U" then g:UnlockNode(node, true) else g:MarkAsPurchased(node) end
-                nu = nu + 1
-            end
+            nu = nu + 1
+            queue("un" .. e, function()
+                local g2, node = gstate(), StaticFindObject(p)
+                if not (g2 and valid(node)) then return end
+                if kind == "U" then g2:UnlockNode(node, true) else g2:MarkAsPurchased(node) end
+            end)
         end
     end
-    if nu > 0 then log("PT|prog guest unlock graph %d nodes set", nu) end
+    if nu > 0 then log("PT|prog guest unlock graph %d nodes queued", nu) end
 end
 
 local function applyRt(data)
@@ -192,8 +232,11 @@ local function applyLb(data)
     for i = 1, #lb.Entries do local o = lb.Entries[i].DataObject; if valid(o) then have[path(o)] = true end end
     for _, p in ipairs(split(data)) do
         if not have[p] then
-            local o = StaticFindObject(p)
-            if valid(o) then pcall(function() lb:AddEntry(o) end) end
+            queue("lb" .. p, function()
+                local m2 = pm()
+                local lb2, o = m2 and m2.LogBook, StaticFindObject(p)
+                if valid(lb2) and valid(o) then lb2:AddEntry(o) end
+            end)
         end
     end
 end

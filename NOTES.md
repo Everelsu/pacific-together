@@ -746,3 +746,102 @@ Derived
 Unknowns
 - Throughput over a real internet link (48 chunks per round trip, ~150 KB/s at 300 ms) is not measured.
 - `bigjoin` needs a big garage save as its `garage` fixture; the owner's fixture may not overflow at all.
+
+## 2026-10-24 evening: a guest on a big save (doors, spawn, freezes)
+
+Hand playtest on a contributor's long save (two copies on one PC), then measured on a second test pair, rendered and headless.
+
+Observations
+- Map doors (BP_Door_* placed in the garage sublevels, same names on both sides) are not touched by visual.lua: the guest had its
+  own fresh states, padlocks on where the host had broken them. New `leveldoors.lua`: the host sends state + locked, the guest
+  swings to it (Set Door from State, then its meshes turned back and tweened over 0.35 s); the guest's E sends its own resulting
+  state (a press passed to the host opened the host's door the other way: the side comes from the host's character). On a guest,
+  `ForceUnlockDoor` hides the padlock but `BP_LockedComponent:IsLocked` stays true (highlight off); `SetLockStrength(0)` clears it.
+  `leveldoors` 22/22, mutation `noleveldoors` 18/22 (`20261024-192249-a-leveldoors`, `-192545-...-noleveldoors`).
+- Guest spawn: 150 uu to the host's right put the guest inside the pneumatic storage (BP_Garage_AutoStoreVacuum). session.lua
+  now tries right/left/back/front at 150 and 250 uu, the first spot with a clear line from the host and no collision.
+  `bigjoin` (host placed at -489,185 facing +X, the storage to its right) 18/18; mutation `oldspawn` fails guest_spawned_in_sight.
+- Rendered guest profile (6 min, `PT|slow`): garage.lua's 500 ms loop held 60-70 ms every pass (~6 s a minute): the 30 picture
+  frames (UP_Garage_Cosmetic_FramedMount_Install) never take on a guest and were installed again every pass. Retries now back off
+  (2, 4, 8, 16, 32 s, then given up): 0.45 s a minute, worst ~10 ms. Storage stations take only after a few tries.
+- Join-time hitches left (rendered): loot lines for big containers (Expansion 4165 items 1.6 s, Starter 1.5 s), g.prog.lb/wb
+  0.3-0.5 s each, first g.car.s 0.4-1 s. net.lua now logs `PT|slow net <kind> <ms> <bytes>` over 50 ms, loot.lua `PT|slow loot
+  line`, story.lua `PT|slow story load`.
+- garagesync on this save 31/34: guest_has_no_parts_yet (the save already has fax/shredder/destabilizer) and the drive-out (the
+  car is parked inside, the waypoints start in the yard) are fixture assumptions, not regressions.
+
+Unknowns
+- The door tween and the new spawn were not watched by a person yet. Picture frames stay empty on the guest.
+
+## 2026-10-24 night: frame time on a big save, position desync watch
+
+Observations (rendered pair on a long save, `PT|perf` / `PT|slow`, then fixes, headless suites)
+- Guest join froze 22 s in one garage.lua pass: ~80 station installs at once. Now 2 installs a pass (500 ms); failed installs back
+  off 2-32 s, then are given up (30 picture frames never "take" as upgrades, but the frame actors exist).
+- Picture frames' contents live in garage containers `Stations.Install.Mount.NN`; loot.lua now shares them (both ways). An item put
+  in a guest's frame container shows on the wall at once. `frames` 20/20, mutation `noframes` fails.
+- Host loops that cost 1-2.6 s a minute each, and what they do now: progression (one section a pass, each every 4 s), carfeel
+  (audio/speedometer lookups cached 3 s, the per-component-move hook only on the guest, playlist read every 2 s), visual paint
+  (host 5 s, guest only on change), story history (read every 3 s, full resend every 60 s), garage upgrade read (6 s), car
+  ARC slots (5 s) and door parts (2 s). Guest: the car follow loop skips frames while the host's car is parked; progression
+  apply is queued, 4 ms a frame; the ARC map is captured once (30 s) instead of twice.
+- Position desync (desync.lua): the guest reports its own spot and where it sees the host twice a second. A host copy that
+  stands while its guest walks (repro: the copy's movement disabled and the engine's correction off) is found within ~1 s,
+  repaired, and the guest put back at the host's spot if still off: `desync` 19/19, mutation `nodesync` 18/19 (stays 507 uu
+  off). A movement tick off alone is no fault (the engine still runs the guest's moves).
+- carsync/carfeel fail on the long save (the host starts seated: the seat check uses the host's seat) and pass on a fresh
+  garage save (`local/fixtures-fresh`, slot 4): 36/36, 41/41. carexit 29/29, bigjoin 18/18, leveldoors 22/22, storysync 24/24.
+
+Unknowns
+- The stations/storyprog/upgrades/visualgarage failures on the long save are not sorted into fixture assumptions vs regressions.
+- No rendered re-measure after the last round of loop changes.
+
+## 2026-10-24 late: the host stood still on the guest's screen (saturated connection)
+
+Observations (rendered lane D:\PTLanes\a, owner's long save, game MCP; engine log `log LogNetTraffic VeryVerbose` on the host)
+- While the host walked, its character on the guest stopped for minutes: on the guest `ReplicatedMovement` and
+  `ReplicatedBasedMovement` of the host's copy stayed old, the host's PlayerState `Score` set on the host never arrived, and the
+  guest's log said `CreateSavedMove: Hit limit of 96 saved moves` every ~6 s (no move acks; the host logged `ServerMove:
+  TimeStamp expired` for the guest). Our reliable messages kept arriving the whole time.
+- On the host the guest's connection was fine (receives every frame, ViewTarget = the guest's character, actor channels open,
+  CurrentNetSpeed 100000, driver MaxClientRate 100000) but the engine log said `Saturated. Mark PDP_MainCharacter_C_... NetUpdateTime
+  to be checked for next tick` for every actor, while our ClientMessage traffic averaged ~4.7 KB/s in bursts of ~1 KB chunks.
+- It shows from the join on (51 "Hit limit" lines before anyone moved) and after a 5 s guest hitch while the host sends; it did
+  not show in headless runs (higher frame rate).
+- A/B on the same running pair: a 300 KB burst at the game's 100000 -> the guest saw a changed score 15 s later still not;
+  raising that connection's CurrentNetSpeed to 1000000 -> the score arrived within 4 s; a second 300 KB burst at 1000000 ->
+  all 10 messages and the score within 3 s.
+
+Derived
+- A saturated connection gets no actor replication and no move acks; only reliable RPCs go. Our windows of chunks (and the
+  join state) kept it saturated far longer than 100000 B/s explains, so the per-tick budget is smaller than CurrentNetSpeed at
+  low frame rates.
+
+Checked in the binary (Ghidra 12.1.4 headless, no auto-analysis: functions found from their log strings, decompiled alone)
+- UNetConnection::Tick is at 0x142e61620 (references "UNetConnection::Tick: Removing from KeepProcessingActorChannelBunchesMap").
+  Per tick: `rate = min(engine max tick rate, driver+0x5c)` (FLT_MAX when neither is set), `dt = clamp(time since the last
+  tick, 0, 1/rate)`, `QueuedBits(+0x1F8) -= CurrentNetSpeed(+0x38) * dt * 8`, floored at `-2 * CurrentNetSpeed * dt * 8`
+  (constants 1.0, 8.0, FLT_MAX read from the exe). So a frame longer than 1/rate earns no more budget: at low frame rates a
+  connection gets less than CurrentNetSpeed per second, and a long hitch earns nothing extra.
+- The "Saturated. Mark %s NetUpdateTime to be checked for next tick" log is in the function at 0x142e8b2a0 (server replicate
+  actors): after the prioritized-actor pass stops early, every remaining actor is marked for the next tick.
+- Ghidra on this PC: Felix (OSGi) would not start with its cache under %APPDATA% ("The data file must be inside the data dir");
+  `VMARGS=-Dapplication.settingsdir=C:/Tools/ghidra-settings` in support/launch.properties fixed it. Script and how to run it:
+  `local/ghidra/DecompileByString.java` (see its header).
+
+Fix
+- net.lua raises CurrentNetSpeed of every session connection (host: each guest; guest: its connection to the host) and the
+  driver's MaxClientRate/MaxInternetClientRate to 1000000, checked twice a second. Test `netspeed` (1.5 MB burst, score within
+  6 s), mutation `oldspeed`.
+
+- msg.cpp also sends at most 8 chunks per frame and connection (a whole 48-chunk window in one frame still saturated at 1 MB/s:
+  `netspeed` failed with the speed alone).
+- Headless on D:\PTLanes\a after both: netspeed 18/18 (score in 2 s), mutation oldspeed 17/18; channel 21/21, session 40/40,
+  bigjoin 18/18, leveldoors 22/22, frames 20/20, desync 19/19 (long save); carsync 36/36, playpath 27/28 (fresh save).
+  lootsync/progsync not run: they need a `zone` fixture, none in local/fixtures.
+
+Unknowns
+- Whether 1 MB/s over the Steam relay on a slow uplink queues too much in the socket instead (bursts are up to ~48 KB).
+- playpath `p3_host_trunk_has_guest_item` failed (the guest opened and closed the trunk menu, the host's trunk did not grow in
+  90 s): not yet compared against a run without these changes.
+- No rendered re-check of the host's movement on the guest's screen after the fix.

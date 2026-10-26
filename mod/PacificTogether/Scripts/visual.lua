@@ -510,9 +510,11 @@ local function hostTick()
         local s = table.concat(levelPackages(), "\n")
         if s ~= lastLv or beat % 40 == 1 then lastLv = s; net.toGuests("g.vis.lv", s) end
     end
-    if beat % 2 == 0 then
+    -- paint changes only at the paint station: read every 5 s, sent again every 30 s. Every 500 ms it was ~200 engine calls
+    -- (each car part's tint component), 2.2 s a minute on a host (rendered profile, 2026-10-24)
+    if beat % 20 == 0 then
         local p = paintLines()
-        if p ~= "" and (p ~= lastPaint or beat % 40 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
+        if p ~= "" and (p ~= lastPaint or beat % 120 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
     if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
@@ -521,14 +523,14 @@ local function hostTick()
     end
 end
 
-local helloFor, mapSince, lastCopies = nil, 0, -1
+local helloFor, mapSince, lastCopies, paintDone = nil, 0, -1, nil
 local function guestTick()
     beat = beat + 1
     local map = mapName()
     if map ~= guestMap then
         guestMap, mapSince = map, os.clock()
         dropAll()
-        asked, wantLevels, wantPaint, helloFor = {}, nil, nil, nil
+        asked, wantLevels, wantPaint, helloFor, paintDone = {}, nil, nil, nil, nil
     end
     -- the host waits for this before it sends anything: a guest that is still loading acks late, and the reliable channel overflows
     local pc = UEHelpers.GetPlayerController()
@@ -538,7 +540,8 @@ local function guestTick()
         log("PT|visual hello sent=%s map=%s", tostring(net.toHost("g.vis.hello", "")), map)
     end
     if wantLevels and beat % 8 == 0 then try("levels", applyLevels, wantLevels) end
-    if wantPaint and beat % 2 == 0 then try("paint", applyPaint, wantPaint) end
+    -- a new list, and every 10 s for parts installed since (each pass reads every part's tint)
+    if wantPaint and (wantPaint ~= paintDone or beat % 40 == 0) then paintDone = wantPaint; try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
     if beat % 20 == 0 then

@@ -97,7 +97,9 @@ end
 
 -- The ARC map's terrain and roads are a capture the map bounds take at level start; on the guest it came out blank (only
 -- icons, hand playtest 2026-10-23), a RecaptureMinimap once the world is there drew it like the host's (seen live).
-local RECAPTURE = { 10, 40 } -- s after the guest first sees this map's bounds
+-- s after the guest first sees this map's bounds: one capture, once the world has streamed in (each capture held a rendered
+-- guest's frame 0.8-1.9 s; two of them, at 10 and 40 s, rendered profile 2026-10-24)
+local RECAPTURE = { 30 }
 local captureSeen, captureDone = nil, 0
 
 -- a map change frees every object we hold: forget them before it happens

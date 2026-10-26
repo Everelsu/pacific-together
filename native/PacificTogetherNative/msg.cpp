@@ -43,6 +43,9 @@ constexpr const wchar_t* MAGIC = L"PT1|";
 constexpr const wchar_t* ACK = L"PT1A|";
 // 48 chunks are at most ~150 partial bunches: under UE's 256, with room for the game's own RPCs on the same channel
 constexpr long long WINDOW = 48;
+// and at most this many go per frame and connection: a whole window in one frame (~48 KB) saturated the connection, and a
+// saturated connection sends no actor updates and no move acks (the host stood still on the guest's screen, NOTES 2026-10-24 late)
+constexpr long long PER_FRAME = 8;
 
 struct Msg
 {
@@ -68,6 +71,7 @@ struct Link
     std::deque<std::wstring> chunks;
     long long sent = 0, acked = 0;    // our chunks on this link, and how many the other side confirmed
     long long got = 0, confirmed = 0; // their chunks we received, and how many we confirmed
+    long long this_frame = 0;         // our chunks sent since the last tick
     bool waiting = false;
 };
 std::map<uintptr_t, Link> g_links;
@@ -112,11 +116,12 @@ auto rpc(UObject* pc, UFunction* fn, const std::wstring& s) -> void
 
 auto pump(Link& l, UObject* pc) -> void
 {
-    while (!l.chunks.empty() && (!g_pace || l.sent - l.acked < WINDOW))
+    while (!l.chunks.empty() && (!g_pace || (l.sent - l.acked < WINDOW && l.this_frame < PER_FRAME)))
     {
         rpc(pc, l.out, l.chunks.front());
         l.chunks.pop_front();
         ++l.sent;
+        ++l.this_frame;
         ++g_chunks_out;
     }
     if (!l.chunks.empty() && !l.waiting) ++g_waits;
@@ -138,6 +143,7 @@ auto tick() -> void
         auto& l = it->second;
         auto* pc = l.pc.Get();
         if (!pc) { it = g_links.erase(it); continue; }
+        l.this_frame = 0;
         if (l.out && l.got > l.confirmed)
         {
             rpc(pc, l.out, std::wstring(ACK) + std::to_wstring(l.got));

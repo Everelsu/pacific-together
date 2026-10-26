@@ -165,13 +165,35 @@ local function spawnFor(pc, last)
         log("PT|error session no host pawn or character class to spawn next to (%s)", fullName(base))
         return true
     end
-    -- next to whatever the host controls (character or car); the spawn moves it out of collisions
-    local l, r = base:K2_GetActorLocation(), base:GetActorRightVector()
+    -- next to whatever the host controls (character or car): the first spot around it that the host can see (nothing on the
+    -- line to it, half a capsule beyond) and that does not collide. Only 150 uu to the right, the spawn's own adjustment put
+    -- the guest inside a garage station (the pneumatic storage, hand playtest 2026-10-24).
+    local l, r, f = base:K2_GetActorLocation(), base:GetActorRightVector(), base:GetActorForwardVector()
     local yaw = base:K2_GetActorRotation().Yaw
-    local xf = { Rotation = { X = 0, Y = 0, Z = math.sin(math.rad(yaw) / 2), W = math.cos(math.rad(yaw) / 2) },
-                 Translation = { X = l.X + r.X * 150, Y = l.Y + r.Y * 150, Z = l.Z + 50 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
-    local gs = UEHelpers.GetGameplayStatics()
-    local c = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(w, cls, xf, 2, nil), xf)
+    local rot = { X = 0, Y = 0, Z = math.sin(math.rad(yaw) / 2), W = math.cos(math.rad(yaw) / 2) }
+    local gs, ks = UEHelpers.GetGameplayStatics(), UEHelpers.GetKismetSystemLibrary()
+    local from = { X = l.X, Y = l.Y, Z = l.Z + 50 }
+    local ignore = { base }
+    if valid(own) then ignore[2] = own end
+    local function clear(d, dist)
+        local hit = {}
+        local to = { X = l.X + d.X * (dist + 50), Y = l.Y + d.Y * (dist + 50), Z = l.Z + 50 }
+        return not ks:LineTraceSingle(w, from, to, 0, false, ignore, 0, hit, true, { R = 0, G = 0, B = 0, A = 0 }, { R = 0, G = 0, B = 0, A = 0 }, 0)
+    end
+    local c
+    local tries = os.getenv("PT_MUTATE") == "oldspawn" and {} or { 150, 250 } -- tests only: straight to the old placement
+    for _, dist in ipairs(tries) do
+        for _, d in ipairs({ r, { X = -r.X, Y = -r.Y }, { X = -f.X, Y = -f.Y }, f }) do
+            if not valid(c) and clear(d, dist) then
+                local xf = { Rotation = rot, Translation = { X = l.X + d.X * dist, Y = l.Y + d.Y * dist, Z = l.Z + 50 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+                c = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(w, cls, xf, 3, nil), xf) -- 3: not where it collides
+            end
+        end
+    end
+    if not valid(c) then -- nowhere free: as before, to the right, the spawn moves it out of collisions as it can
+        local xf = { Rotation = rot, Translation = { X = l.X + r.X * 150, Y = l.Y + r.Y * 150, Z = l.Z + 50 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+        c = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(w, cls, xf, 2, nil), xf)
+    end
     if not valid(c) then
         log("PT|error session spawn failed for %s", fullName(pc))
         return true

@@ -106,8 +106,12 @@ local function chunks(R, out)
         out[#out + 1] = table.concat(buf, "\n")
     end
 end
+-- the finished list is read every 3 s and all of it sent again every 60 s: every 500 ms / 10 s it walked a long save's few hundred
+-- finished objectives each time (0.8 s a minute on a host, rendered profile 2026-10-24)
+local rows, rowsAt = {}, -10
 local function doneTick()
-    local R = doneRows()
+    if os.clock() - rowsAt > 3 then rows, rowsAt = doneRows(), os.clock() end
+    local R = rows
     local fresh = {}
     for _, r in ipairs(R) do if not sentDone[r] then fresh[#fresh + 1] = r; sentDone[r] = true end end
     local first = {}
@@ -116,7 +120,7 @@ local function doneTick()
     local sent = #first > 0
     if sent then net.toGuests("g.story.done", table.remove(first, 1)) end
     for i, c in ipairs(first) do table.insert(queue, i, c) end
-    if #queue == 0 and os.clock() - lastCycle > 10 then lastCycle = os.clock(); chunks(R, queue) end
+    if #queue == 0 and os.clock() - lastCycle > 60 then lastCycle = os.clock(); chunks(R, queue) end
     if not sent and #queue > 0 then net.toGuests("g.story.done", table.remove(queue, 1)) end
 end
 
@@ -308,7 +312,9 @@ local function doneStep()
         queued[line] = nil
         local k, p = line:sub(1, 1), line:sub(2)
         if not have[k][p] then
+            local t1 = os.clock()
             local o = load(p .. "." .. p:match("[^/]+$"))
+            if os.clock() - t1 > 0.05 then log("PT|slow story load %.0f ms %s", (os.clock() - t1) * 1000, p) end
             if o then
                 local arr = k == "o" and q.CompletedObjectives or q.CompletedMissions
                 arr[arr:GetArrayNum() + 1] = o

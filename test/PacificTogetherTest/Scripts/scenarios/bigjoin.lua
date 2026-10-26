@@ -5,6 +5,8 @@
 --   the guest joins, the host spawns its character once, and for 150 s the same controller and character stay
 -- Run: tools/run-test.ps1 -Scenario bigjoin -Fixture garage -Headless      Mutation nopace: every chunk at once again (checks FAIL).
 -- Needs a big garage save (the owner's); a small one never overflowed.
+local UEHelpers = require("UEHelpers")
+
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local HOLD = 150
@@ -15,10 +17,23 @@ return function(T)
         local function add(s) steps[#steps + 1] = s end
         for _, s in ipairs(T.loadFixture("garage")) do add(s) end
         add({ check = "host_listen_garage", timeout = 30, cond = function() return T.netMode() == "listen" and T.listening() end })
+        -- before the guest arrives: the host faces +X with the pneumatic storage (BP_Garage_AutoStoreVacuum) 150 uu to its right,
+        -- the old spawn spot; only behind it is free (garage map, traced live 2026-10-24)
+        add({ run = function() T.myPawn():K2_SetActorLocationAndRotation({ X = -489, Y = 185, Z = 112 }, { Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true) end })
         add({ check = "host_guest_in_garage", timeout = 240, cond = function()
             local c = L.guestChar()
             if c then pc, since = L.remotePCs()[1]:GetAddress(), os.clock() end
             return c ~= nil
+        end })
+        -- the spawn spot (session.lua): in sight of the host, not inside a station (playtest 2026-10-24: in the pneumatic storage)
+        add({ check = "guest_spawned_in_sight", timeout = 5, cond = function()
+            local me, g = T.myPawn(), L.guestChar()
+            local a, b, hit = me:K2_GetActorLocation(), g:K2_GetActorLocation(), {}
+            a.Z, b.Z = a.Z + 50, b.Z + 50
+            local blocked = UEHelpers.GetKismetSystemLibrary():LineTraceSingle(me, a, b, 0, false, { me, g }, 0, hit, true,
+                { R = 0, G = 0, B = 0, A = 0 }, { R = 0, G = 0, B = 0, A = 0 }, 0)
+            T.log("PT|info bigjoin guest spawned %.0f uu from the host, line blocked=%s", math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2), tostring(blocked))
+            return not blocked
         end })
         add({ check = "guest_stays_connected", timeout = HOLD + 30, cond = function()
             local now = L.remotePCs()[1]

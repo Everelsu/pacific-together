@@ -162,7 +162,11 @@ local function num(v) return v and string.format("%.1f", v) or "-" end
 
 -- ARC (D12): both of its slots slide between the seats; nothing about it replicates, each side moves its own pair
 local arcDone = {}
+local arcAt = {} -- car address -> os.clock() of the next look (two FindAllOf scans every 250 ms before, on both sides)
 local function moveArc(car)
+    local k = car:GetAddress()
+    if (arcAt[k] or 0) > os.clock() then return end
+    arcAt[k] = os.clock() + 5 -- a re-installed ARC part is moved within 5 s
     for _, class in ipairs({ "BP_Carpart_Internal_Gobbler_C", "BP_Carpart_Internal_GobblerScreen_C" }) do
         for _, a in ipairs(FindAllOf(class) or {}) do
             if inWorld(a) and same(a:GetAttachParentActor(), car) then
@@ -205,6 +209,7 @@ local doorRest, doorSwung = {}, {} -- guest: part address -> the mesh's shut pos
 -- host -------------------------------------------------------------------------------------------------------------------
 
 local partLines, partsAt = nil, -1
+local sampleDoors, sampleDoorsAt = {}, -10
 local PART_INTENTS = { "g.act.heal", "g.act.fuel", "g.act.bat", "g.act.arc", "g.parts.dmg", "g.swap.set" }
 local function partsTouched()
     for _, k in ipairs(PART_INTENTS) do
@@ -245,7 +250,8 @@ local function sample(car, cm)
     -- an open door's mesh simulates physics, which detaches it (its "relative" transform is then the world's): its pose
     -- goes in the car's own space
     local ct = car:GetTransform()
-    for slot, d in pairs(doorParts(car)) do
+    if os.clock() - sampleDoorsAt > 2 then sampleDoors, sampleDoorsAt = doorParts(car), os.clock() end -- the car's parts, not every tick
+    for slot, d in pairs(sampleDoors) do
         pcall(function()
             local m = d.MainMesh
             if not m:IsSimulatingPhysics(FName("None")) then return end
@@ -264,14 +270,19 @@ local function hostTick()
     if #guests == 0 then lastSent, lastGuests = nil, 0; return end
     local car, cm = theCar(true), carManager()
     if not car or not cm then return end
+    local c0 = os.clock()
     moveArc(car)
+    local c1 = os.clock()
     local s = sample(car, cm)
+    local c2 = os.clock()
     if not s then return end
     local t = now()
     if #guests ~= lastGuests or s ~= lastSent or t - lastAt > 3 then
         net.toGuests("g.car.s", s)
         lastSent, lastAt, lastGuests = s, t, #guests
     end
+    local c3 = os.clock()
+    if c3 - c0 > 0.03 then log("PT|slow car host arc %.0f sample %.0f send %.0f ms", (c1 - c0) * 1000, (c2 - c1) * 1000, (c3 - c2) * 1000) end
 end
 
 -- C1: seat the guest at the mirrored seat and attach it (movement and collision off on both sides)
@@ -386,15 +397,22 @@ local function follow(car)
     pcall(function() car.Chassis:SetSimulatePhysics(false) end)
     pcall(function() car.VehicleController:SetComponentTickEnabled(false) end)
     local buf, gaps, last, delay, target = {}, {}, nil, 0.1, 0.1
+    -- placed on the last sample's end point: nothing to do until the host's car moves again (a parked car cost the guest this
+    -- loop's full price every frame, ~0.5 ms; part of 1-4 s a minute in the rendered profile, 2026-10-24)
+    local settled = false
     local name = car:GetFullName()
     log("PT|car follow %s", name)
     followed = name
     followLoop = LoopInGameThreadWithDelay(1, function()
         if not valid(car) then CancelDelayedAction(followLoop); followLoop, followed = nil, nil; return end
         local ok, err = pcall(function()
-            local t, rm = now(), car.ReplicatedMovement
-            local p, r, v = rm.Location, rm.Rotation, rm.LinearVelocity
-            if not last or p.X ~= last.x or p.Y ~= last.y or p.Z ~= last.z then
+            local t, rm = os.clock(), car.ReplicatedMovement -- os.clock: wall time on Windows, no engine call each frame
+            local p = rm.Location
+            local fresh = not last or p.X ~= last.x or p.Y ~= last.y or p.Z ~= last.z
+            if not fresh and settled then return end
+            if fresh then
+                settled = false
+                local r, v = rm.Rotation, rm.LinearVelocity
                 local tm = motionTime(last, t, p, v)
                 if last then
                     table.insert(gaps, t - last.t)
@@ -413,6 +431,8 @@ local function follow(car)
             delay = delay + (target - delay) * 0.01
             local to, rot = sample_at(buf, t - delay, "tm")
             if to then car:K2_SetActorLocationAndRotation(to, rot, false, {}, true) end
+            -- past the last sample by more than sample_at's 0.25 s of extrapolation: the pose no longer changes
+            if last and t - delay > last.tm + 0.3 then settled = true end
         end)
         if not ok then log("PT|error car follow %s", tostring(err)) end
     end)

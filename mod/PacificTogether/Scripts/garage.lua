@@ -109,34 +109,51 @@ local function upgradeLines()
     return table.concat(L, "\n")
 end
 
-local done = {} -- guest: spawner full name .. class -> true once installed here
-local failedOnce = {}
+local done = {} -- guest: spawner full name .. class -> true once installed here (or given up)
+-- An install that does not take is tried again after 2, 4, 8, 16, 32 s, then given up: the 30 picture frames of a long save
+-- (FramedMount) never take on a guest, and installing all 30 again every 500 ms held each of its frames 60-70 ms (rendered profile,
+-- 2026-10-24). Storage stations take only after a few tries (3 tries in 10 s missed them).
+local tries = {}
 local function applyUpgrades(data)
     local im, sm = managers()
     if not im then return end
     local byName = {}
     for _, s in ipairs(spawners()) do byName[s:GetFName():ToString()] = s end
+    -- two installs a pass (500 ms): all of a long save's ~80 in one pass held a rendered guest's game 22 s on joining
+    -- (rendered profile, 2026-10-24); the stations now appear over ~20 s
+    local budget = 2
     for line in data:gmatch("[^\n]+") do
+        if budget <= 0 then return end
         local n, classes = line:match("^([^\t]+)\t(.*)$")
         local s = n and byName[n]
         if s then
             local have
             for c in classes:gmatch("[^,]+") do
                 local key = s:GetFullName() .. c
-                if not done[key] then
+                local tr = tries[key]
+                if budget > 0 and not done[key] and not (tr and os.clock() < tr.at) then
                     have = have or installed(s, im, sm)
                     local present = false
                     for _, h in ipairs(have) do if h == c then present = true end end
                     local cls = StaticFindObject(c)
                     if not (cls and cls:IsValid()) then cls = LoadAsset(c) end
                     if not present and cls and cls:IsValid() then
+                        budget = budget - 1
                         M.applying = true -- stations.lua: this install is the host's, not the guest's own
                         pcall(s.InstallSpecificUpgrade, s, cls, true)
                         M.applying = false
                         local okNow, after = pcall(installed, s, im, sm)
                         for _, h in ipairs(okNow and after or {}) do if h == c then present = true end end
                         if present then log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
-                        elseif not failedOnce[key] then failedOnce[key] = true; log("PT|garage install of %s on %s did not take, retrying", c:match("[^.]+$"), n) end
+                        else
+                            local k = (tr and tr.n or 0) + 1
+                            tr = { n = k, at = os.clock() + 2 ^ k }
+                            tries[key] = tr
+                            if k >= 6 then
+                                done[key] = true
+                                log("PT|garage install of %s on %s did not take in 6 tries: given up", c:match("[^.]+$"), n)
+                            end
+                        end
                     end
                     if present then done[key] = true end
                 end
@@ -152,7 +169,7 @@ local function hostTick()
         last, lastSent = s, os.clock()
         net.toGuests("g.garage.sw", s)
     end
-    if os.clock() - lastUpCheck < 2 then return end
+    if os.clock() - lastUpCheck < 6 then return end -- 71 spawners' installs read: every 2 s it was ~1 s a minute on a host
     lastUpCheck = os.clock()
     local u = upgradeLines()
     if u and (u ~= lastUp or os.clock() - lastUpSent > 4) then
@@ -193,7 +210,7 @@ local function guestTick()
     end
 end
 
-RegisterLoadMapPostHook(function() done = {} end)
+RegisterLoadMapPostHook(function() done, tries = {}, {} end)
 
 -- The guest presses the back-door button: its own press toggles its own switch, the host's copy of the button gets the same press
 -- (the host's switch is the truth and comes back in g.garage.sw). Registered once the button's class is loaded (garage map).

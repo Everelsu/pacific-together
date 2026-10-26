@@ -38,13 +38,22 @@ local function carCar()
     local ok, car = pcall(require, "car")
     return ok and type(car) == "table" and car.theCar and car.theCar(mode() == "listen") or nil
 end
+-- the car's audio component and speedometer, looked up again only when the cached one is gone or 3 s old: every 100 ms on both
+-- sides this was two FindAllOf scans a tick (part of carfeel's 1-2.6 s a minute, rendered profile 2026-10-24)
+local owned = {} -- class -> { o, car, at }
 local function ownedBy(class, car)
+    local c = owned[class]
+    if c and valid(c.o) and c.car == car:GetAddress() and os.clock() - c.at < 3 then return c.o end
     for _, o in ipairs(FindAllOf(class) or {}) do
         if valid(o) then
             local own = class == "AC_CarAudio_C" and o:GetOwner() or o:GetAttachParentActor()
-            if valid(own) and own:GetFullName() == car:GetFullName() then return o end
+            if valid(own) and own:GetFullName() == car:GetFullName() then
+                owned[class] = { o = o, car = car:GetAddress(), at = os.clock() }
+                return o
+            end
         end
     end
+    owned[class] = nil
 end
 
 -- radios ---------------------------------------------------------------------------------------------------------------
@@ -92,7 +101,7 @@ local function playlistNames(mm)
     mm.RadioPlaylist:ForEach(function(_, e) r[#r + 1] = e:get():GetFName():ToString() end)
     return r
 end
-local plSent, plAt = nil, 0
+local plSent, plAt, plRead = nil, 0, -10
 net.on("g.feel.pl", function(_, data)
     if mode() ~= "client" then return end
     local mm = first("BP_MusicManager_C")
@@ -151,7 +160,8 @@ local function radioTick()
         send("g.feel.r", pack(changed))
         log("PT|feel radio sent %s", pack(changed))
     end
-    if host then
+    if host and now() - plRead > 2 then -- 61 names read every 200 ms before
+        plRead = now()
         local names = playlistNames(mm)
         local fp = #names .. ":" .. table.concat(names, ",", 1, math.min(3, #names))
         -- a track that fails to start reshuffles the list every tick (headless, no sound): at most one message a second
@@ -198,6 +208,8 @@ local function hookAudio()
     end)
     if not ok then log("PT|error feel hook SetRTPCValue %s", tostring(id1)); return end
     hookIds[RTPC] = { id1, id2 }
+    -- every component move of the game passes this native call: only the guest needs it (its speedometer needle)
+    if role ~= "client" then hookedAudio = true; return end
     ok, id1, id2 = pcall(RegisterHook, ARM, function(self, _, rot)
         if role ~= "client" or not valid(gsp) or not fresh() then return end
         local okc, e = pcall(function()
