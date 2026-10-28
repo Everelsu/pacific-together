@@ -314,7 +314,31 @@ local function anchorHook(self, inst)
     net.toHost("g.act.anchor", path)
 end
 
+-- story pickups (Q01 radio bits, scanned by grabbing): the guest's grab is an intent, the host's copy runs the game's own grab so its quest counts
+local BITS = "/Game/Gameplay/Inventory/Items/Narrative/RadioStation/BP_Resource_Narrative_Q01_RadioBitsGrabbable.BP_Resource_Narrative_Q01_RadioBitsGrabbable_C"
+local function grabHook(self)
+    if not guest() then return end
+    local name = self:get():GetFName():ToString()
+    log("PT|act grab intent %s", name)
+    net.toHost("g.act.grab", name)
+end
+net.on("g.act.grab", function(_, data)
+    if not hostCar() then return end
+    for _, o in ipairs(FindAllOf("BP_Resource_Narrative_Q01_RadioBitsGrabbable_C") or {}) do
+        if valid(o) and o:GetFName():ToString() == data then
+            local first = not o.SuccessfullyGrabbed -- both grab hooks may send: one toast
+            if first then pcall(o.ShortGrabComplete, o, {}) end
+            log("PT|act grab %s grabbed=%s", data, tostring(o.SuccessfullyGrabbed))
+            if first then ov.post(ov.other() .. " picked up a story item", "good") end
+            return
+        end
+    end
+    log("PT|act grab: no pickup %s", data)
+end)
+
 local HOOKS = {
+    { BITS .. ":ShortGrabComplete", grabHook },
+    { BITS .. ":Long Grab Complete", grabHook },
     { TOOLS .. "PatchKit/BP_Tool_Target_Consumable_PatchKit.BP_Tool_Target_Consumable_PatchKit_C:PatchPart", healHook },
     { TOOLS .. "BatteryCharger/Consumable/BP_Tool_Target_Consumable_ChargeBattery_Base.BP_Tool_Target_Consumable_ChargeBattery_Base_C:ChargeBattery", batHook },
     { COMP .. "BP_FuelableComponent.BP_FuelableComponent_C:TransferFuel", fuelHook },

@@ -1,5 +1,7 @@
 # PT1 garage: doors (bug A), garage parts (bug B)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 ## Observations
 - Fixture garage, `-Scenario repl`, headless, game MCP-less probes (2026-10-21). Standalone (vanilla, PT main mod off): rear door
   `BP_GarageDoorRear` Opened, `CurrentDoorPosition` 1.0; the button (`BP_BackDoorButton_01.Highlight:InteractPressed`) toggles

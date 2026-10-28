@@ -19,6 +19,18 @@ return function(T)
         return r
     end
     function L.invisible(c) return c.Mesh:IsValid() and T.name(c.Mesh:GetMaterial(0)):find("Invist", 1, true) ~= nil end
+    -- the other player's body is Djecka's survivor (survivor.lua): procedural mesh parts attached to the character's mesh bones
+    function L.survivorParts(c)
+        local r = {}
+        for _, p in ipairs(FindAllOf("ProceduralMeshComponent") or {}) do
+            if p:IsValid() and p:GetOuter():GetAddress() == c:GetAddress() and p.AttachParent:GetAddress() == c.Mesh:GetAddress() then
+                r[p.AttachSocketName:ToString()] = p
+            end
+        end
+        return r
+    end
+    -- drawn: a visible mannequin material or the survivor parts
+    function L.drawn(c) return not L.invisible(c) or next(L.survivorParts(c)) ~= nil end
     function L.material(c) return (c and c.Mesh:IsValid()) and T.name(c.Mesh:GetMaterial(0)) or "none" end
     -- host: the remote PCs of this world and the characters they possess
     function L.remotePCs()
@@ -53,12 +65,12 @@ return function(T)
     -- the host's view: guest possessed, next to us, drawn visible; our own body untouched; manager still ours
     function L.hostSeesGuest()
         local g, me = L.guestChar(), L.own()
-        return g ~= nil and me ~= nil and T.dist(me, g) < 600 and not L.invisible(g) and L.invisible(me) and L.managerIsMine()
+        return g ~= nil and me ~= nil and T.dist(me, g) < 600 and L.drawn(g) and L.invisible(me) and L.managerIsMine()
     end
     -- the guest's view: possessed a character, the host's body visible, own body invisible
     function L.guestSeesHost()
         local me, o = T.myPawn(), T.otherChar()
-        return me ~= nil and T.cls(me) == T.CHAR and o ~= nil and not L.invisible(o) and L.invisible(me)
+        return me ~= nil and T.cls(me) == T.CHAR and o ~= nil and L.drawn(o) and L.invisible(me)
     end
     function L.describe()
         local me, o, g = T.myPawn(), T.otherChar(), (T.ROLE == "host") and L.guestChar() or nil

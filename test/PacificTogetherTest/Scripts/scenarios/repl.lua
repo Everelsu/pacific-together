@@ -8,6 +8,22 @@ return function(T)
     local fixture = (os.getenv("PT_FIXTURE") or ""):match("[^,]+") -- first of a comma list
     if T.ROLE == "host" and fixture and fixture ~= "" then -- load the fixture save, stay standalone (no listen: a map reload would drop the loaded state)
         local steps = T.loadFixture(fixture)
+        -- a selected gateway is not in the save: "...gateway" fixtures reopen it with the ARC screen's own call (nearest portal)
+        if fixture:find("gateway") then
+            steps[#steps + 1] = { wait = 5 }
+            steps[#steps + 1] = { run = function()
+                local car, best, bd = T.first("BP_PlayerCarNew_C"), nil, nil
+                local c = car and car:K2_GetActorLocation()
+                for _, p in ipairs(FindAllOf("BP_LevelTransition_ExitPortal_C") or {}) do
+                    local l = p:K2_GetActorLocation()
+                    local d = c and math.abs(l.X) > 1 and ((l.X - c.X) ^ 2 + (l.Y - c.Y) ^ 2)
+                    if d and (not bd or d < bd) then best, bd = p, d end
+                end
+                local sm = T.first("BP_StormManager_C")
+                if best and sm and not (sm.EvolvedGatewayExit and sm.EvolvedGatewayExit:IsValid()) then sm["Select Exit Portal Actor"](sm, best) end
+                T.log("PT|info gateway reopened %s", tostring(best and math.sqrt(bd) / 100))
+            end }
+        end
         steps[#steps + 1] = hold
         return steps
     end
@@ -19,5 +35,8 @@ return function(T)
             hold,
         }
     end
-    return { T.onMap("RB_MainMenu", 90), T.join("repl_client_joined", mapName, 240, 30), hold }
+    -- the shipping mod joins (PT_JOIN, run-test's AutoJoin) so it also rejoins after the host's map loads (junctions)
+    return { T.onMap("RB_MainMenu", 90),
+             { check = "repl_client_joined", timeout = 240, cond = function() return T.netMode() == "client" and T.map() ~= "RB_MainMenu" end },
+             hold }
 end

@@ -31,7 +31,7 @@ unreal units (cm), `rot` is `[Pitch, Yaw, Roll]` in degrees, `vel` `[X, Y, Z]`. 
 
 `state` (parts and inventory items) is a hash of the item's data block (`ItemInstance:GetDataBlockDump`, the game's own save form).
 That dump holds only values that differ from the archetype defaults, so `health`/`durability`/`charge` appear on an item only
-once it changed; two items with equal `state` are equal in every saved property, which is what a sync check needs.
+once it changed; matching hashes are a compact sync signal, not a collision-free proof of equality. Inspect the underlying state when needed.
 
 ## compare: matching and tolerance rules
 
@@ -40,8 +40,8 @@ once it changed; two items with equal `state` are equal in every saved property,
    fixes it. Slots inside `contents` match by index `i`.
 2. **Everything else** (runtime-spawned actors, cars, pawns) matches by `class` first, then by the nearest `loc`: all candidate
    pairs of one class within `match_radius` (default 500 cm), closest first, one-to-one. Without `loc` they pair in order.
-3. An entry that finds no partner is listed under `only_host` / `only_client` with its identifying fields. That is how the known
-   duplicates show: the client's local car copy appears as `cars[BP_PlayerCarNew_C@...]` in `only_client`.
+3. An entry that finds no partner is listed under `only_host` / `only_client` with its identifying fields. For example, a duplicate
+   client-local car would appear as `cars[BP_PlayerCarNew_C@...]` in `only_client`.
 4. Transform fields (`loc`, `rot`, `vel`, `control_rot`) use `tolerance` (default 2.0, angles wrap at 360); all other numbers use
    `value_tolerance` (default 0.05, because fuel and similar values drift while the two snapshots are taken a moment apart).
 5. Fields named in `ignore` are not compared, default `name, side, role, role_name, remote_role, rep, is_local, controlled,
@@ -52,32 +52,19 @@ once it changed; two items with equal `state` are equal in every saved property,
 7. `compare(lua=...)` takes a Lua expression or block with the console's scope (`first`, `T`, ...) whose value must be plain
    (numbers, strings, booleans, tables, arrays); objects become their full name. Example below.
 
-## Examples (real output, 2-player garage, headless)
+## Examples
 
-```
-compare domain=car
-  summary: fields_equal 411, fields_differ 55, only_client 1; differ_by_field:
-    parts[].effects 21   (the guest's status-effect manager reports no effects on any part)
-    part_actors.* 32     (host 2 / client 4 BP_Attach_Handbrake_C, 22 / 44 BP_Attach_Util_Empty_C, ...: a second part set)
-    manager.fuel 1       (host 46.24, client 42.52: the guest's local car manager burns fuel on its own)
-  only_client: cars[BP_PlayerCarNew_C@[-3847.72, -1881.74, 141.69]] role 3   <- the client-local car copy
-```
-
-Zone fixture, host only (`snapshot domain=run`, trimmed): map `Rural_Forest_Radio_Scylla_02`, `game.in_garage false`,
-`route.current_leg` `map_location MLoc_Narrative_Forest_02_Q01` with modifiers `RM_NearGarage, RM_PocketOfStability,
-RM_JunctionState_NotRevealed, RM_JunctionState_ExitPoint, RM_JunctionState_HasQuest`, `storm.state 0`,
-`gateway_selected false`, `time_before_instability 1320`, `arc_charge 0`. `snapshot domain=world`: 93 actors, e.g. 16
-`BP_Template_StrippedCar_01_C`, 15 `BP_WorldItem_C`, 10 `BP_Hazard_Landmine_C`, 19 `BP_Spawn_GasBarrel_C` (this map has no
-`BP_Lootable_*` actors). Reproduce everything with `python tools/gamemcp/selftest_state.py` (starts real games).
-
-```
-snapshot domain=car save_as=before        -> mcp-snapshots/before-host.json
-(host: SetCarLightsOn)
+```text
+snapshot domain=car save_as=before
 snapshot domain=car save_as=after
-diff_snapshots a=before-host b=after-host -> differ: manager.lights_on false -> true
-compare lua="{cars = #(FindAllOf('BP_PlayerCarNew_C') or {}), map = T.map()}"   -> cars: host 1 vs client 2, map equal
-fixture_save name=my-state                -> local/fixtures/my-state/{odsave1.sav, fixture.txt, fixture.json}
+diff_snapshots a=before-host b=after-host
+compare domain=car
+compare lua="{map = T.map()}"
+fixture_save name=my-state
 ```
+
+Run `python tools/gamemcp/selftest_state.py` for tool checks (starts real games). Old prototype snapshots with duplicate
+cars or unsynced fuel describe that code revision, not expected output from the current mod.
 
 ## fixture_save
 

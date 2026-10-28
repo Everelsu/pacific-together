@@ -4,8 +4,9 @@
 --   revs:   the host drives; the guest's throttle input, engine-load/speed parameters (AC_CarAudio CurrentSpeed and
 --           ThrottleAccumCurrent, what the engine and wheel sounds are fed from) follow the host's and change while it
 --           drives, and the dashboard speedometer arm points where the host's does.
---   radios: garage stereo, car radio (through the radio part's own ToggleRadio), volume and a station skip, each changed by
---           the host and then by the guest; the other side reports the same state (skips: the music manager's SkipTrack ran).
+--   radios: garage stereo, car radio (through the radio part's own ToggleRadio), and volume, each changed by the host and
+--           then by the guest (the guest's change goes to the host as an intent); the other side reports the same state.
+--           Station skips and the shared track are the radio scenario (PT6).
 --   car:    horn (the guest's audio component plays it), headlights, wipers.
 -- Run: tools/run-test.ps1 -Scenario carfeel -Fixture garage -Headless
 -- Mutation nofeel: carfeel.lua of the shipping mod does nothing.
@@ -131,16 +132,6 @@ return function(T)
         -- volume
         add({ run = function() mm():SetRadioVolume(0.33); send("t.vol1") end })
         add({ check = "host_volume_set_by_guest", timeout = 60, cond = function() return after("t.vol2") and vol() == 61 end })
-        -- station skip: the host's radio component, then the guest's
-        add({ run = function()
-            local rp = radioPart(L.car())
-            rp.BP_RadioComponent:ChangeChannel(1)
-            send("t.sk1")
-        end })
-        add({ wait = 4 })
-        add({ run = function() skips = 0 end })
-        add({ run = function() send("t.sk1b") end })
-        add({ check = "host_skip_from_guest", timeout = 60, cond = function() return after("t.sk2") and skips >= 1 end })
         -- horn, headlights, wipers
         add({ run = function() cm():StartHornHonk(FName("ptfeel")); send("t.horn1") end })
         add({ wait = 8 })
@@ -156,15 +147,7 @@ return function(T)
             log("PT|info host wipers %s", tostring(cm().WiperBladesOnOff))
             send("t.wip1", cm().WiperBladesOnOff and "1" or "0")
         end })
-        -- playlist order: with the radio off the host's list is the guest's
-        add({ run = function() if carRadioOn() then cm():SetCarRadioOnOffState(false, true) end end })
-        add({ wait = 4 })
-        add({ run = function()
-            local n = 0
-            LoopInGameThreadWithDelay(500, function() n = n + 1; if n < 40 then pcall(function() send("t.pl", head()) end) end end)
-        end })
-        add({ check = "host_guest_done_pl", timeout = 90, cond = function() return got("t.done") ~= nil end })
-
+        add({ check = "host_guest_done", timeout = 90, cond = function() return got("t.done") ~= nil end })
         add({ wait = 3 })
         return steps
     end
@@ -240,10 +223,6 @@ return function(T)
     add({ run = function() radioPart(L.car()):ToggleRadio(); toHost("t.cr2") end })
     add({ check = "guest_sees_volume", timeout = 60, cond = function() return got("t.vol1") ~= nil and vol() == 33 end })
     add({ run = function() mm():SetRadioVolume(0.61); toHost("t.vol2") end })
-    add({ run = function() skips = 0 end })
-    add({ check = "guest_skip_from_host", timeout = 60, cond = function() return got("t.sk1") ~= nil and skips >= 1 end })
-    add({ check = "guest_skip_settled", timeout = 60, cond = function() return got("t.sk1b") ~= nil end })
-    add({ run = function() radioPart(L.car()).BP_RadioComponent:ChangeChannel(1); toHost("t.sk2") end })
     -- horn, lights, wipers
     add({ check = "guest_hears_horn", timeout = 60, cond = function() return got("t.horn1") ~= nil and audio(L.car()).HornActive == true end })
     add({ check = "guest_horn_stops", timeout = 60, cond = function() return got("t.horn0") ~= nil and audio(L.car()).HornActive == false end })
@@ -253,14 +232,19 @@ return function(T)
         return m ~= nil and (cm().WiperBladesOnOff and "1" or "0") == m.data
     end })
     add({ wait = 3 })
-    add({ check = "guest_playlist_is_hosts", timeout = 30, cond = function()
-        got("t.pl")
-        local g = head()
-        for _, h in ipairs(heads) do if h == g then return true end end
-        log("PT|info playlist head guest=%s host recent=%s", g, table.concat(heads, ","))
-        return false
-    end })
 
+    -- the guest's posed car copy hits the ground and spawns the game's metal scrape sound actor (#2, 2026-10-23): the guest drops it
+    local scrape
+    add({ run = function()
+        local P = "/Game/Sound/Blueprints/BP_CarScrapeFX.BP_CarScrapeFX_C"
+        local c = StaticFindObject(P)
+        if not (c and c:IsValid()) then pcall(LoadAsset, P); c = StaticFindObject(P) end
+        local l = L.car():K2_GetActorLocation()
+        scrape = require("UEHelpers").GetWorld():SpawnActor(c, { X = l.X, Y = l.Y, Z = l.Z + 300 }, { Pitch = 0, Yaw = 0, Roll = 0 })
+        log("PT|info scrape fx spawned %s", tostring(scrape and scrape:IsValid()))
+    end })
+    add({ wait = 0.8 })
+    add({ check = "guest_scrape_fx_dropped", timeout = 0.2, cond = function() return scrape ~= nil and (not scrape:IsValid() or scrape:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) or scrape:IsActorBeingDestroyed()) end })
     add({ run = function() toHost("t.done") end })
     add({ wait = 3 })
     return steps

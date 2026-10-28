@@ -1,5 +1,7 @@
 # PT1 lane pt1-crash: host crash on the pause menu with a guest
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Playtest 1 (2026-10-21, build 0.0.5-dev-4628d2d): the host crashed as soon as it pressed Esc with a guest connected,
 "Pause game while in menus" on or off. Minidumps: `local/playtest-20261021/UE4CC-*` (3, same PCallStackHash).
 

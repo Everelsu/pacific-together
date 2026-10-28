@@ -1,64 +1,36 @@
-# How we run work lanes
+# Work lanes
 
-Rules for every workflow or agent lane from M3 on (owner decision 2026-10-20: speed and token cost matter most).
-Background: `coop-anything/playbook/multi-agent-workflows.md`, `methods.md` section 8, `lessons.md`.
+Use this workflow when a task is explicitly split across agents or developers. Each lane owns a bounded subsystem,
+worktree, test pair and port. Project-specific rules below take precedence over the generic co-op playbook.
 
-## Priority: gameplay first, crucial checks only (owner, 2026-10-20)
+## Scope and roles
 
-- Gameplay and sync features come first: item sync, loot, the guest's backpack, the car, anything a player notices.
-- Each feature gets **one** scenario that proves it works, plus its mutation. After each merge, run the smoke set:
-  `session`, `travel`, `body`, `sessionrejoin`, `zonejoin`, `safety`, about 10 minutes. The full suite runs only before a
-  build goes to friends or a release.
-- **No full suites inside lanes (owner, 2026-10-21):** all scenarios together take more than 30 minutes. A lane runs
-  only its own proving scenario and its mutation. The lead runs the full suite **once**, on main after all lanes merged;
-  each failing scenario goes back to an agent, who fixes it and reruns **only the failing scenarios**, not the suite.
-- Don't hunt edge cases (rare crashes, odd disconnect timings, rarely used save paths) and don't polish tests or
-  over-engineer. Write a found edge case into `NOTES.md` as a known gap and move on, unless it breaks normal play.
+- Lead: split requirements, define failing scenarios and mutations, review results and integrate changes.
+- Worker: implement the assigned requirement and run its focused scenario/mutation.
+- Verifier: inspect the assertions and rerun the relevant checks; research lanes need a lighter evidence review.
+- The established Claude workflow uses Opus for the lead and Sonnet for workers. Other tools use their supported models.
+- Prioritize normal gameplay. Record unrelated edge cases instead of expanding the lane.
 
-## Roles
+## Implementation and validation
 
-- **Lead (Opus):** splits the milestone into requirements, writes each requirement's **failing test scenario first**
-  (the definition of done, with its mutation), verifies results, merges. Never implements a lane itself.
-- **Workers (Sonnet):** one bounded job each: make the given scenario pass. Launch with `model: sonnet`.
-- **Verifier:** for code lanes, rerun the lane's scenarios and mutations and read the checks for trivial passes
-  (Sonnet is enough when the scenario came from the lead). Research-only lanes get a light check.
+1. Read the atlas/dumps and probe the actual hook before building on it. See [GAME-MCP.md](GAME-MCP.md).
+2. When the approach is uncertain, compare small candidates behind a temporary switch with the same scenario.
+   Keep the measured winner and remove the switch; do not build competing versions of an already-established fix.
+3. Run the lane's scenario and mutation. After integration, run the smoke set:
+   `session`, `travel`, `body`, `sessionrejoin`, `zonejoin`, `safety`.
+4. Run the full configured suite once on the merged candidate before a preview/release. Send failures back to the
+   owning lane; rerun affected scenarios after fixes. Do not repeat the full suite inside every lane.
+5. Monitor every run. No new `PT|check` for five minutes means investigate and stop a stuck run.
 
-## One requirement = one tournament
+For bugs found by hand, use the [live bug-fix loop](TESTING.md#live-bug-fix-loop): inspect the broken state, patch,
+restart, and retest. Hot reload has crashed sessions and is not the default iteration path.
 
-1. **Predict first (cheap, no game):** read the game's own code before writing ours: `docs/research/game-atlas.md`,
-   `local/atlas/xref.py` (Blueprint bytecode and call index), `local/dumps` (native classes). Lane E's Tourist work
-   is the model: the bytecode reading predicted the behaviour, one test confirmed it.
-2. **Probe the hooks you will rely on** with the live console (`tools/repl.ps1`, `docs/TESTING.md`): does the
-   function fire on this setup (host, client, native travel)? Lesson 16: a hook that never fires wastes everything built on it.
-3. **Write 2-3 candidate implementations** behind a switch (`PT_VARIANT=a|b|c`, read once at start), each small and
-   independent.
-4. **One batch run decides:** run the lead's scenario once per variant (headless, fixture save if the state needs
-   one: `-Fixture`). The summary picks the winner; delete the losing variants and the switch. No agent debate.
-5. **Only if every variant fails** does the lane iterate against the game (the slow, expensive path), using the
-   console rather than relaunching per question.
+## Isolation and handoff
 
-## Speed tools
-
-| Tool | Use |
-|---|---|
-| `tools/repl.ps1` + `repl` scenario | ask the running game questions in ~1 s instead of a relaunch per question |
-| `tools/repl.ps1 -Reload` | load edited mod Lua into the running games in seconds instead of relaunching (not `main.dll`) |
-| `tools/gamemcp` (MCP `pacific-game`, `docs/GAME-MCP.md`) | the same console as agent tools: find/describe/call objects, watch which functions fire, screenshot, logs, xref |
-| `local/atlas`, `docs/research/game-atlas.md` | grep the game's Blueprint code and call graph instead of re-extracting it |
-| `tools/run-test.ps1 -Fixture <name>` | start a test in a saved state (garage, zone, gateway) instead of building it each run |
-| `tools/build-mod-fast.ps1` | build our C++ mod in a worktree in seconds against the main checkout's UE4SS build |
-| `-Headless`, `-Port`, `-Root`, `-ResultsDir` | parallel lanes without cross-talk (`docs/TESTING.md`, "Parallel lanes") |
-
-## Hygiene that keeps lanes mergeable
-
-- **Progress lines (owner, 2026-10-21):** at each milestone (reproduced, cause found, fix written, scenario passes,
-  mutation fails, blocked) a lane appends one line `HH:mm <lane> <under 20 words>` to `local/progress.log`. The owner
-  watches it (`Get-Content local\progress.log -Wait`); it costs no lead tokens.
-
-- One worktree, test pair (`C:\PTLanes\<lane>`) and port per lane; scenarios in their own files under
-  `test/PacificTogetherTest/Scripts/scenarios/`; findings in `docs/spikes/<id>.md`; features in their own module
-  files in `mod/PacificTogether/Scripts/` and `native/PacificTogetherNative/`.
-- Shared files (`main.lua`, `common.lua`, `run-test.ps1`, `dllmain.cpp`) only get small additive edits, listed in the report.
-- Commit WIP on the lane branch before any stop, so a stopped run continues instead of restarting
-  (`local/resume/RESUME.md` shows how).
-- At most 4 test pairs at once on the owner's PC (`PT_SLOTS`).
+- One worktree, `C:\PTLanes\<lane>` pair and unique port per lane; at most four pairs by default (`PT_SLOTS`).
+- Keep scenarios in `test/PacificTogetherTest/Scripts/scenarios/`, features in their own modules, and findings in
+  `docs/spikes/<id>.md`. Shared registration files get small coordinated edits.
+- At milestones append `HH:mm <lane> <under 20 words>` to `local/progress.log`.
+- Commit lane WIP before a handoff. Report changed files, actual commands/results, mutations and unresolved gaps.
+- Use fixtures and `-Headless` where rendering is irrelevant; use `tools/build-mod-fast.ps1` for native worktrees.
+  Commands and setup are maintained in [DEVELOPING.md](DEVELOPING.md) and [TESTING.md](TESTING.md).

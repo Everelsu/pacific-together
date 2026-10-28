@@ -1,5 +1,9 @@
 # M4 backpack: the guest's backpack persists, and drops when the guest dies (P5, D7, D6)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+Current persistence uses SteamID for Steam joins and login-name fallback for direct IP; direct-IP names can change per launch. See [PT2-steam](PT2-steam.md).
+
 Lane pack, 2026-10-21. Code: `mod/PacificTogether/Scripts/backpack.lua` (record format and API facts from X12, `docs/spikes/X12.md`).
 Scenario `backpacksync` (zone fixture, mutation `nobackpack`). Small edit in `health.lua` `die()`: calls `backpack.died()`.
 

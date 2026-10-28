@@ -81,10 +81,15 @@ return function(T)
         end
         return r
     end
-    local function near(list, e, tol)
+    local function near(list, e, tol) -- the closest one: two items of a class can lie within tol (zone chemicals, 73 uu apart)
+        local best, bd
         for _, o in ipairs(list) do
-            if o.class == e.class and math.abs(o.x - e.x) < tol and math.abs(o.y - e.y) < tol and math.abs(o.z - e.z) < tol then return o end
+            if o.class == e.class and math.abs(o.x - e.x) < tol and math.abs(o.y - e.y) < tol and math.abs(o.z - e.z) < tol then
+                local d = (o.x - e.x) ^ 2 + (o.y - e.y) ^ 2 + (o.z - e.z) ^ 2
+                if not bd or d < bd then best, bd = o, d end
+            end
         end
+        return best
     end
     local function pack(e) return string.format("%s|%.0f|%.0f|%.0f|%d", e.class, e.x, e.y, e.z, e.n or 0) end
     local function unpack(s)

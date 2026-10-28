@@ -1,5 +1,7 @@
 # PT2-ping: look, press, both players see a marker
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Module `mod/PacificTogether/Scripts/ping.lua`, scenario `scenarios/ping.lua`, mutation `noping`.
 
 ## Behaviour

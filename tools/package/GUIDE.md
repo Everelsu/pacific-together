@@ -1,49 +1,43 @@
 # Playtester guide
 
-Thank you for testing. Pacific Together lets two people play one Pacific Drive save online. The host loads their save and
-the guest plays in the host's world. You both need the same download, the same game build (Steam v1.15.0) and Pacific Drive
-on Steam. Only the host needs the Whispers in the Woods DLC.
+Developer/friend preview **0.0.8**, protocol **4**. Both players need the same download and Pacific Drive on Steam,
+v1.15.0 (build 21896301). The host owns the world and saves. Mixed DLC ownership is not yet verified.
 
-## Connect
+## Install and connect
 
-Your computers need a network path to each other. Pick one.
+Close the game, unpack the zip anywhere, open `PacificTogether.exe`, and check the game folder.
 
-### Tailscale (easiest)
-- Both of you install Tailscale (tailscale.com, free) and sign in. The host shares their machine with the guest, or you both
-  join the same tailnet.
-- The host reads their 100.x.x.x address in Tailscale. The guest types that address into the Join box here.
+**Steam:** both players select **Host** to install without a saved IP, then **Install & play**. The actual host loads
+a save; the guest starts the game and uses Steam's **Join game** or accepts an invite. This path was verified between
+two accounts on October 23. A cold-start invite is a separate path and still needs validation.
 
-### Port forwarding
-- The host forwards UDP port 7777 on their router to their PC and shares their public IP address.
-- The guest types that address into the Join box.
+**Direct IP:** the host selects **Host**, the guest selects **Join** and enters the host's address. After installation,
+the host loads a save and the guest waits at the main menu. Use a reachable LAN/VPN address or forward UDP 7777 on the
+host's router. Allow the game through Windows Firewall on the network used for the session. A saved join address takes
+precedence over Steam joining; reinstall in Host mode to clear it.
 
-### Windows Firewall
-- The first time the host starts a session, Windows asks if Pacific Drive may use the network. Allow it.
-- If the guest still can't connect, open Windows Defender Firewall on both PCs and allow Pacific Drive on Private and
-  Public networks.
+Without the launcher: `install.cmd` for host/Steam, `install.cmd -Join <host IP>` for direct IP, then start through Steam.
+A version/build mismatch refuses the join. See `README.txt` for features and known issues.
 
-## Play
+## Controls and playtest
 
-- Both of you: close Pacific Drive, pick Host or Join on the Play tab and press Install & play.
-- Host: load your save. The game accepts one guest.
-- Guest: just wait at the main menu. The game connects to the host by itself.
-- If the join is refused, the message says what differs (mod version, game build). Both need the same download.
+- Host drives; guest enters via the driver's door handle and rides in the passenger seat. **X** exits.
+- **Middle mouse** pings; **End** or **F8** resets stuck guest controls.
+- Host **Esc** pauses both games; guest **Esc** opens their menu.
+- Check garage interactions, a junction transition, scavenging, gateway return, death/failure and leave/rejoin.
+  Record what you actually saw; automated checks do not cover every interaction.
 
-## What to report
+## Report a problem
 
-- What you were doing, what you expected and what happened. A short screen recording helps a lot.
-- Whether you were the host or the guest, and whether it happens every time.
-- Your logs: press Collect logs on the Play tab. It writes a zip to your Desktop. Send it from both players if you can.
+Include roles, mod version, time, steps, expected/actual behavior and whether it repeats. A short recording helps.
+Use **Collect logs** to create a Desktop zip on each PC before restarting the game.
 
-## Where the logs are
+- Main log: `PenDriverPro\Binaries\Win64\ue4ss\UE4SS.log` (**Open log folder**).
+- Crash marker: `%LOCALAPPDATA%\PenDriverPro\Saved\Crashes\<crash folder>\PacificTogether-crash.txt`.
+- Report modded-game crashes to this project; the mod disables the game's uploader.
 
-- `PenDriverPro\Binaries\Win64\ue4ss\UE4SS.log` in your game folder (Open log folder shows it).
-- After a game crash, a `PacificTogether-crash.txt` in `%LOCALAPPDATA%\PenDriverPro\Saved\Crashes\<crash folder>`. Collect logs
-  includes the newest ones.
-- Don't send crash reports to Ironwood Studios for a modded game. The mod switches the game's own upload off.
+## Backups and uninstall
 
-## Your saves
-
-Before the first install of each build the launcher backs up your saves to
-`Documents\PacificDrive-saves-backup-<date>.zip`. To restore, close the game and unzip the backup over
-`%LOCALAPPDATA%\PenDriverPro\`. Uninstall removes the mod but never touches your saves.
+The first install of each build saves a backup at `Documents\PacificDrive-saves-backup-<date>.zip`.
+To restore, close the game and extract it over `%LOCALAPPDATA%\PenDriverPro\`.
+Uninstall keeps saves but removes the entire `ue4ss` folder, including other UE4SS mods.

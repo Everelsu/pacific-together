@@ -1,5 +1,7 @@
 # Pacific Drive: game context for co-op
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Web research 2026-10-19. Many wiki/guide sites blocked fetching; some facts come from search snippets (marked).
 Main wiki: https://pacificdrive.wiki (User Manual, Car, Anomalies, Gameplay Presets pages).
 

@@ -1,5 +1,7 @@
 # M5 anomalies 2: Leech, BombRock, grabbers, stolen car parts, Tourist check (W6, W7, D19)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-21, lane `anom2`. Mod: `mod/PacificTogether/Scripts/anomalies2.lua`. Scenario: `anomalies2` (fixture `zone`, mutation `noanom2`).
 Follows `M5-anomalies.md` (damage forwarding, Tourist freeze) and `M5-world.md` (hazard replication).
 

@@ -1,5 +1,7 @@
 # PT1 runloop: the full run loop together (D4, W3/W4/W5/W11, P5)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Scenario `runloop` (`test/PacificTogetherTest/Scripts/scenarios/runloop.lua`, fixture `garage`, mutation `nokeep`).
 
 ## Observations

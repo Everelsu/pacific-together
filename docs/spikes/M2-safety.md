@@ -1,5 +1,9 @@
 # M2 guest safety and name tags (lane F2): S7, G5, Q7, P7, Q9
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+The early pause-blocking design below is superseded: only host Esc pauses the shared world, guest Esc opens its menu. See [PT3-pause](PT3-pause.md) and [PT3-ui](PT3-ui.md).
+
 Shipping code: `mod/PacificTogether/Scripts/safety.lua`, `mod/PacificTogether/Scripts/nametag.lua`,
 `native/PacificTogetherNative/guard.cpp` (registered from `dllmain.cpp`, two lines).
 Tests: `test/PacificTogetherTest/Scripts/scenarios/safety.lua`, `safety_solo.lua`, `safety_crash.lua`, `nametag.lua`

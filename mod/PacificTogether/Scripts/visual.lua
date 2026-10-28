@@ -15,7 +15,7 @@ local net = require("net")
 local safety = require("safety")
 local log = common.log
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual" } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "novisual", mutate = os.getenv("PT_MUTATE") } -- the test mutation switches the module off
 M.zone = os.getenv("PT_VISUAL_ZONE") ~= "0" -- the zone props mirror: on (2026-10-23, host sweep cached and spread, guest 8 ms per tick); PT_VISUAL_ZONE=0 turns it off
 
 local RF_WasLoaded = 0x00080000 -- placed in the map file: the guest has it already
@@ -147,7 +147,7 @@ end
 
 -- what the host lists: run-time spawned (not placed in the map file) dressing. Wreck parts, loot, hazards, items and car parts have their
 -- own modules, so they are not here. A static mesh that moves (debris, a wreck's loose part) is skipped.
-local ALLOW = { "BP_Destruct_", "BP_Door_", "BP_Prop_", "BP_Poster_", "BP_Decal_", "BP_TpoleTool_", "BP_RoadObstruct_", "BP_BuildingFrame_" }
+local ALLOW = { "BP_Destruct_", "BP_Door_", "BP_Prop_", "BP_Poster_", "BP_Decal_", "BP_TpoleTool_", "BP_RoadObstruct_", "BP_BuildingFrame_", "BP_Spawn_Anchor_" }
 local function allowed(cn)
     for _, p in ipairs(ALLOW) do
         if cn:sub(1, #p) == p then return not cn:find("Part_", 1, true) end
@@ -178,6 +178,8 @@ local function state(o)
     if ok and type(v) == "number" then t[#t + 1] = "st=" .. v end
     ok, v = pcall(function() return o.IsBroken end)
     if ok and v then t[#t + 1] = "br=1" end
+    ok, v = pcall(function() return o.SuccessfullyGrabbed end) -- an ARC anchor structure someone pulled: the other side's copy goes
+    if ok and v == true then t[#t + 1] = "tk=1" end
     return table.concat(t, ";")
 end
 local function smaLine(o, name)
@@ -326,6 +328,7 @@ local function fields(line)
 end
 
 local function applyState(a, st)
+    if st:find("tk=1", 1, true) then pcall(function() a:K2_DestroyActor() end) return end
     if st:find("br=1", 1, true) then
         pcall(function() -- crates and fences are "complex", cones and signs "simple" destructibles; both take the break impulse
             local z = vec(0, 0, 0)
@@ -349,30 +352,37 @@ local function dispose(a)
     end
 end
 
--- The guest's E on its copy of a door: the copy swings here, the host's door gets the same press (its state comes back in g.vis.p).
--- The interact event is declared on a parent class (BP_Door_Single_C, BP_Door_Sliding_Single_C), hooked there once.
+-- The guest's E on a door, and a lock it opens (prybar): the door swings here, the host's door gets the same (its state comes back in
+-- g.vis.p for zone copies). Doors placed in the map (the garage's chained side doors) exist on both sides and are not mirrored: the host's
+-- stayed shut and locked and its collision blocked the guest (first Steam play, #1). The events are declared on a parent class
+-- (BP_Door_Single_C, BP_Door_Sliding_Single_C), hooked there once.
 local INTERACT = "BndEvt__Highlight_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature"
-local doorHooks = {} -- class path -> true (hooked or not declared in its chain)
-local function hookDoor(cls)
-    local path = fpath(cls)
-    if doorHooks[path] then return end
-    doorHooks[path] = true
+local UNLOCK = "OnLockOpened_Event_0"
+local doorHooks = {} -- class path .. ":" .. event -> true (hooked or not declared in its chain)
+local function doorName(d) -- the host's name for this door: a copy's key, or a map-placed door's own name
+    for name, a in pairs(mine) do
+        if live(a) and a:GetAddress() == d:GetAddress() then return name end
+    end
+    -- the full path: placed doors in different sublevels can share an FName (BP_Door_Single_C_2)
+    if d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then return fpath(d) end
+end
+local function hookDoor(cls, event, msg)
+    local start = fpath(cls) .. ":" .. event
+    if doorHooks["seen " .. start] then return end
+    doorHooks["seen " .. start] = true
     for _ = 1, 6 do
         if not (cls and cls:IsValid()) then return end
-        local fn = StaticFindObject(fpath(cls) .. ":" .. INTERACT)
+        local at = fpath(cls) .. ":" .. event
+        local fn = StaticFindObject(at)
         if fn and fn:IsValid() then
-            local at = fpath(cls)
-            if doorHooks[at .. ":"] then return end
-            doorHooks[at .. ":"] = true
-            local ok, err = pcall(RegisterHook, at .. ":" .. INTERACT, function(self)
+            if doorHooks[at] then return end
+            doorHooks[at] = true
+            local ok, err = pcall(RegisterHook, at, function(self)
                 if not (M.enabled and safety.guest()) then return end
-                local d = self:get()
-                for name, a in pairs(mine) do
-                    if live(a) and a:GetAddress() == d:GetAddress() then
-                        net.toHost("g.vis.door", name)
-                        log("PT|visual guest used door %s", name)
-                        return
-                    end
+                local name = doorName(self:get())
+                if name then
+                    net.toHost(msg, name)
+                    log("PT|visual guest %s door %s", msg, name)
                 end
             end)
             log("PT|visual door hook %s %s", at, ok and "ok" or tostring(err))
@@ -381,19 +391,118 @@ local function hookDoor(cls)
         cls = cls:GetSuperStruct()
     end
 end
-net.on("g.vis.door", function(_, name)
-    if not M.enabled then return end
-    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
+local function hookPlacedDoors()
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do
         for _, d in ipairs(FindAllOf(c) or {}) do
-            if live(d) and d:GetFName():ToString() == name then
-                d.Highlight:InteractPressed(nil)
-                d.Highlight:InteractReleased(nil)
-                log("PT|visual guest used door %s: pressed on the host, state=%s", name, tostring(d.CurrentState))
-                return
+            if live(d) then
+                hookDoor(d:GetClass(), INTERACT, "g.vis.door")
+                hookDoor(d:GetClass(), UNLOCK, "g.vis.unlock")
             end
         end
     end
-    log("PT|visual guest used door %s: not on the host", name)
+end
+local function hostDoor(name)
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do -- FindAllOf includes child classes
+        for _, d in ipairs(FindAllOf(c) or {}) do
+            if live(d) and (fpath(d) == name or d:GetFName():ToString() == name) and not fpath(d):find("/Engine/Transient", 1, true) then return d end
+        end
+    end
+end
+net.on("g.vis.door", function(_, name)
+    if not M.enabled then return end
+    local d = hostDoor(name)
+    if d then
+        d.Highlight:InteractPressed(nil)
+        d.Highlight:InteractReleased(nil)
+    end
+    log("PT|visual guest used door %s: %s, state=%s", name, d and "pressed on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
+end)
+net.on("g.vis.unlock", function(_, name)
+    if not M.enabled then return end
+    local d = hostDoor(name)
+    if d and d.CurrentState >= 3 then d:ForceUnlockDoor() end -- the game's own unlock (WorkLock); it opens the door as it does for the guest
+    log("PT|visual guest unlocked door %s: %s, state=%s", name, d and "unlocked on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
+end)
+
+-- ARC anchor structures (BP_Spawn_Anchor_*): the guest's pull of its copy gives the guest the anchor item, so the host's structure must be
+-- taken too, else the host pulls it again and the same anchor is deposited twice (hand play 2026-10-24). The host marks its structure taken
+-- the way the game does after a pull (no item); its "tk=1" state removes the guest's copy, which also covers the host pulling one first.
+local ANCHOR_FN = "/Game/Gameplay/Resources/AnchorBase/BP_Spawn_Anchor_Base_01.BP_Spawn_Anchor_Base_01_C:Long Grab Complete"
+local anchorHooked = false
+local function hookAnchors()
+    if anchorHooked or M.mutate == "noanchorsync" then return end
+    -- a post hook never fires for this Blueprint function: the pre hook looks again once the pull has run
+    anchorHooked = pcall(RegisterHook, ANCHOR_FN, function(self)
+        if not (M.enabled and safety.guest()) then return end
+        local a = self:get()
+        ExecuteInGameThreadWithDelay(300, function()
+            if not (live(a) and a.SuccessfullyGrabbed == true) then return end -- inventory full: nothing was taken
+            local name = doorName(a)
+            if name then
+                net.toHost("g.vis.anchor", name)
+                log("PT|visual guest pulled anchor %s", name)
+            end
+        end)
+    end)
+end
+net.on("g.vis.anchor", function(_, name)
+    if not M.enabled then return end
+    for _, o in ipairs(FindAllOf("BP_Spawn_Anchor_Base_01_C") or {}) do
+        if live(o) and (fpath(o) == name or o:GetFName():ToString() == name) and not fpath(o):find("/Engine/Transient", 1, true) then
+            if not o.SuccessfullyGrabbed then
+                o.SuccessfullyGrabbed = true
+                for _, f in ipairs({ "AddAnchorPulledTag", "AnchorTaken", "removeAnchorGoo" }) do pcall(o[f], o) end
+                pcall(function() o.Highlight:SetActive(false, false) end)
+                pcall(function() o.GrabbableMesh:K2_DestroyComponent(o) end)
+            end
+            log("PT|visual guest pulled anchor %s: taken on the host", name)
+            return
+        end
+    end
+    log("PT|visual guest pulled anchor %s: not on the host", name)
+end)
+
+-- The host's map-placed doors (garage side rooms: chains broken with the impact hammer or a prybar, open or shut) go the other way
+-- too: the guest's copy stayed chained and shut (owner, 2026-10-24). The host lists "path=state" (g.vis.pd), the guest applies a
+-- door's state when the host's changes: a lock with the game's ForceUnlockDoor (chain break sound and particles), open or shut with
+-- "Set Door from State".
+local function placedDoors()
+    local r = {}
+    for _, c in ipairs({ "BP_Door_Single_C", "BP_Door_Sliding_Single_C" }) do
+        for _, d in ipairs(FindAllOf(c) or {}) do
+            if live(d) and d:HasAnyFlags(RF_WasLoaded) and not fpath(d):find("/Engine/Transient", 1, true) then r[fpath(d)] = d end
+        end
+    end
+    return r
+end
+local function doorStates()
+    local L = {}
+    for name, d in pairs(placedDoors()) do L[#L + 1] = name .. "=" .. tostring(d.CurrentState) end
+    table.sort(L)
+    return table.concat(L, "\n")
+end
+local hostDoorState = {} -- guest: door path -> the host's last state
+RegisterLoadMapPreHook(function() hostDoorState = {} end)
+net.on("g.vis.pd", function(_, data)
+    if not M.enabled then return end
+    local doors
+    for name, st in data:gmatch("([^\n=]+)=(%d+)") do
+        local hs = tonumber(st)
+        if hostDoorState[name] ~= hs then
+            hostDoorState[name] = hs
+            doors = doors or placedDoors()
+            local d = doors[name]
+            if d then
+                local gs = d.CurrentState
+                if gs >= 3 and hs < 3 then
+                    pcall(function() d:ForceUnlockDoor() end)
+                    log("PT|visual host unlocked placed door %s", name:match("[^.:]+$"))
+                elseif gs < 3 and hs < 3 and gs ~= hs then
+                    pcall(function() d["Set Door from State"](d, hs) end)
+                end
+            end
+        end
+    end
 end)
 
 local function make(f)
@@ -425,7 +534,7 @@ local function make(f)
         applyState(a, f[8] or "")
     end
     local door = f[1] == "B" and asset:find("/BP_Door_", 1, true) ~= nil
-    if door then hookDoor(cls) end
+    if door then hookDoor(cls, INTERACT, "g.vis.door"); hookDoor(cls, UNLOCK, "g.vis.unlock") end
     -- copies block pawns and the car but not the interaction/camera traces: a guest's interact, pickup and aim trace must not hit a copy
     -- (playpath, lootsync2 failed with the copies blocking them). Doors keep the interact trace: the guest's E on one goes to the host.
     pcall(function()
@@ -503,20 +612,43 @@ net.on("g.vis.lv", function(_, data) wantLevels = data end)
 net.on("g.vis.paint", function(_, data) wantPaint = data end)
 
 local beat, lastLv, lastPaint = 0, nil, nil
+-- paint is read on a hook (garage paint: SetPaint, SetDecal, SetTintingEnabled on the tintable component) or every 5 s, not every
+-- 500 ms (the part walk was ~1 ms of every 5 ms host tick); PT|probe lines show whether the hooks fire on the host
+local paintDirty, paintHooked, paintProbe = true, false, 0
+local paintHooks = {} -- SetPaint etc. -> registered
+local function hookPaint()
+    if paintHooked then return end
+    local ok = true
+    for _, fn in ipairs({ "SetPaint", "SetDecal", "SetTintingEnabled" }) do
+        local okh = paintHooks[fn] or pcall(RegisterHook, TINT .. ":" .. fn, function()
+            paintDirty = true
+            paintProbe = paintProbe + 1
+            if paintProbe <= 3 then log("PT|probe visual paint hook %s n=%d", fn, paintProbe) end
+        end)
+        paintHooks[fn] = okh -- a hook that registered is never registered again (one per tick piled up)
+        ok = ok and okh
+    end
+    paintHooked = ok
+end
+local lastDoors
 local function hostTick()
     beat = beat + 1
     if not M.ready then return end
+    hookPaint()
     if beat % 8 == 1 then
         local s = table.concat(levelPackages(), "\n")
         if s ~= lastLv or beat % 40 == 1 then lastLv = s; net.toGuests("g.vis.lv", s) end
     end
-    -- paint changes only at the paint station: read every 5 s, sent again every 30 s. Every 500 ms it was ~200 engine calls
-    -- (each car part's tint component), 2.2 s a minute on a host (rendered profile, 2026-10-24)
-    if beat % 20 == 0 then
+    if paintDirty or beat % 20 == 0 then
+        paintDirty = false
         local p = paintLines()
         if p ~= "" and (p ~= lastPaint or beat % 120 == 0) then lastPaint = p; net.toGuests("g.vis.paint", p) end
     end
-    if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end
+    if M.zone and (beat % 4 == 2 or sweep) then try("scan", propsHost) end -- shortcut: a 10 s rescan broke "door follows the host within 3 s"
+    if beat % 4 == 0 and mapName() == "RB_Garage" then -- zone doors are the game's prefab copies above (and a zone's list could pass the 32 KB message cap)
+        local d = doorStates()
+        if d ~= "" and (d ~= lastDoors or beat % 40 == 0) then lastDoors = d; net.toGuests("g.vis.pd", d) end
+    end
     if beat % 2 == 0 then -- one small message per 500 ms: see intern()
         local q = table.remove(queue, 1)
         if q then net.toGuests("g.vis.p", q) end
@@ -543,6 +675,8 @@ local function guestTick()
     -- a new list, and every 10 s for parts installed since (each pass reads every part's tint)
     if wantPaint and (wantPaint ~= paintDone or beat % 40 == 0) then paintDone = wantPaint; try("paint", applyPaint, wantPaint) end
     if #todo > 0 then try("props", applyProps) end
+    if beat % 40 == 3 then try("doorhooks", hookPlacedDoors) end -- map-placed doors (garage)
+    if beat % 40 == 5 then try("anchorhook", hookAnchors) end -- ARC anchor structures (zones)
     for name, a in pairs(mine) do if not live(a) then mine[name], specs[name] = nil, nil end end
     if beat % 20 == 0 then
         local n = 0

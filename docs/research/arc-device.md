@@ -1,5 +1,7 @@
 # ARC device: route planning, gateway summon, energy (D13, W11)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19, lane E. Classes and calls behind the ARC, and how a guest's use could become host actions. Sources: UE4SS
 dumps, Blueprints extracted from `pakchunk0` and listed with `tools/kdis/` (`local/research-extract/laneE/dis/`, git-ignored),
 scenario `arc` (`test/PacificTogetherTest/Scripts/scenarios/arc.lua`).

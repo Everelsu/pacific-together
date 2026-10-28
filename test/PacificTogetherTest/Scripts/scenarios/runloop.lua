@@ -65,7 +65,7 @@ return function(T)
         local steps = {}
         local function add(s) steps[#steps + 1] = s end
         local n0
-        for _, s in ipairs(T.loadFixture("garage")) do add(s) end
+        for _, s in ipairs(T.loadFixture((os.getenv("PT_FIXTURE") or ""):match("[^,]+") or "garage")) do add(s) end -- -Fixture coop-garage: the owner's own save (bigger lists)
         add({ check = "host_listen_garage", timeout = 30, cond = function() return T.netMode() == "listen" and T.listening() end })
         add({ check = "host_guest_in_garage", timeout = 240, cond = function() return L.guestChar() ~= nil end })
         add({ run = function()

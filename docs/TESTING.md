@@ -1,177 +1,135 @@
 # Testing
 
-Tests run real game instances from the test copies, never the real install.
-
-## Prerequisites
-
-- Steam running and logged in (the game initialises Steam under appid 1458140; runs without Steam are untested).
-- `tools\setup-test.ps1` has made `C:\PacificTogetherTest\client1` and `client2` (UE4SS plus junctions to
-  `mod\PacificTogether` and `test\PacificTogetherTest`). Repo edits apply on the next launch.
+Use isolated test copies, never the real install or saves. Setup and the pinned UE4SS build are in
+[DEVELOPING.md](DEVELOPING.md). Steam must be running. Results are evidence for the code tested, not a claim that every
+player interaction works.
 
 ## Running
 
 ```powershell
-tools\run-test.ps1 -Scenario boot                     # both reach the main menu
-tools\run-test.ps1 -Scenario listen                   # engine listen server: host in RB_Garage, client joins
-tools\run-test.ps1 -Scenario listen -Mutate skipconnect   # must FAIL: proves the listen checks can fail
-tools\run-test.ps1 -Scenario dump                     # one instance, UE4SS dumps into local\dumps
-tools\run-test.ps1 -Scenario travel                   # X1/X1b: game's own travel with a client; native LoadMap patch keeps the host listening, client rejoins
-tools\run-test.ps1 -Scenario body                     # X13: guest gets a character in front of the host; mesh flags, screenshots, walk/crouch/sprint
-tools\run-test.ps1 -Scenario zonejoin                 # X11: client connects ~40 s before the host listens (zone map)
-tools\run-test.ps1 -Scenario guestsave                # X10: guest's SaveGames/Config unchanged through join, travel, autosave
+tools\run-test.ps1 -Scenario boot
+tools\run-test.ps1 -Scenario carsync -Fixture garage -Headless
+tools\run-test.ps1 -Scenario zoneexit -Fixture coop-zone -Headless
+tools\run-test.ps1 -Scenario listen -Mutate skipconnect -Headless
+tools\run-test.ps1 -Scenario listen -Tunnel "udp lag=150 loss=2" -Headless
 ```
 
-Spike notes and results: `NOTES.md` sections "spike X1/X1b/X3/X10/X11/X13".
+The mutation should fail its intended check. Shipping UE has no usable `NetEmulation.*`; use the tunnel for lag/loss.
+Steam-specific scenarios are separate: `steamsession` tests the join flow using loopback UDP, while two-account
+Steam transport needs the human check in [spikes/PT2-steam.md](spikes/PT2-steam.md).
 
-X5/X6 (`docs/spikes/X5.md`, `X6.md`): `-Tunnel "udp [lag=ms] [loss=pct] [hold=s]"` runs any two-player scenario through
-the native tunnel (client opens `10.77.0.1:<port>`; mutations `notunnelpeer`, `tunnelbypass`, `nolag`). Shipping UE has no
-`NetEmulation.*`, so lag/loss runs use the tunnel's own emulation. `-Scenario steamsolo -Clients 1 -Seconds 300` checks
-the game's Steam session alone (mutations `nosteam`, `steamearly`); `steamhost` / `steamguest` are the two-PC human test.
+Options: `-Root` (default `C:\PacificTogetherTest`), `-Port`, `-Clients 1|2`, `-Seconds`, `-Headless`, `-Fixture`,
+`-FixturesDir`, `-Mutate`, `-Tunnel`, `-ResultsDir`, `-KeepOpen`. Scenario defaults live in `tools/run-test.ps1`;
+unknown scenarios default to two clients and 300 seconds. Headless uses `-nullrhi -nosound`; visuals/audio need a rendered run.
 
-Options: `-Root` (default `C:\PacificTogetherTest`), `-Clients 1|2` (default 2, dump 1), `-Seconds` (timeout,
-default per scenario), `-KeepOpen` (leave the games running), `-Mutate <name>`.
+The runner refuses a busy root and stops only processes from its test copies. It archives logs, crash folders,
+screenshots and `summary.txt` under `local/test-results/<timestamp>-<scenario>[-<mutation>]/`. Exit 0 means all checks passed.
+Config edits and fixture saves are restored after the run.
 
-The runner refuses to start if a game from `-Root` is running, and only stops processes it started (plus
-`CrashReportClient` under `-Root`, closed without sending). Logs, crash folders and `summary.txt` go to
-`local\test-results\<yyyyMMdd-HHmmss>-<scenario>[-<mutation>]\`. Exit code 0 = all checks passed. Screenshots
-taken during the run (`HighResShot`, written to `<copy>\PenDriverPro\Saved\Screenshots\WindowsNoEditor`) are copied
-there as `<role>-HighresScreenshotNNNNN.png`, in the order of the `PT|shot side=.. n=.. tag=..` lines.
+**Watch every started run:** inspect new `PT|check` lines and both processes at least every five minutes. If no new check
+appears, investigate and stop a stuck run. The runner also aborts a scenario that fails to load or produce a plan
+within three minutes after boot. Do not leave an unobserved run waiting out its timeout.
 
-## Log contract
+## Suite
 
-Roles come from environment variables set per process: `PT_ROLE=host|client`, `PT_SCENARIO`, `PT_HOST`
-(client), `PT_STATUS=<ms>`, `PT_MUTATE`. All output is `print()` into `<copy>\PenDriverPro\Binaries\Win64\ue4ss\UE4SS.log`:
+```powershell
+tools\run-suite.ps1
+tools\run-suite.ps1 -Only carsync,carexit,runloop
+```
 
-| Line | From |
+The suite runs its configured scenarios headless, with their fixtures, sequentially on one pair. It writes
+`local/test-results/suite-<timestamp>.txt` and exits nonzero on failure. `-Shard 1/2` and `-Shard 2/2` split that list;
+each shard needs its own `-Root` and `-Port`. Inspect the list in `tools/run-suite.ps1` before interpreting a suite pass:
+it excludes some probes, mutations and human/Steam paths.
+
+Run the focused scenario and mutation during a change; after integration run the smoke set from [LANES.md](LANES.md).
+Run the full configured suite once before a preview/release, then rerun only affected failures after fixes.
+
+## Scenario and log contract
+
+New scenarios live in `test/PacificTogetherTest/Scripts/scenarios/<name>.lua`, returning
+`function(T) return steps end`. `T` exposes helpers such as `onMap`, `join`, `console` and fixture loading.
+Steps are `{check=id, timeout=s, cond=fn, tick=fn(t)}`, `{wait=s}` or `{run=fn}`; checks poll on the game thread.
+The harness counts planned checks automatically. Legacy scenarios remain in the test mod's `main.lua`.
+
+| Log marker | Meaning |
 |---|---|
-| `[PacificTogether] PT\|boot version=.. protocol=..` | main mod, at load |
-| `[PacificTogether] PT\|status net=<none\|standalone\|listen\|client> map=<name> pcs=<n>` | main mod, every `PT_STATUS` ms |
-| `[PacificTogetherTest] PT\|plan side=<role> checks=<n>` | test mod, scenario start |
-| `[PacificTogetherTest] PT\|check side=<role> name=<id> result=PASS\|FAIL detail=<...>` | test mod, per check |
-| `[PacificTogetherTest] PT\|done side=<role>` | test mod, scenario end |
-| `PT\|error ...` | either; any one fails the run |
-| `[PacificTogetherTest] PT\|snap side=<role> tag=<tag>` | test mod; the runner snapshots that copy's `Saved\SaveGames` and `Saved\Config` (name, size, time, SHA-256) and checks `saves unchanged <first>-><tag>` by name+size+hash |
-| `[PacificTogetherTest] PT\|actors side=.. tag=.. class=.. role=.. rep=.. loaded=.. owner=.. n=..` | test mod `survey()`; the runner writes `actors-<tag>.csv` with host and client counts |
-| `PT\|loadmap pre\|post ...`, `PT\|info ...`, `PT\|save ...` | test mod, information only |
+| `PT\|boot` | Mod version/protocol and successful load |
+| `PT\|plan side=... checks=N` | Expected check count |
+| `PT\|check side=... name=... result=PASS\|FAIL` | Assertion result and details |
+| `PT\|done side=...` | Scenario finished |
+| `PT\|error` | Fails the run |
+| `PT\|snap` | Save/config file hash snapshot for write-protection checks |
+| `PT\|actors` | Actor survey exported to CSV |
+| `PT\|status`, `PT\|info`, `PT\|loadmap` | Diagnostic state, not proof of success |
 
-Per-run config: `$IniEdits` in the runner appends lines to a copy's `Saved\Config\WindowsNoEditor\Engine.ini` before
-launch and restores the file after the run (zonejoin: `ResolutionConnectionTimeout=120` on the client).
-
-A run passes when every side printed `boot`, `plan`, all planned checks as PASS, `done`, no `PT|error`, and no
-new crash folder appeared.
-
-## Adding a scenario
-
-Add an entry to `scenarios` in `test\PacificTogetherTest\Scripts\main.lua`: a function returning the steps for
-the current `ROLE`. Steps are `{check=id, timeout=s, cond=fn, tick=fn(t)}` (polled every second until `cond`
-is true or the timeout; `tick` runs while waiting), `{wait=s}` or `{run=fn}`. Checks are counted for the plan
-line automatically. All steps run on the game thread. Optionally add the scenario's client count and timeout to
-`$Defaults` in `tools\run-test.ps1`.
-
-## Mutations
-
-`-Mutate <name>` sets `PT_MUTATE` for every process; the test mod breaks one behaviour on purpose so a run shows
-that its checks can fail. Each new check should get a mutation. Existing: `skipconnect` (listen: the client never
-runs `open`, so `client_connected_garage` and `host_two_pcs` fail); `nokeep` (travel: `PTNative_SetKeepListen(false)`,
-so `host_listen_after_native_travel` fails and the `servertravel ?listen` fallback re-hosts); `norehost` (travel: keep-listen
-off and no `servertravel ?listen` after the native travel, so the re-host and rejoin checks fail); `follow` (travel,
-experiment: the host sends `ClientTravel` to the guest before native travel and the guest never runs `open`; fails
-today, the connection close wins); `nospawn` (body: the guest stays a spectator, every body check fails); `noconfig` (zonejoin: no timeout fix, the client
-times out at 20 s); `cdo` (zonejoin: no ini, the fix is set on the IpNetDriver CDO from Lua; must PASS); `noblock`
-(guestsave: save hooks only log, the forced autosave writes `odsave_scratch.sav`).
+A pass requires boot/plan/done on every side, all planned checks passing, no errors and no new crash folder.
+`PT_ROLE`, `PT_SCENARIO`, `PT_HOST`, `PT_STATUS` and `PT_MUTATE` configure the test processes.
+Assert player count, map and role before checking sync. Mutations must break the relevant behavior rather than merely
+force a generic error. Report the failed assertion as well as the nonzero exit.
 
 ## Parallel lanes
 
-Several agents or developers can test at once, each in their own lane:
+- Create a pair from the lane worktree:
+  `tools\setup-test.ps1 -Root C:\PTLanes\<lane> -LinkFrom C:\PacificTogetherTest\client1 -UE4SSZip <main>\local\cache\ue4ss\zDEV-UE4SS_v3.0.1-1181-g83330635.zip`.
+- Give each pair a unique port; otherwise guests can join another lane's host.
+- Use `-ResultsDir <main>\local\test-results` to retain evidence after removing the worktree.
+- `PT_SLOTS` defaults to four simultaneous runs. Waiting for a slot is not a completed test.
+- Pass `-FixturesDir <main>\local\fixtures` to the runner in a worktree. Game MCP can locate the main checkout automatically.
 
-- **Own test pair:** `tools\setup-test.ps1 -Root C:\PTLanes\<lane> -LinkFrom C:\PacificTogetherTest\client1
-  -UE4SSZip <main repo>\local\cache\ue4ss\zDEV-UE4SS_v3.0.1-1181-g83330635.zip`, run from the lane's worktree (the
-  mod junctions point at the repo the script lives in). Hardlinks only: ~12 s and ~700 MB per pair.
-- **Own port:** `run-test.ps1 -Port <n>`. Without it two lanes' guests join each other's hosts (seen in practice).
-- **Headless:** `run-test.ps1 -Headless` runs `-nullrhi -nosound`: ~1.1 GB RAM per game, no GPU, main menu in ~8 s.
-  Two-player `listen` passes headless. Screenshots (`body`) need a normal run.
-- **Results:** `-ResultsDir <main repo>\local\test-results` keeps results after the worktree is removed; folder names
-  carry the lane (`<stamp>-<lane>-<scenario>`).
-- **Slots:** at most `PT_SLOTS` (default 5) runs at once on the machine; a runner waits for a free slot.
-- **Scenario files:** put a new scenario in `test/PacificTogetherTest/Scripts/scenarios/<name>.lua`, returning
-  `function(T) return steps end`, where `T` holds the helpers from `main.lua` (`T.onMap`, `T.join`, `T.console`, ...).
-  The runner's defaults for an unknown scenario are 2 clients and 300 s; pass `-Clients` / `-Seconds` otherwise.
+## Live console
 
-## Live console (explore without relaunching)
+Start `tools/run-test.ps1 -Scenario repl -Seconds 3600 -Headless` (add your root, port and fixture).
+Use `tools/repl.ps1 -Side host|client -Code "state()"` or `-File probe.lua`; expressions return values and blocks can
+use `out(...)`. Stop with `tools/repl.ps1 -Stop`. Console exit codes: 0 success, 1 Lua error, 2 no answer.
+The console is also available during automated scenarios. [GAME-MCP.md](GAME-MCP.md) exposes it as tools.
 
-`tools/repl.ps1` runs Lua inside a running test game and prints the result in about a second, so questions like
-"what does this function return" or "which actors exist now" need no new scenario and no relaunch.
-
-1. Start a session in the background: `tools/run-test.ps1 -Scenario repl -Seconds 3600 -Headless [-Clients 1]
-   [-Root ... -Port ...]`. The host opens `$env:PT_MAP` (default the garage) as a listen server, the client joins,
-   both hold.
-2. Ask: `tools/repl.ps1 [-Root ...] [-Side host|client] -Code "state()"` or `-File probe.lua`. An expression returns
-   its value; a block can call `out(...)` for extra lines and `return` values. Every helper of the test mod's `T`
-   table is in scope (`state`, `first`, `inWorld`, `console`, `map`, `netMode`, `dist`, ...), plus all UE4SS globals.
-   Exit code 0 = ok, 1 = Lua error (message printed), 2 = no answer (game not running or not past the main menu).
-3. Change Lua without a relaunch: edit `mod/PacificTogether/Scripts/*.lua`, then `tools/repl.ps1 [-Root ...] [-Side ...] -Reload`
-   restarts the main mod's Lua in that game (UE4SS `RestartMod`; hooks are unregistered and registered again, Lua state
-   starts fresh). `main.dll` stays loaded (it is its own mod, `PacificTogetherNative`); a native change still needs a
-   relaunch. The game thread waits during the reinstall (`PTNative_ReloadLua`, test runs only): a plain `RestartMod` races
-   the hooks (crashed a host with a guest once in 4 runs). Scenario `reload` proves it in a live two-player session (mutation
-   `noreload`; `nowait` drops the wait but rarely fails).
-4. End it: `tools/repl.ps1 [-Root ...] -Stop`; the scenario passes `repl_session_stopped`, the runner closes both
-   games and frees the slot.
-
-The console also runs during every other scenario, so a failing test can be inspected while it runs. It exists only
-in the test mod. Once a question is answered, turn the answer into a scenario check: the console explores, scenarios prove.
+`-Reload` exists for Lua-only experiments, but repeated reloads have crashed live sessions. Save useful logs and restart
+for normal bug-fix validation; native changes always require a restart. Exploratory reads can also crash on stale game
+objects: `pcall` does not catch native access violations.
 
 ## Fixture saves
 
-Real saves that put a test straight into a game state instead of the main menu. They live in `local\fixtures\<name>\`
-(git-ignored, game data): the `.sav` file and a `fixture.txt` with state, slot and how it was made. Each uses its own slot,
-so several can sit in one SaveGames folder.
+Fixtures are git-ignored `.sav` files plus `fixture.txt`/optional `fixture.json` under `local/fixtures/<name>/`.
+The runner temporarily replaces the host copy's SaveGames directory, restores it afterward (or recovers a leftover
+`.ptbak` next launch), and archives the run's saves as `fixture-saves-after`.
 
 | Name | Slot | Map | State |
 |---|---|---|---|
 | `garage` | 7 | `RB_Garage` | story mode, car and character, stocked by the game's debug events (biggest container 457 items, anchor juice +5 each); no missions done |
 | `zone` | 8 | `Rural_Forest_Radio_Scylla_02` | a real run map (started by the game's own `TravelToNextLeg`), car and character, ARC charge about 4 |
-| `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0; that a gateway can then be summoned is not proven |
+| `gateway` | 9 | `Rural_Forest_Radio_Scylla_02` | `zone` with the ARC `CurrentCharge` = 7.0 (`MaxCharge` 1.0, so the screen counts it charged); the game's own exit selection (`GobblerScreen:OnExitUseComplete(portal)`) sets the gateway (2026-10-24); the nearest portals are ~1.1 km from the car |
+| `coop-garage` | 2 | `RB_Garage` | **for hand play**: the owner's own mid-story save (tutorial done, quests up to Q03; the owner copied it in), host backpack with the common tools, a guest tool kit in the car trunk (a guest's own backpack is not kept between local launches: its login name changes) |
+| `coop-zone` | 3 | `Wilderness_Forest_06` | `coop-garage` sent out by the game's `TravelToNextLeg`: 32 hazards, 4 exit portals |
+| `coop-gateway` | 5 | `Wilderness_Forest_06` | `coop-zone`; a selected gateway is not saved, so the test mod's repl scenario reopens it on load for any fixture named `*gateway*` (nearest portal, ~225 m; this car's ARC reads 0/0) |
+| `coop-return` | 6 | `RB_Garage` | back from `coop-gateway` through the exit portal's own return, loot in the car |
+| `garage-return` | 1 | `RB_Garage` | back from a run through the exit portal's own return (`TravelToGarage(2, ...)`), loot in the car (trunk 129 items on the guest); fixture.txt has the steps |
 
-- `run-test.ps1 -Fixture garage[,zone,gateway]` moves the host copy's `Saved\SaveGames` aside, copies the fixtures' `.sav`
-  files in, sets `PT_FIXTURE`, and puts the original folder back after the run (a leftover `.ptbak` from a killed run is
-  restored at the next start). What the game saved during the run is kept in the results folder as `fixture-saves-after`.
-  `-FixturesDir` overrides `<repo>\local\fixtures` (worktrees do not have it).
-- In a scenario: `T.loadFixture(name[, fromMenu])` returns steps that call the game's `UserLoadGame(slot, STORY, 0)` and pass
-  `fixture_<name>_map` once the map, the character and the car are there. Chain several with `fromMenu=false` (the game loads
-  from any map). `T.arcCharge()` and `T.maxContainerItems()` read the state the fixtures were made with.
-- `-Scenario repl -Fixture <name>` opens the console already in that state (standalone, no listen server: a reload would drop it).
-- `-Scenario fixtureload -Fixture garage,zone,gateway -Clients 1`: loads all three and checks map, stock, run map and ARC
-  charge. Mutations: `nofixture` (nothing loaded), `wrongfixture` (the gateway step loads the zone save).
-- Load times (headless, warm cache): menu to garage 8 s, garage to zone 18 s (first load of that map), zone to zone about 6-18 s.
-  No other automatic way to a zone with a car exists (the intro would need a bot to play it).
-- Remake (build or game update): start `-Scenario repl` (no `-Fixture`), follow each `fixture.txt` through `tools\repl.ps1`,
-  copy `odsaveN.sav` from `<root>\client1\PenDriverPro\Saved\SaveGames` into `local\fixtures\<name>\`. Never copy saves from
-  the real install. `UserNewGame(slot, CHALLENGE)` (expedition) hangs and then crashes the game, do not use it.
+
+`T.loadFixture(name[, fromMenu])` waits for the map, character and car. `fixtureload -Fixture garage,zone,gateway -Clients 1`
+checks the built-in fixtures; mutations are `nofixture` and `wrongfixture`.
+
+Use MCP `fixture_save` or follow the fixture's own recipe in a test copy to remake it. Never read the real saves as an
+automatic fallback; the `coop-*` fixtures were supplied by the owner. `UserNewGame(slot, CHALLENGE)` has hung/crashed
+in experiments, so do not use it as an assumed working fixture path.
+
+## Crash dumps
+
+`python -I tools/dmpstack.py <ue4ss/crash_*.dmp> <folder-with-UE4SS.dll-and-UE4SS.pdb>` scans the crashing stack and
+symbolizes UE4SS/game frames. It is a stack scan, not a full unwind. Keep both players' logs before restarting;
+UE4SS overwrites them. Crash-upload research and outstanding proof: [spikes/M2-safety.md](spikes/M2-safety.md).
 
 ## Playing by hand
 
-`tools/play-local.ps1` starts the two test copies windowed side by side (960x540 each, `-ResX/-ResY` to change) with no
-test bots, so you can try things yourself. The guest joins the host by itself (`PT_JOIN=127.0.0.1:<port>`, retried at the
-menu until the host listens); the host's shipping mod listens like a real player's. The test mod stays inert (no `PT_SCENARIO`).
+`tools/play-local.ps1` opens two windowed test copies side by side. With no fixture, load a save on the host and the
+guest autojoins; `-Fixture coop-garage|coop-zone|coop-gateway` loads an owner-supplied test save. Options include `-Root`,
+`-Port`, `-ResX` and `-ResY`. Close both games or press Ctrl+C to end the session and restore saves.
+This helper does not give the guest a live console; use MCP for live debugging.
 
-- `tools/play-local.ps1`: both stop at the main menu; start or load a game on the host, the guest joins once it listens.
-- `tools/play-local.ps1 -Fixture garage|zone`: the host loads that fixture save (the test mod's `repl` scenario does only
-  that), the guest follows. The host copy's own saves are put back when the script ends.
-- `-Root` (default `C:\PacificTogetherTest`), `-Port`. It refuses to start while a game from `-Root` runs, waits until
-  both games are closed (Ctrl+C closes them) and prints each side's `UE4SS.log` path.
+## Live bug-fix loop
 
-## Live bug-fix loop (preferred for bugs found in play)
-
-The owner's preferred way to fix a bug seen in play (2026-10-23: five bugs in about 40 minutes that no scenario had
-caught). It needs the owner at the PC; suites and bots come after, as regression.
-
-1. Start two rendered games that both answer the live console: game MCP `session_start players=2 headless=false
-   seconds=3600` (plus `fixture=zone|garage`). `tools/play-local.ps1` does not do this: its guest has no console.
-2. The owner plays and reproduces the bug (or describes it), then leaves the broken state alone (no F8, no keys).
-3. Read the live state on the side that is wrong and compare it with the other side (`eval`, `describe`, `watch`,
-   `screenshot`). Before writing code, prove the cause with a live poke where possible (for example setting a field back
-   and asking the owner whether it moves now).
-4. Patch the files, copy both `UE4SS.log` first if they hold anything worth keeping, then `session_stop` and
-   `session_start` again. Restart; do not hot-reload (RestartMod crashed a guest after a few reloads in one session).
-5. The owner retests by hand. Report what the owner saw fixed and what was not seen yet; record the cause in NOTES.md.
+1. Start MCP `session_start players=2 headless=false seconds=3600` with the required fixture.
+2. Let the owner reproduce the issue and leave the broken state intact.
+3. Compare the relevant live state on both sides. Prove the suspected cause with a bounded probe when possible.
+4. Copy useful logs, patch, then `session_stop` and restart. Do not hot-reload this session.
+5. Retest by hand and add focused regression coverage. Record observations separately from guesses in [../NOTES.md](../NOTES.md).

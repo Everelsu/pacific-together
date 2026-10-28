@@ -1,5 +1,7 @@
 # M3 car (C1, C2, C3, C4, C7)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Code: `mod/PacificTogether/Scripts/car.lua`. Scenario: `carsync` (`tools/run-test.ps1 -Scenario carsync -Fixture garage -Headless`,
 mutation `nocarsync`). Result folders: `20261021-120234-car-carsync` (36/36 final, door path), `20261021-114505-car-carsync` (36/36), earlier
 `20261021-113933-car-carsync` (intent only, before the reach check was dropped), `20261021-112004-car-carsync` (crash, see below).

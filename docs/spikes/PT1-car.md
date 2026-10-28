@@ -1,5 +1,9 @@
 # PT1-car: ARC position and the guest's car exit (playtest 1)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
+Current keys are polled on the game thread (`common.onKey`); the original UE4SS key-bind path below was replaced after Lua-state crashes. Safe exit placement and post-travel collision were also corrected; see [../../NOTES.md](../../NOTES.md).
+
 ## Observations
 - Bug A repro (`20261021-232133-pt1-car-arckey`): with the old ARC spot (slots shifted car-local Y -42.5) the ARC screen's
   collision sits on the driver camera -> ignition key ray (`UICollision_Key`, a 12 uu box); the game's highlight shows the screen.

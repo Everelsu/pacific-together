@@ -8,10 +8,16 @@ param(
     [string]$Fixture = "",
     [string]$FixturesDir = "",
     [int]$Port = 7777,
-    [int]$ResX = 960,
-    [int]$ResY = 540
+    [int]$ResX = 0,
+    [int]$ResY = 0
 )
 $ErrorActionPreference = "Stop"
+# two windows side by side on the main screen: half its working width each (desktop units: the game is not DPI-aware, so Windows
+# scales its window, and 960 px on a 125% 1536-wide desktop covered most of the screen), minus the window border
+Add-Type -AssemblyName System.Windows.Forms
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+if (-not $ResX) { $ResX = [int]($wa.Width / 2) - 16 }
+if (-not $ResY) { $ResY = [int]($ResX * 9 / 16) }
 $Repo = (Resolve-Path "$PSScriptRoot\..").Path
 $BinRel = "PenDriverPro\Binaries\Win64"
 $sides = @(@{ Role = "host"; Dir = Join-Path $Root "client1" }, @{ Role = "client"; Dir = Join-Path $Root "client2" })
@@ -46,7 +52,7 @@ try {
         if ($host_ -and $Fixture) { $env:PT_SCENARIO = "repl"; $env:PT_ROLE = "host"; $env:PT_FIXTURE = $Fixture }
         $env:PT_JOIN = if ($host_) { "" } else { "127.0.0.1:$Port" }
         try {
-            $winX = if ($host_) { 0 } else { $ResX }
+            $winX = if ($host_) { 0 } else { [int]($wa.Width / 2) }
             $gameArgs = "-NotInstalled", "-windowed", "-ResX=$ResX", "-ResY=$ResY", "-WinX=$winX", "-WinY=0", "-log", "-port=$Port"
             $p = Start-Process (Join-Path $s.Bin "PenDriverPro-Win64-Shipping.exe") -ArgumentList $gameArgs -WorkingDirectory $s.Bin -PassThru
         } finally { Remove-Item Env:PT_SCENARIO, Env:PT_ROLE, Env:PT_FIXTURE, Env:PT_JOIN -ErrorAction SilentlyContinue }

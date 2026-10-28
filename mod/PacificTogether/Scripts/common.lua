@@ -1,8 +1,8 @@
 local UEHelpers = require("UEHelpers")
 
 local M = {
-    MOD_VERSION = "0.0.6",
-    PROTOCOL_VERSION = 3, -- 3: msg.cpp chunks are confirmed ("PT1A|"); a 2 peer never confirms and a 3 sender would stall
+    MOD_VERSION = "0.0.8",
+    PROTOCOL_VERSION = 5, -- 5: msg.cpp chunks are confirmed ("PT1A|"); a 4 peer never confirms and a 5 sender would stall
 }
 
 function M.log(fmt, ...) print("[PacificTogether] " .. string.format(fmt, ...) .. "\n") end
@@ -61,7 +61,8 @@ FindAllOf, FindFirstOf = counted("FindAllOf", FindAllOf), counted("FindFirstOf",
 -- one found is kept while it is live, and every map load drops them all (the old world's go with it).
 local SINGLE = { DrivingGameInstance = true, BP_ResourceManager_C = true, BP_InventoryManager_C = true, BP_MainCharacterManager_C = true,
     BP_CarManager_C = true, BP_StatusEffectManager_C = true, BP_ProgressionManager_C = true, BP_QuestManager_C = true,
-    BP_DialogueManager_C = true, MessageSystem = true, InventorySystem = true, BP_SaveGameManager_C = true, BP_MusicManager_C = true }
+    BP_DialogueManager_C = true, MessageSystem = true, InventorySystem = true, BP_SaveGameManager_C = true, BP_MusicManager_C = true,
+    BP_ToDManager_C = true, BP_StormManager_C = true }
 local singles = {}
 local rawFirst = FindFirstOf
 function FindFirstOf(class)
@@ -71,6 +72,33 @@ function FindFirstOf(class)
     o = rawFirst(class)
     if live(o) then singles[class] = o end
     return o
+end
+-- the cached singleton or nil: module-local first() helpers looped FindAllOf (26 CarManager lookups a second on the host)
+-- Keys are polled on the game thread (PlayerController:IsInputKeyDown, edge-detected every 30 ms). A RegisterKeyBind callback runs Lua on
+-- UE4SS's own thread while the game thread runs Lua in the same state: even a one-line flag setter corrupted it (guest crashes in
+-- luaL_traceback / luaH_next, hand play 2026-10-24). M.onKey("X", fn): fn on the game thread when X goes down (UE key names).
+local keys, keyDown = {}, {}
+function M.onKey(name, fn) keys[#keys + 1] = { name, fn } end
+LoopInGameThreadWithDelay(30, function()
+    if #keys == 0 then return end
+    local pc = UEHelpers.GetPlayerController()
+    if not (pc and pc:IsValid()) then return end
+    for _, k in ipairs(keys) do
+        local ok, down = pcall(function() return pc:IsInputKeyDown({ KeyName = FName(k[1]) }) end)
+        down = ok and down == true
+        if down and not keyDown[k[1]] then
+            local okf, e = pcall(k[2])
+            if not okf then M.log("PT|error key %s %s", k[1], tostring(e)) end
+        end
+        keyDown[k[1]] = down
+    end
+end)
+
+function M.first(class)
+    local o = FindFirstOf(class)
+    if live(o) then return o end
+    -- the first one can be a dead or old-world object while a live one exists (after a map change or a stream)
+    for _, x in ipairs(FindAllOf(class) or {}) do if live(x) then return x end end
 end
 -- the cached controller and world too: a freed object's address can come back as another object, which IsValid cannot tell
 local function forget() singles, cachedPC, cachedWorld = {}, nil, nil end

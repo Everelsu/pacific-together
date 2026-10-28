@@ -1,69 +1,64 @@
-# Releasing Pacific Together
+# Releases
 
-## Versions
+Current preview: **0.0.8**, protocol **4** (2026-10-25). Version constants live in
+`mod/PacificTogether/Scripts/common.lua`; the native runtime version is `NATIVE_VERSION` in `dllmain.cpp`.
+The UE4SS-facing `ModVersion` label still says 0.0.5; reconcile that metadata before packaging a public build. Changes go in
+[../CHANGELOG.md](../CHANGELOG.md).
 
-- Semantic versions `MAJOR.MINOR.PATCH`, tag `vX.Y.Z` on `main`.
-- `0.x` until the v1.0 scope in `docs/PLAN.md` is met. Each milestone M2-M6 is a minor release (0.1 ... 0.5).
-- PATCH: bug fixes only, no protocol change. MINOR: features or protocol change. MAJOR: after 1.0, a protocol or
-  install change that breaks old installs.
-- Pre-releases for testing: `vX.Y.Z-beta.N`.
-- The network protocol has its own integer `PROTOCOL_VERSION`, bumped on any wire change. The join handshake compares
-  mod version, protocol version, game build id and DLC set; any mismatch refuses the join.
+## Visibility and versioning
+
+- Before 1.0, builds are developer/friend previews. GitHub releases stay **draft**, visible only to collaborators;
+  1.0 is the first public release. Nexus publishing is a later owner decision.
+- Tags use `vX.Y.Z` on `main`; prerelease tags may use `vX.Y.Z-beta.N`.
+- Use semantic versions going forward: patches for compatible fixes, minor versions for features or protocol changes,
+  major versions for breaking changes after 1.0. Existing 0.0.x previews predate that discipline; milestone IDs do not
+  prescribe version numbers.
+- Increment `PROTOCOL_VERSION` for wire changes. Both players need matching mod, protocol and game builds. DLC
+  compatibility is still a validation gap; the current handshake does not establish mixed-DLC support.
 
 ## Release gate
 
-A tag is cut only when all of these are true:
+Record the evidence for the candidate commit; implementation alone does not satisfy a gate.
 
-1. The full automated suite passes on `main`, including lag/loss scenarios once they exist (M7). Paste the summary into the release notes.
-2. Each new test has had its mutation check (the test failed when the feature was broken on purpose).
-3. A human playtest of the release's headline feature (from 0.2 on: a full run) by the owner and a friend.
-4. `CHANGELOG.md` updated.
-5. The game build id and exe SHA-256 still match `CLAUDE.md`. If Steam patched the game, no release until re-tested.
-6. Uses the two Steam accounts (ikeepcalm, Djecka) for the Steam join check from 0.5 on.
+1. Run the full configured regression suite on the merged candidate. Include the summary and explain any missing
+   coverage; the suite is the list in `tools/run-suite.ps1`, not every scenario in the repository.
+2. New gameplay checks have failing mutations. Core scenarios pass at 150 ms lag and 2% loss through the tunnel.
+3. Complete the human full-run playtest and two-account Steam join check. Historical passes do not validate a new build.
+4. Update the changelog; verify the game build/hash in [../CLAUDE.md](../CLAUDE.md) and the pinned UE4SS archive hash.
+5. Before 1.0, finish the two-hour soak, the firewalled crash-upload proof, and removal of test-only native registrations.
 
-## Artifact
+See [TESTING.md](TESTING.md) for commands and [TASKS.md](TASKS.md) for outstanding work.
 
-`PacificTogether-vX.Y.Z.zip`, unpacked into `<game dir>/PenDriverPro/Binaries/Win64/`:
+## Build the preview
 
-```
-ue4ss/Mods/PacificTogether/         Lua scripts, enabled.txt
-ue4ss/Mods/PacificTogetherNative/   dlls/main.dll, enabled.txt (own mod, so a Lua reload never unloads it)
-README.txt                          install, play, uninstall, known issues, where logs are
-```
+Build the native mod first, then run:
 
-- UE4SS itself is bundled (MIT, its `ue4ss/LICENSE` ships along): the pinned dev build the tests run on, minus its PDB and docs,
-  with its console windows off.
-- `tools/package/package.ps1` builds the zip into `dist/` (git-ignored) with `install.cmd` (finds the Steam install, checks
-  the exe hash, backs up `%LOCALAPPDATA%\PenDriverPro\Saved`, `-Join <ip>` for a guest, `-Uninstall`). Until 0.1.0 it is a
-  `-dev-<commit>` preview passed to friends by hand, not a GitHub release.
-- No game files, no debug test bots, no test-only scenarios.
-- `main.dll` still registers test-only natives (`PTNative_TestCrash`, `PTNative_TestAllowSentry`) when the environment
-  variable `PT_SCENARIO` is set; compile them out of release builds before 1.0.
-- `SHA256SUMS.txt` next to the zip.
-
-## Release notes template
-
-```
-## Pacific Together vX.Y.Z
-
-Game: Pacific Drive Steam build 21896301 (v1.15.0), exe SHA-256 568bb634...
-UE4SS: <version / commit>, SHA-256 <...>
-Protocol: <n>  (host and guest must run the same mod version)
-
-### New
-### Fixed
-### Known issues
-### Tests
-<suite summary pasted from the runner>
+```powershell
+tools\package\package.ps1
 ```
 
-## Changelog
+The script requires a clean `mod/` tree and the pinned UE4SS zip (override with `-UE4SSZip`). It produces
+`dist/PacificTogether-<version>-dev-<commit>.zip` and `dist/SHA256SUMS.txt`.
+It copies the existing native DLL; it does not prove that DLL was rebuilt from the current commit.
 
-`CHANGELOG.md` in Keep a Changelog style: an `Unreleased` section collects entries as PRs merge; the release moves
-them under the version heading.
+```text
+PacificTogether.exe                 launcher
+install.cmd / install.ps1           command-line installer
+README.txt / GUIDE.md / CHANGELOG.md player documentation
+game/                               payload installed into PenDriverPro/Binaries/Win64/
+  ue4ss/                            pinned UE4SS, settings and license
+    Mods/PacificTogether/           Lua scripts and version.txt
+    Mods/PacificTogetherNative/      dlls/main.dll
+```
 
-## Where releases go
+The package bundles UE4SS without debug symbols/docs and disables its console windows. No game files or test bots ship.
+Test-only native functions are currently gated at runtime by `PT_SCENARIO`; exclude them from public builds before 1.0.
 
-GitHub Releases on https://github.com/ikeepcalm/pacific-together (public, MIT). Before 1.0 there are no outside
-testers (D18): every 0.x and `-beta` build is a **draft** release, visible only to repo collaborators; the tag is
-pushed but the release is not published. 1.0 is the first published release. Nexus only after 1.0, when the owner decides.
+The installer verifies the game exe hash, backs up saves on the first install of each build and writes the chosen join
+address. Uninstall removes the entire `ue4ss` folder, including other UE4SS mods. Player instructions live in
+[../tools/package/GUIDE.md](../tools/package/GUIDE.md).
+
+## Release notes
+
+Include: mod/protocol version, supported game build and exe hash, UE4SS pin/hash, changes, known issues, test summary,
+human-playtest results and artifact checksum. Do not label a preview as a public release or turn unrun checks into passes.

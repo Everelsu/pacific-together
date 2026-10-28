@@ -1,5 +1,7 @@
 # M5 story lane: the guest experiences the host's story (G3, G4)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-21. Mod: `mod/PacificTogether/Scripts/story.lua`. Scenario: `storysync` (fixture `garage`, mutation `nostory`).
 Results (`local/test-results/`): `20261021-140644-story-storysync` 24/24; mutation `20261021-141128-story-storysync-nostory` 21/24
 (quest match, follow step, voice line fail); regressions `20261021-141614-story-worldsync` 27/27, `20261021-141916-story-session` 40/40.

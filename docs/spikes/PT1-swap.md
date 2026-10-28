@@ -1,5 +1,7 @@
 # PT1 swap: the guest works on the car (PLAN C5, C6, W1)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane pt1-swap, branch worktree-agent-a26480ef0085121cf. Code: `mod/PacificTogether/Scripts/guestswap.lua` (+ `"guestswap"` in FEATURES),
 scenario `guestswap` (`tools/run-test.ps1 -Scenario guestswap -Fixture gateway -Headless`, mutation `noswap`).
 

@@ -1,5 +1,7 @@
 # M6 overlay: version label, session status, event feed
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Lane `hud`. Module `mod/PacificTogether/Scripts/overlay.lua`, scenario `overlay` (mutation `nooverlay`).
 
 ## What it does

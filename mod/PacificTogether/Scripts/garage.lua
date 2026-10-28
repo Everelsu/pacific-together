@@ -144,7 +144,10 @@ local function applyUpgrades(data)
                         M.applying = false
                         local okNow, after = pcall(installed, s, im, sm)
                         for _, h in ipairs(okNow and after or {}) do if h == c then present = true end end
-                        if present then log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
+                        if present then
+                            log("PT|garage installed %s on %s", c:match("[^.]+$"), n)
+                            local okP, prog = pcall(require, "progression")
+                            if okP and prog.reapplyWb then prog.reapplyWb() end -- the install counted itself into the copied WB.GarageUpgrades tags
                         else
                             local k = (tr and tr.n or 0) + 1
                             tr = { n = k, at = os.clock() + 2 ^ k }

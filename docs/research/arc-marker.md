@@ -1,5 +1,7 @@
 # ARC map marker for the other player (D17, P8)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-19, lane E. How the in-world ARC map draws markers and whether a second player marker can be added.
 Sources: UE4SS dumps (`MinimapPlugin` UHT headers, `UMG_GobblerScreen`, `BP_GobblerMapview`, `BP_PlayerCarNew`),
 extracted Blueprints, scenario `tourist` (marker steps on both sides,

@@ -1,5 +1,7 @@
 # M4 player health (P4, D6)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Runs: `20261021-112325-player-playerhealth` 26/26, `-nohealth` `20261021-112120` 20/26 (fails as it must), `20261021-111217-player-nametag` 22/22, `20261021-111549-player-session` 40/40.
 
 ## Observations

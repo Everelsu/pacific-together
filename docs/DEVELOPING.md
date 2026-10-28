@@ -1,8 +1,11 @@
 # Developer setup
 
+Documentation-only edits need no game or native toolchain. Lua/gameplay testing needs the game, Git, Python and
+PowerShell; a matching prebuilt native DLL avoids the C++ toolchain. See the Lua-only path below.
+
 ## Prerequisites
 
-- Pacific Drive on Steam, build 21896301 (see `CLAUDE.md`), Steam running.
+- Pacific Drive on Steam, build 21896301 (hash in [../CLAUDE.md](../CLAUDE.md)), Steam running.
 - Visual Studio 2022 Build Tools with the C++ workload:
   `winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 - Rust: `winget install --id Rustlang.Rustup`, then `rustup default stable-msvc`.
@@ -17,11 +20,10 @@
 
 ### Lua-only setup (no C++ toolchain)
 
-Tasks that don't touch `native/` (most research, Lua features, tests, docs; see `docs/TASKS.md`) need only the game,
+Tasks that don't touch `native/` (Lua features and gameplay tests) need only the game,
 git, Python and PowerShell. Skip Visual Studio, Rust, the Epic link and the submodules: clone, then take `main.dll` from
-the newest dev preview zip (`game/ue4ss/Mods/PacificTogetherNative/dlls/main.dll`, older zips: `Mods/PacificTogether/dlls/`;
-ask the owner) into `mod/PacificTogetherNative/dlls/`, and continue at "Test copies and tests". If `native/` changed on main since that zip, ask
-for a newer one.
+a matching dev preview zip (`game/ue4ss/Mods/PacificTogetherNative/dlls/main.dll`) into `mod/PacificTogetherNative/dlls/`.
+Continue at "Test copies and tests". If native code changed since that zip, obtain a matching build.
 
 ## Clone and build
 
@@ -35,29 +37,23 @@ tools\build-native.cmd
 `native/RE-UE4SS` is pinned to the commit of the UE4SS build we run (8333063, release
 `UE4SS_v3.0.1-1181-g83330635`). Our DLL links against it and loads in that official release (spike X9).
 The build copies the DLL to `mod/PacificTogetherNative/dlls/main.dll`: its own UE4SS mod, so reloading the Lua mod
-(`tools/repl.ps1 -Reload`) never unloads it.
+never unloads it. Repeated Lua reloads can still crash; restart for validation.
 
 CLion: open `native/` as a CMake project, toolchain Visual Studio (amd64), generator Ninja,
 build type `Game__Shipping__Win64`, target `PacificTogetherNative`.
 
 ## Fast mod build in worktrees
 
-A git worktree normally needs the submodules and a full UE4SS build (10-15 min). Instead, with the main
-checkout's `native/build` already built, run from the worktree:
+With the main checkout's `native/build` already built, run from a worktree:
 
 ```
 powershell -File tools/build-mod-fast.ps1 [-Out <path/main.dll>] [-MainBuild <dir>]
 ```
 
-It takes the compile and link commands for `PacificTogetherNative` from the main build (via `ninja -t commands`),
-compiles this checkout's `native/PacificTogetherNative/*.cpp` into `native/build-fast/` (only changed files),
-links against the main build's UE4SS libraries and copies the result to `mod/PacificTogetherNative/dlls/main.dll`
-(or `-Out`). About 5 s when nothing changed, 15-25 s after a source change.
-
-Use it for edits to our own C++ files, including new .cpp files. It refuses (use `tools/build-native.cmd`)
-when the main build is missing, the `RE-UE4SS` pin differs from main's, or our `CMakeLists.txt` adds libraries,
-compile settings or include directories. It does not read the CMake source list: every `.cpp` in the folder is built,
-and a changed header rebuilds all of them. Rebuild the main build after UE4SS or compiler flag changes.
+This reuses the main build's compile/link commands and UE4SS libraries, compiles changed C++ files into
+`native/build-fast/`, and writes `mod/PacificTogetherNative/dlls/main.dll` (or `-Out`). Stop games using that DLL first.
+It builds every `.cpp` in the native mod folder; header changes rebuild all of them. Use the full build after UE4SS,
+compiler, library or CMake configuration changes, or if the fast script refuses the cached build.
 
 ## Test copies and tests
 
@@ -65,7 +61,7 @@ and a changed header rebuilds all of them. Rebuild the main build after UE4SS or
    `gh release download experimental-latest -R UE4SS-RE/RE-UE4SS -p "zDEV-UE4SS_v3.0.1-1181-g83330635.zip" -D local/cache/ue4ss`
    (the `experimental-latest` assets get replaced upstream; if the hash no longer matches, ask for the cached copy).
 2. `powershell -File tools/setup-test.ps1` makes `C:\PacificTogetherTest\client1` (full copy) and `client2` (hardlinks).
-3. `powershell -File tools/run-test.ps1 -Scenario boot`, see `docs/TESTING.md`.
+3. `powershell -File tools/run-test.ps1 -Scenario boot`, see [TESTING.md](TESTING.md).
 
 Game class dumps for reading: run `tools/run-test.ps1 -Scenario dump`, output in `local/dumps/`
 (open `UHTHeaderDump` in CLion).

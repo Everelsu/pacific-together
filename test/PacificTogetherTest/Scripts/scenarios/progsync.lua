@@ -10,6 +10,13 @@ return function(T)
     local ITEMS = "/Game/Gameplay/Inventory/Items/"
     local STEEL = ITEMS .. "Resources/Basic/RawSteel/IA_Resource_Raw_Scrap_Steel.IA_Resource_Raw_Scrap_Steel"
     local TAG = "WB.GarageUpgrades.PtTest"
+    -- a player upgrade (armour: less impact damage), as the equipment station adds it (owner 2026-10-24: backpack and armour stayed the guest's own)
+    local UPG = ITEMS .. "PlayerEquipment/Armor/IA_PlayerEquipment_Armor_Impact_T1.IA_PlayerEquipment_Armor_Impact_T1"
+    local function hasUpgrade()
+        local found = false
+        T.first("BP_MainCharacterManager_C").PlayerUpgradesUnlocked:ForEach(function(_, o) if o:get():GetFullName():find(UPG, 1, true) then found = true end end)
+        return found
+    end
     local function pm() return T.first("BP_ProgressionManager_C") end
     local function im() return T.first("BP_InventoryManager_C") end
 
@@ -99,6 +106,11 @@ return function(T)
                 T.log("PT|info host unlocked %s", pick:GetFullName())
             end
             sendGuest("t.tag", TAG)
+            local u = StaticFindObject(UPG)
+            if not (u and u:IsValid()) then pcall(LoadAsset, UPG); u = StaticFindObject(UPG) end
+            local m = T.first("BP_MainCharacterManager_C")
+            m["Add Player Upgrade"](m, u)
+            T.log("PT|info host player upgrade added=%s", tostring(hasUpgrade()))
         end })
         add({ check = "host_guest_got_change_ack", timeout = 60, cond = function() return has("t.changed") end })
         add({ check = "host_file_has_guest_items", timeout = 120, cond = function() return has("t.filled") and items(line()) == 10 end })
@@ -132,6 +144,7 @@ return function(T)
         pm().GlobalWhiteboard.Entries:ForEach(function(k, x) if k:get().TagName:ToString() == TAG then v = x:get() end end)
         return v == 7
     end })
+    add({ check = "guest_got_host_player_upgrade", timeout = 30, cond = hasUpgrade })
     add({ check = "guest_got_host_unlock", timeout = 30, cond = function()
         if not has("t.node") then return false end
         local found = false

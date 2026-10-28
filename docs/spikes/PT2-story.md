@@ -1,5 +1,7 @@
 # PT2 story lane: story progression for the guest (G3)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 2026-10-22, branch `worktree-agent-a207cf90d99e25d2d`. Mods: `story.lua`, `progression.lua` (one helper). Scenario `storyprog` (fixture `garage`,
 mutation `nostoryprog`). No cutscenes and no story props (owner: the story has none).
 Results (`local/test-results/`): `20261022-082957-pt2-story-storyprog` 26/26; mutation `20261022-082716-pt2-story-storyprog-nostoryprog` 22/26

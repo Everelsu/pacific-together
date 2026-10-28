@@ -5,16 +5,64 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
-### Fixed
-- Both games stuttered every second or two in a zone (the host's loot check alone took 200-300 ms, the guest froze for
-  half a second on joining). The mod now remembers what it looked up instead of searching again, checks far-away wreck
-  parts a few at a time, and spreads the big jobs (a guest's first copy of the zone's loot) over many frames. The host's
-  loot check now takes a few milliseconds.
-- A guest joining a zone could be thrown out and rejoin right away: the host sent the zone's loot before the guest's game
-  had finished loading. The host now waits until the guest asks for it.
+## [0.0.8] - 2026-10-25
+
+Network protocol **4**: both players need 0.0.8.
 
 ### Added
-- The guest sees the zone's buildings and props (houses, gas station, walls, doors, fences, crates) like the host.
+
+- Map transitions look like a co-op game's: the guest fades out with the host and sees the game's own loading screen from the
+  host's map load until both are in; the host's loading screen waits for the guest (60 s at most) so neither sees the world alone.
+  Notices: "Host is choosing a route", "Host is travelling", "Waiting for <name> to load".
+- "ARC <collected> / <required>" on the overlay in run maps: the device sits behind the seats in co-op, out of view.
+- The guest can use the car radio and the garage stereo through the host, and both hear the same track, started together
+  on every track change, join and map load. A custom track the other player does not have (matched by file name) is skipped.
+
+### Fixed
+
+- Weather and lighting follow the host on the guest: the guest's sky simulation never took the host's weather changes.
+- An anchor the guest pulls is taken on the host too (and one the host pulls disappears for the guest), so it can be
+  deposited only once.
+- The host no longer takes a 20-60 point hit each time the guest rejoins after a junction (the game seating the guest jolted
+  the car on the guest's side and that hit was forwarded to the host). Not reproduced in tests yet.
+
+### Known issues
+
+- Some anomalies are invisible to the guest: the noisy one that repairs the car, and the "tictac" (owner hand play 2026-10-24).
+- Radio position can drift within a track (the game has no seek); real custom-music files are untested.
+- Tutorial steps done by the guest alone do not advance the host.
+
+## [0.0.7] - 2026-10-24
+
+Network protocol **3**: both players need 0.0.7.
+
+### Added
+
+- Animated survivor bodies; seated legs hidden; Cyrillic name tags.
+- Guest Esc menu, loading/seat prompts and fades, and End/F8 control reset.
+- Only host Esc pauses both games; the guest sees "Paused by host".
+- Host player upgrades, garage-door locks/state, zone buildings/props, radiation, flat tyres, ARC structures,
+  broken plasma generators, portals and story pickups reach the guest.
+- Spark Towers, landmines, bollards and grabbers respond to guests far from the host.
+
+### Fixed
+
+- Join-buffer overflow: host traffic is paced and bulky messages wait for the guest's character.
+  A measured post-junction character delay fell from 48 s to about 1 s.
+- Guest seating, safe exit placement and restored walking/collision after junction travel; immediate seat correction
+  prevents a respawned guest from colliding with and tearing apart the car.
+- Car replication stays relevant when the host drives away, preventing a frozen guest car and unloaded exit area.
+- Key handling now runs on the game thread, avoiding concurrent Lua-state corruption and join-time crashes.
+- Cached/budgeted synchronization removes repeated zone stalls. Car state is sent at most twice a second;
+  measured host car-tick cost fell from 3.9 to 1.0 ms.
+- Corrected doubled guest garage-upgrade counts, repeated story lines, oversized Impact Hammer, persistent scrape
+  sound and a stale-object crash when a seated guest rejoins.
+
+### Known issues
+
+- Guest-picked anchors can remain on the host and be deposited twice.
+- Tutorial steps done by the guest alone do not advance the host.
+- Driver-door re-entry showed the driver's pose once in hand play; tests have not reproduced it.
 
 ## [0.0.6] - 2026-10-22
 

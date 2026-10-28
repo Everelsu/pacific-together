@@ -1,8 +1,5 @@
 -- PT1 car feel: what the host's car and the radios do is heard and seen by the guest too (messages g.feel.*).
---   radios (both ways, last writer wins): garage stereo on/off, car radio on/off, radio volume, station skips, and the
---     playlist order (the game shuffles it per process, so the host's order is copied to the guest and a skip is the same
---     track on both sides). Polled every 200 ms against the last value sent or received; a received value is applied
---     and remembered, so it is never echoed back.
+--   radios: moved to radio.lua (PT6, host authoritative).
 --   car (host -> guest): the guest's replicated car has its vehicle controller off, so its audio and speedometer read zeros.
 --     The host sends throttle, normalised speed (the engine's veh_speed RTPC input), signed speed, the speedometer needle,
 --     horn and wipers; the guest writes them after each tick of its AC_CarAudio and speedometer (post-hooks), starts and
@@ -21,9 +18,7 @@ if os.getenv("PT_MUTATE") == "nofeel" then
 end
 
 local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) end
-local function first(class)
-    for _, o in ipairs(FindAllOf(class) or {}) do if valid(o) then return o end end
-end
+local first = common.first
 local function now()
     local s, p = {}, {}
     UEHelpers.GetGameplayStatics():GetAccurateRealTime(s, p)
@@ -38,136 +33,15 @@ local function carCar()
     local ok, car = pcall(require, "car")
     return ok and type(car) == "table" and car.theCar and car.theCar(mode() == "listen") or nil
 end
--- the car's audio component and speedometer, looked up again only when the cached one is gone or 3 s old: every 100 ms on both
--- sides this was two FindAllOf scans a tick (part of carfeel's 1-2.6 s a minute, rendered profile 2026-10-24)
-local owned = {} -- class -> { o, car, at }
+local ownedCache = {} -- class -> { car address, object }: the lookup walked every AC_CarAudio_C twice a tick
+RegisterLoadMapPreHook(function() ownedCache = {} end)
 local function ownedBy(class, car)
-    local c = owned[class]
-    if c and valid(c.o) and c.car == car:GetAddress() and os.clock() - c.at < 3 then return c.o end
+    local c = ownedCache[class]
+    if c and c[1] == car:GetAddress() and valid(c[2]) then return c[2] end
     for _, o in ipairs(FindAllOf(class) or {}) do
         if valid(o) then
             local own = class == "AC_CarAudio_C" and o:GetOwner() or o:GetAttachParentActor()
-            if valid(own) and own:GetFullName() == car:GetFullName() then
-                owned[class] = { o = o, car = car:GetAddress(), at = os.clock() }
-                return o
-            end
-        end
-    end
-    owned[class] = nil
-end
-
--- radios ---------------------------------------------------------------------------------------------------------------
-
-local last = {}
-local function radioState()
-    local mm, cm = first("BP_MusicManager_C"), first("BP_CarManager_C")
-    if not mm or not cm then return end
-    return { gs = mm.GarageStereoOn and 1 or 0, cr = cm.CarState_RadioOnOff and 1 or 0, vol = math.floor(mm.MusicVolume * 100 + 0.5) }, mm, cm
-end
-local function pack(t)
-    local r = {}
-    for k, v in pairs(t) do r[#r + 1] = k .. "=" .. v end
-    table.sort(r)
-    return table.concat(r, ";")
-end
-local function applyRadio(k, v, mm, cm)
-    if k == "gs" then
-        mm:SetGarageStereoOn(v == 1)
-        local st = first("BP_Garage_Stereo_01_C")
-        if st then
-            pcall(function() if v == 1 then st:TurnStereoVisualsOn(true) else st:TurnStereoVisualsOff(true) end end)
-            pcall(function() st:UpdateIcon() end)
-        end
-    elseif k == "cr" then cm:SetCarRadioOnOffState(v == 1, true)
-    elseif k == "vol" then mm:SetRadioVolume(v / 100) end
-end
-net.on("g.feel.r", function(_, data)
-    local s, mm, cm = radioState()
-    if not s then return end
-    for k, v in data:gmatch("(%w+)=(%-?%d+)") do
-        v = tonumber(v)
-        if s[k] ~= v then
-            local ok, err = pcall(applyRadio, k, v, mm, cm)
-            if not ok then log("PT|error feel radio %s %s", k, tostring(err)) end
-            log("PT|feel radio %s=%d applied", k, v)
-        end
-    end
-    s = radioState()
-    for k in data:gmatch("(%w+)=") do last[k] = s[k] end
-end)
-
-local function playlistNames(mm)
-    local r = {}
-    mm.RadioPlaylist:ForEach(function(_, e) r[#r + 1] = e:get():GetFName():ToString() end)
-    return r
-end
-local plSent, plAt, plRead = nil, 0, -10
-net.on("g.feel.pl", function(_, data)
-    if mode() ~= "client" then return end
-    local mm = first("BP_MusicManager_C")
-    if not mm then return end
-    local byName = {}
-    mm.RadioPlaylist:ForEach(function(_, e) local o = e:get(); byName[o:GetFName():ToString()] = o end)
-    local i = 0
-    for name in data:gmatch("[^,]+") do
-        local o = byName[name]
-        i = i + 1
-        if o and i <= mm.RadioPlaylist:GetArrayNum() then mm.RadioPlaylist[i] = o end
-    end
-    log("PT|feel playlist %d entries, first %s", i, playlistNames(mm)[1] or "?")
-end)
-net.on("g.feel.k", function(_, data)
-    local mm = first("BP_MusicManager_C")
-    if not mm then return end
-    pcall(function() mm:SkipTrack(tonumber(data) or 1) end)
-    log("PT|feel skip %s applied", data)
-end)
-
-local hookedRadio = false
-local function hookRadio()
-    if hookedRadio then return end
-    local ok, err = pcall(RegisterHook, "/Game/Gameplay/Inventory/GenericItemProperties/Components/BP_RadioComponent.BP_RadioComponent_C:ChangeChannel", function(_, dir)
-        local okc, e = pcall(function()
-            if not active() then return end
-            local d = dir:get()
-            send("g.feel.k", tostring(d))
-            log("PT|feel skip %d sent", d)
-        end)
-        if not okc then log("PT|error feel skip hook %s", tostring(e)) end
-    end)
-    if ok then hookedRadio = true else log("PT|error feel hook ChangeChannel %s", tostring(err)) end
-end
-
-local lastGuests = 0
-local function radioTick()
-    hookRadio()
-    local s, mm = radioState()
-    if not s then return end
-    local host = mode() == "listen"
-    local n = host and #net.guests() or 0
-    local changed = {}
-    if host and n > lastGuests then -- a guest arrived: it gets everything
-        changed, plSent = s, nil
-        for k, v in pairs(s) do last[k] = v end
-    else
-        for k, v in pairs(s) do
-            if last[k] == nil then last[k] = v
-            elseif last[k] ~= v then changed[k] = v; last[k] = v end
-        end
-    end
-    lastGuests = n
-    if next(changed) then
-        send("g.feel.r", pack(changed))
-        log("PT|feel radio sent %s", pack(changed))
-    end
-    if host and now() - plRead > 2 then -- 61 names read every 200 ms before
-        plRead = now()
-        local names = playlistNames(mm)
-        local fp = #names .. ":" .. table.concat(names, ",", 1, math.min(3, #names))
-        -- a track that fails to start reshuffles the list every tick (headless, no sound): at most one message a second
-        if fp ~= plSent and now() - plAt > 1 then
-            plSent, plAt = fp, now()
-            send("g.feel.pl", table.concat(names, ","))
+            if valid(own) and own:GetFullName() == car:GetFullName() then ownedCache[class] = { car:GetAddress(), o }; return o end
         end
     end
 end
@@ -277,7 +151,15 @@ LoopInGameThreadWithDelay(100, function()
     role = mode()
     local ok, err = pcall(function()
         if active() then hookAudio() else unhookAudio() end
-        if role == "client" then refreshGuest() elseif role == "listen" then hostCarTick() end
+        if role == "client" then
+            refreshGuest()
+            -- the posed car copy hits the ground and the game spawns its metal scrape sound actor; the host hears the real hits
+            if os.getenv("PT_MUTATE") ~= "noscrapedrop" then
+                -- polled on the game thread: a NotifyOnNewObject callback ran Lua off it and corrupted the Lua state (guest crash in
+                -- luaH_next on getting out of the car, garage play 2026-10-24)
+                for _, a in ipairs(FindAllOf("BP_CarScrapeFX_C") or {}) do if valid(a) then a:K2_DestroyActor() end end
+            end
+        elseif role == "listen" then hostCarTick() end
     end)
     if not ok then log("PT|error feel car tick %s", tostring(err)) end
 end)
@@ -291,8 +173,6 @@ LoopInGameThreadWithDelay(16, function()
     end
 end)
 LoopInGameThreadWithDelay(200, function()
-    if mode() == "standalone" or mode() == "none" then last, plSent, lastGuests, feel, hornApplied = {}, nil, 0, nil, nil; return end
-    local ok, err = pcall(radioTick)
-    if not ok then log("PT|error feel radio tick %s", tostring(err)) end
+    if mode() == "standalone" or mode() == "none" then feel, hornApplied = nil, nil end
 end)
 return M

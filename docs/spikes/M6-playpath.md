@@ -1,5 +1,7 @@
 # M6 playpath: the guest with real input (lane `input`, 2026-10-21)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Every feature so far was proven by scenarios that call the game's functions. This lane drives the same features the way a
 player does: the guest walks (`Command Move Forward/Backward` every frame), aims (`SetControlRotation`, then waits until the
 game's `BP_HighlightManager` has the target), presses interact (`Command Interact` held for the highlight's own duration), uses

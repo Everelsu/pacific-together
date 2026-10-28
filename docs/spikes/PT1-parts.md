@@ -1,5 +1,7 @@
 # PT1 parts: the guest repairs and breaks car parts
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Code: `mod/PacificTogether/Scripts/guestparts.lua` (new), small edits in `guestact.lua` (paste heal, `M.slotOf`), `loot.lua` (`M.idOf`, `M.actorOf`),
 `main.lua` (FEATURES). Scenario `guestparts` (`-Fixture gateway`), mutation `noguestparts`. Results (local/test-results): `20261021-231040-pt1-parts-guestparts` 33/33,
 mutation `20261021-231404-pt1-parts-guestparts-noguestparts` 26/33 (7 fail). First run on the code before the lane's fixes was not kept; the mutation shows the playtest behaviour.

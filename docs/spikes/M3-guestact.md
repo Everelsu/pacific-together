@@ -1,5 +1,7 @@
 # M3 guest actions (C5, W11, D13, D22)
 
+> Historical research; see the [index](README.md) for current implementation and later evidence.
+
 Code: `mod/PacificTogether/Scripts/guestact.lua` (uses car.lua's exports). Scenario: `guestact` (`tools/run-test.ps1 -Scenario guestact -Fixture gateway -Headless`,
 mutation `noguestact`). Results: `20261021-130017-act-guestact` 31/31, `20261021-133607-act-guestact` 31/31 (after throttling), mutation
 `20261021-130524-act-guestact-noguestact` 24/31 (7 host/ARC checks fail).

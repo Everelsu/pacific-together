@@ -12,7 +12,7 @@ local safety = require("safety")
 local log = common.log
 local ov = require("overlay")
 
-local M = { enabled = os.getenv("PT_MUTATE") ~= "noworldsync" } -- the test mutation switches the module off
+local M = { enabled = os.getenv("PT_MUTATE") ~= "noworldsync", mutate = os.getenv("PT_MUTATE") } -- the test mutation switches the module off
 
 local function first(c) for _, o in ipairs(FindAllOf(c) or {}) do if o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) then return o end end end
 local function live(o) return o:IsValid() and not o:HasAnyInternalFlags(EInternalObjectFlags.PendingKill) and not o:GetFullName():find("/Engine/Transient", 1, true) end
@@ -31,6 +31,11 @@ local REPLICATED = { "BP_Base_Hazard_C", "BP_ZoneStorm_Base_C", "BP_LevelTransit
 local OV = { "Priority_2_E0B18C1F4F7065861D754CBC1717C0F4", "RainAmount_6_1DF01C624F8A4DABBCF2D9B45FEE5251", "FogAmount_7_DF39641648DD1C067F04379E79B4AC5F",
     "WindAmount_11_AA5396694831838AD8399192FA714B4C", "DarknessAmount_12_C1E6970E406443EC371A029B6E403FA3", "ZoneStormAmount_29_0E19DE884D969BB97E764EBE017A5607",
     "AcidAmount_31_1713ABA54AE616BBBC74EEB59EFF6CF2", "Identifier_26_37794E45404F7D45933471B6A50F260C", "OverrideSpeedMult_34_B5D9F9C34E787BDD5826CA97FDFF7EFA" }
+local PROP = "BP_Resource_Narrative_Q01_RadioBitsGrabbable_C" -- story.lua replicates it
+-- names of the host's portals and story props: the guest's level-placed copy of one is what the host's channel binds to
+-- (destroyed, the bunch fails: "SerializeNewActor failed to find/spawn actor")
+local keep = {}
+RegisterLoadMapPostHook(function() keep = {} end) -- placed names repeat across maps (BP_LevelTransition_ExitPortal_C_1)
 local ID = 8
 local INSTAB = { TagName = FName("WB.WorldState.Instability.Current") }
 
@@ -87,6 +92,9 @@ local function snapshot()
         add("storm", table.concat({ sm.CurrentStormState, tostring(sm.RedWallActive), f(sm.TimeBeforeInstabilityStarts), f(sm.FinalInstabilityTollerance), f(sm.StormAudioVisualIntensity) }, "|"))
         add("gate", short(sm.EvolvedGatewayExit))
     end
+    local names = {}
+    for _, c in ipairs({ "BP_LevelTransition_ExitPortal_C", PROP }) do each(c, function(o) names[#names + 1] = short(o) end) end
+    add("keep", table.concat(names, ","))
     local st = firstLive("BP_ZoneStorm_Base_C")
     if st then add("wall", table.concat({ f(st.Vol_Rad_Main), f(st.Vol_Rad_Weak), tostring(st.Collapsed) }, "|")) end
     return table.concat(L, "\n")
@@ -127,6 +135,16 @@ local function applyTime(s)
         if not (cur and cur:IsValid() and cur:GetFullName():gsub("^%S+ ", "") == s.preset) then
             local c = StaticFindObject(s.preset)
             if c and c:IsValid() then tod["Set New TOD Target"](tod, c) end
+        end
+    end
+    -- the guest's manager lost its sim actor and the sim never heard of preset changes (hand play 2026-10-24: host in rain, guest dry):
+    -- relink, and feed the sim the manager's target preset when it still runs another one
+    if M.mutate ~= "nosimlink" then
+        local sim = first("ToD_Simulation_C")
+        if sim and not (tod.ToDSimulationActor and tod.ToDSimulationActor:IsValid()) then tod:SetupToDSimulationActor() end
+        local want = tod["Target TOD Preset"]
+        if sim and want and want:IsValid() and sim.CurrentPresetObject:IsValid() and sim.CurrentPresetObject:GetClass():GetFullName() ~= want:GetFullName() then
+            sim:WeatherChangeEvent(want)
         end
     end
     -- overrides by identifier: add or replace the host's, remove the rest
@@ -182,9 +200,12 @@ end
 
 -- anything this process simulated on its own: after the host's state has been flowing for a few seconds, only replicated copies (Role 1) stay
 local function cleanGuest()
+    -- the test mutation: the old behaviour, own story pickups destroyed at once
+    if os.getenv("PT_MUTATE") == "noportals" then each(PROP, function(o) if o.Role ~= 1 then o:K2_DestroyActor() end end) end
     if os.clock() - lastState > 5 or os.clock() - (M.since or os.clock()) < 5 then return end
-    for _, class in ipairs(REPLICATED) do
+    for _, class in ipairs({ "BP_Base_Hazard_C", "BP_ZoneStorm_Base_C", "BP_LevelTransition_ExitPortal_C", PROP }) do
         each(class, function(o)
+            if (class == PROP or class == "BP_LevelTransition_ExitPortal_C") and keep[short(o)] then return end
             if o.Role == 1 then
                 -- the host's copy decides where it is: the guest's own motion code stays off (position updates: g.world.pos)
                 if class == "BP_Base_Hazard_C" and not (WI:IsValid() and o:IsA(WI)) then o:SetActorTickEnabled(false) end
@@ -203,6 +224,7 @@ net.on("g.world.state", function(_, data)
     M.since = M.since or os.clock()
     lastState = os.clock()
     local s = parse(data)
+    if s.keep and os.getenv("PT_MUTATE") ~= "noportals" then keep = {} for n in s.keep:gmatch("[^,]+") do keep[n] = true end end
     try("time", applyTime, s)
     try("storm", applyStorm, s)
 end)
@@ -224,13 +246,23 @@ local function core(o)
 end
 local function moved(a, b) return math.abs(a.X - b.X) + math.abs(a.Y - b.Y) + math.abs(a.Z - b.Z) > 20 end
 local sent, beat = {}, 0
+-- host: the hazard list is refetched every 5 s (and on a map load), the 4 Hz position pass only checks the kept objects
+local hazards, hazardsAt = {}, -99
+RegisterLoadMapPreHook(function() hazardsAt = -99 end)
+local function eachHazard(fn)
+    if os.clock() - hazardsAt > 5 then
+        hazards, hazardsAt = {}, os.clock()
+        each("BP_Base_Hazard_C", function(o) hazards[#hazards + 1] = o end)
+    end
+    for _, o in ipairs(hazards) do if o:IsValid() then fn(o) end end
+end
 LoopInGameThreadWithDelay(250, function()
     if not M.enabled or not safety.active() or safety.guest() then return end
     beat = beat + 1
     if beat % 8 == 0 then sent = {} end -- everything again every 2 s (a late guest, a copy that drifted)
     try("pos", function()
         local L = {}
-        each("BP_Base_Hazard_C", function(o)
+        eachHazard(function(o)
             if WI:IsValid() and o:IsA(WI) then return end
             local n, l = o:GetFName():ToString(), o:K2_GetActorLocation()
             local c = core(o)
@@ -266,6 +298,37 @@ net.on("g.world.pos", function(_, data)
             if c then c:K2_SetWorldLocation(l.c, false, {}, true) end
         end)
     end)
+end)
+
+-- Smooth hazards on the guest (pt3-anom, "the grabber moves very per frame"): a replicated hazard's position arrives 4 to 10 times a second and the
+-- engine snaps the copy to it. Every frame the guest notices that the engine (or g.world.pos above) moved a copy, takes that spot as the target and
+-- shows the copy gliding there from where it was shown, over the time the last two updates were apart. A jump over 1500 uu (teleport) is not glided.
+-- Mutation nosmooth switches it off.
+local smooth, hz, scanned = {}, {}, 0
+RegisterLoadMapPostHook(function() smooth, hz, scanned = {}, {}, 0 end) -- keyed by address: freed ones come back as other objects
+local function dist(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2) end
+LoopInGameThreadWithDelay(16, function()
+    if not M.enabled or os.getenv("PT_MUTATE") == "nosmooth" or not safety.guest() then return end
+    local now = os.clock()
+    if now - scanned > 1 then
+        scanned, hz = now, {}
+        each("BP_Base_Hazard_C", function(o) if o.Role == 1 and not (WI:IsValid() and o:IsA(WI)) then hz[#hz + 1] = o end end)
+    end
+    for _, o in ipairs(hz) do
+        pcall(function()
+            if not live(o) then return end
+            local key, cur = o:GetAddress(), o:K2_GetActorLocation()
+            local s = smooth[key]
+            if not s then smooth[key] = { shown = cur, from = cur, to = cur, t0 = now, len = 0.25 } return end
+            if dist(cur, s.shown) > 1 then -- someone moved it: a new update
+                if dist(cur, s.shown) > 1500 then s.shown, s.from, s.to, s.t0 = cur, cur, cur, now
+                else s.from, s.to, s.len, s.t0 = s.shown, cur, math.max(0.08, math.min(0.5, now - s.t0)), now end
+            end
+            local k = math.min(1, (now - s.t0) / s.len)
+            s.shown = { X = s.from.X + (s.to.X - s.from.X) * k, Y = s.from.Y + (s.to.Y - s.from.Y) * k, Z = s.from.Z + (s.to.Z - s.from.Z) * k }
+            if dist(s.shown, cur) > 0.5 then o:K2_SetActorLocation(s.shown, false, {}, true) end
+        end)
+    end
 end)
 
 M.snapshot = snapshot
