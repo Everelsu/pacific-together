@@ -143,6 +143,83 @@ function M.apply(container, want)
     end
 end
 
+-- Where the items lie. A container with a tile layout (garage storage, lockers, trunks: ItemTileLayout, e.g. CL_Garage_V1 8x11)
+-- is a grid: each stack is an ItemTileSlot at a cell (Location X,Y) and maybe turned (bRotated); slots come and go with their items,
+-- so their order says nothing. "@x.y.r=spec*n+spec*n,..." per stack. The bag above (spec*count) let each side put items wherever
+-- they fitted: the host's and the guest's storage looked different (owner's screenshot, 2026-10-28), and a move inside a container
+-- did not count as a change at all. Containers without a tile layout keep the bag.
+local function tiles(container) return container.Layout:IsValid() and container.Layout:IsA(StaticFindObject("/Script/PenDriverInventory.ItemTileLayout")) end
+local function slotKey(s)
+    local items, have = {}, {}
+    s:GetItems(items)
+    for _, it in ipairs(items) do
+        local inst = it:get()
+        local p = path(inst.Archetype)
+        archs[p] = inst.Archetype
+        local k = spec(inst, p)
+        have[k] = (have[k] or 0) + 1
+    end
+    local keys = {}
+    for k, n in pairs(have) do keys[#keys + 1] = k .. "*" .. n end
+    table.sort(keys)
+    return table.concat(keys, "+"), items
+end
+function M.layout(container)
+    if not tiles(container) then return M.encode(M.count(container)) end
+    local r = {}
+    for i = 0, container:GetNumSlots() - 1 do
+        local s = container:GetSlot(i)
+        if s:IsValid() and s:GetNumItems() > 0 then
+            local l = s.Location
+            r[#r + 1] = string.format("%d.%d.%d=%s", l.X, l.Y, s.bRotated and 1 or 0, (slotKey(s)))
+        end
+    end
+    table.sort(r)
+    return "@" .. table.concat(r, ",")
+end
+
+-- make the container hold the other side's stacks at the same cells. When anything differs it is laid out again: the items are taken
+-- out and put back with the layout's own EmplaceSlot (instances of the same archetype are used again, their state set; new ones are
+-- created). A stack that does not fit its cell goes anywhere, as before.
+function M.applyLayout(container, body)
+    if not tiles(container) then return M.apply(container, M.decode(body:sub(2))) end
+    if M.layout(container) == body then return end
+    local pool = {} -- archetype path -> instances taken out
+    local all = {}
+    container:GetAllItems(all)
+    for _, it in ipairs(all) do
+        local inst = it:get()
+        local p = path(inst.Archetype)
+        pool[p] = pool[p] or {}
+        table.insert(pool[p], inst)
+    end
+    container:RemoveAllItems()
+    local L = container.Layout
+    for x, y, r, entry in body:sub(2):gmatch("(%d+)%.(%d+)%.(%d)=([^,]+)") do
+        local slot
+        for k, c in entry:gmatch("([^+*]+)%*(%d+)") do
+            local p = k:match("^[^:]+")
+            for _ = 1, tonumber(c) do
+                local inst = pool[p] and table.remove(pool[p])
+                if not inst then
+                    local a = archetype(p)
+                    inst = a and lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+                end
+                if inst then
+                    setProps(inst, p, k)
+                    local placed = false
+                    if slot and slot:IsValid() then placed = slot:AddItem(inst) end
+                    if not placed then
+                        local ok, s = pcall(function() return L:EmplaceSlot(container, inst, { X = tonumber(x), Y = tonumber(y) }, r == "1", true) end)
+                        if ok and s and s:IsValid() then slot, placed = s, true end
+                    end
+                    if not placed then container:AddItem(inst, true) end
+                end
+            end
+        end
+    end
+end
+
 function M.path2(o) return o:GetFullName():match("^%S+ (.+)$") end
 M.path, M.archetype, M.system, M.bfl = path, archetype, system, bfl
 function M.spec(it) return spec(it, path(it.Archetype)) end -- "path:d12:f7.5" of one item instance

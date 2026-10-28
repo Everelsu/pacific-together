@@ -99,10 +99,20 @@ local function flagsOf(e)
     return (a.RolledOnOpenItems and 1 or 0) + (a.DataBlock_WasOpened and 2 or 0) + (a.Empty and 4 or 0)
 end
 
+local LAYOUT = os.getenv("PT_MUTATE") ~= "nolayout" -- slot by slot (ids.layout) instead of a bag of items
 local function stateOf(e)
     local c = e.get()
     if not alive(c) then return nil end
-    return (flagsOf(e) or "-") .. ";" .. ids.encode(ids.count(c))
+    return (flagsOf(e) or "-") .. ";" .. (LAYOUT and ids.layout(c) or ids.encode(ids.count(c)))
+end
+-- a move inside a container (same items, other slots) changes no count: the container's own slot events mark it for the next scan
+-- (PDCoopNet's events.lua hooks the same two). Our own apply fires them too; its state then equals e.last and nothing is sent.
+local dirty = {} -- container address -> true
+for _, fn in ipairs({ "HandleSlotItemAdded", "HandleSlotItemRemoved" }) do
+    local ok, err = pcall(RegisterHook, "/Script/PenDriverInventory.ItemContainer:" .. fn, function(self)
+        pcall(function() dirty[self:get():GetAddress()] = true end)
+    end)
+    if not ok then log("PT|error loot hook %s %s", fn, tostring(err)) end
 end
 
 -- opened and emptied look: the game's own visual switches
@@ -175,7 +185,7 @@ local function applyState(e, s)
     if not alive(c) then e.pending = s; return end
     e.pending = nil
     local flags, body = s:match("^(.);(.*)$")
-    ids.apply(c, ids.decode(body))
+    if body:sub(1, 1) == "@" then ids.applyLayout(c, body) else ids.apply(c, ids.decode(body)) end
     if e.kind == "L" and flags ~= "-" then applyFlags(e.actor, tonumber(flags)) end
     e.last, e.n, e.rolled = stateOf(e), c:GetNumItems(), flagsOf(e)
 end
@@ -609,7 +619,8 @@ local function scanChanges()
             end
         elseif alive(c) then
             local r = flagsOf(e)
-            if c:GetNumItems() ~= e.n or r ~= e.rolled then
+            if c:GetNumItems() ~= e.n or r ~= e.rolled or dirty[c:GetAddress()] then
+                dirty[c:GetAddress()] = nil
                 e.n, e.rolled = c:GetNumItems(), r
                 local s = stateOf(e)
                 if s and s ~= e.last then
@@ -620,6 +631,7 @@ local function scanChanges()
             end
         end
     end
+    dirty = {} -- containers nobody tracks (the player's own hands, crafting) are not kept
 end
 
 -- overlay: what the other player took from or put into a container

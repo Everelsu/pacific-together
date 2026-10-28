@@ -702,3 +702,29 @@ Observations (headless, D:\PTLanes\a)
 
 Unknowns
 - E also interacts in the world; during the opening nothing else answers E (not checked in a rendered game).
+
+## 2026-10-28: passenger door in/out, storage layout (not committed yet)
+
+Observations (headless, D:\PTLanes\a)
+- The guest's E on the passenger door only fired its highlight events 2/0 and AttemptOpen (door opens, nobody gets in); the game
+  enters only through the driver's door. car.lua: AttemptOpen on SLOT_FrontRightDoor from the guest (not riding) now sends the
+  enter intent. The body glides (car-local points) from where it stands past the nearest front-door EntranceLogicPoint onto the
+  seat (0.8 + 1.1 s) on both sides; out, the spot is the game's LocateSafeExitPoint mirrored to the passenger side (ground trace,
+  driver's spot as fallback), the host moves only the mesh there, the guest its own pawn. `carseat` 28/28 (largest step 15 uu in,
+  29 out); noglide 131/163 uu (fails), driverexit and nopassdoor fail their checks. carsit 25/25, carexit 29/29, carcrash 21/21,
+  carsync 36/36 (one run 32/36: the guest's car never settled after the drive, not seen again).
+- desync.lua's repair turned walking and collision back on mid-glide (carsync: the guest 87 m away glided through the car, hit by
+  Physical_Impact, seated 106 uu off): desync now skips gliding bodies; a guest more than 6 m away is seated at once.
+- Garage storage is an ItemTileLayout grid (CL_Garage_V1 8x11): each stack is an ItemTileSlot at Location X,Y (+bRotated), slots
+  come and go with their items. SetNumSlots/AddSlot do nothing. The state was a bag, so each side placed items anywhere and a move
+  inside a container sent nothing. Now "@x.y.r=spec*n+..." per stack; on a difference the receiver empties the container and
+  places every stack with the layout's EmplaceSlot (ignoring collision; instances reused); ItemContainer HandleSlotItemAdded/Removed
+  mark a container for the next scan. `storagelayout` (owner's long save, the Starter locker, slots swapped on each side) 21/21
+  three times; mutation `nolayout` 18/21.
+- Double doors (BP_Door_Double_*) are children of BP_Door_Single: the placed ones are in visual.lua's door list already.
+
+Unknowns
+- storagelayout failed once of four: right after the join both sides sent the locker without a move and kept overriding each
+  other. Guess: the guest's own garage station installs (garage.lua, same seconds) touch its containers. Not reproduced since.
+- On the guest, applying the host's Expansion container (4165 items, a bag) took 2.3 s in one frame.
+- What exactly breaks double doors in play is not known yet (not looked at live).
