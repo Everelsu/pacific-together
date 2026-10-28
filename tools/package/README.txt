@@ -11,7 +11,7 @@ What works in this build
 - Shared containers, pickups, wreck scrap, garage storage, weather, storms, gateways and many anomalies.
 - Both players have visible animated bodies, held items, name tags, health, map/HUD markers and middle-mouse pings.
 - Guest damage, radiation and death: respawn at the car with items dropped in a recoverable crate.
-  The host keeps the guest backpack per save slot (SteamID for Steam joins; login name for direct IP).
+  The host keeps the guest backpack per save slot (SteamID for Steam joins; player_id.txt for direct IP).
 - Shared run travel and failure; host missions, radio dialogue, research and upgrades reach the guest.
   The guest can fabricate, research, buy garage upgrades, shred parts and cure diagnosed car quirks.
 - Zone props, car paint, flat tyres, radio, lights and supported car-upgrade effects are mirrored.
@@ -23,8 +23,8 @@ Not done yet (expect oddities)
 - Guest-only tutorial steps do not advance the host. Guest re-entry once showed the driver's pose in hand play.
 - Driving, route planning, Detailing and quirk hints remain host-only. Chrono Dilator is disabled in co-op.
 - Mixed DLC ownership, Expeditions, remaining anomalies and a full long-session regression need further validation.
-- Direct-IP login names can change between launches, so backpack recovery across launches is reliable only with
-  a stable identity. Steam uses the SteamID.
+- Direct IP works without Steam networking; keep the guest's ue4ss\Mods\PacificTogether\player_id.txt to keep
+  their backpack on the host.
 - Some older edge cases still need retesting: item tints/upgrades and death-crate layout, gas pump handles and
   lockboxes, guest prop/tool cure effects, and visual/audio polish. Automated passes are not proof of every hand-play path.
 
@@ -36,7 +36,7 @@ Install and start
    Load a save on the host; the guest connects from the main menu. Direct IP uses UDP 7777.
 
 Command line: install.cmd (host/Steam), install.cmd -Join <host IP>, or install.cmd -Uninstall.
-The launcher is not code-signed. Starting the game through Steam after installation uses the saved join setting.
+The launcher is not code-signed. Install & play starts PenDriverPro\Binaries\Win64\PenDriverPro-Win64-Shipping.exe directly (Steam only needs to be running); starting it through Steam works too and uses the same saved join setting.
 See GUIDE.md for connection troubleshooting, backups and bug reports; CHANGELOG.md for version history.
 
 Uninstall and restore

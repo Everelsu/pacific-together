@@ -148,7 +148,6 @@ class DocView : RichTextBox
 
 class App : Form
 {
-    const string AppId = "1458140";
     readonly string baseDir = AppDomain.CurrentDomain.BaseDirectory;
     readonly string settingsFile = Path.Combine(Environment.GetEnvironmentVariable("APPDATA") ?? "", @"PacificTogether\launcher.txt");  // line 1 folder, 2 IP, 3 host|join
     TextBox folder, ip, output;
@@ -367,7 +366,7 @@ class App : Form
                 SetBusy(false); Refresh2();
                 if (code != 0) { Fail("The installer stopped. Read its message in the box below."); return; }
                 Log(doneOk);
-                if (launch) { try { Process.Start("steam://rungameid/" + AppId); Log("Starting Pacific Drive through Steam."); } catch (Exception ex) { Fail("Could not start Steam: " + ex.Message); } }
+                if (launch) { try { Process.Start(new ProcessStartInfo(Path.Combine(Bin, "PenDriverPro-Win64-Shipping.exe")) { WorkingDirectory = Bin }); Log("Starting Pacific Drive."); } catch (Exception ex) { Fail("Could not start the game: " + ex.Message); } }
             }));
         });
     }

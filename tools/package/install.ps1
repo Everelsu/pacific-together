@@ -34,6 +34,7 @@ Write-Host "Game: $GameDir"
 
 if ($Uninstall) {
     Remove-Item (Join-Path $bin "dwmapi.dll") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $bin "steam_appid.txt") -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $bin "ue4ss") -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "Removed. Your saves were not touched."
     exit 0
@@ -57,6 +58,8 @@ if ($installed -ne (Get-Content (Join-Path $PSScriptRoot "game\$stamp"))) {
     Remove-Item (Join-Path $bin "ue4ss\Mods\PacificTogether\dlls") -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item (Join-Path $PSScriptRoot "game\*") $bin -Recurse -Force
 }
+# lets the exe start directly (launcher, shortcut) instead of restarting itself through Steam, as in the test copies
+[IO.File]::WriteAllText((Join-Path $bin "steam_appid.txt"), "1458140")
 $joinFile = Join-Path $bin "ue4ss\Mods\PacificTogether\join.txt"
 if ($Join) {
     [IO.File]::WriteAllText($joinFile, $Join)

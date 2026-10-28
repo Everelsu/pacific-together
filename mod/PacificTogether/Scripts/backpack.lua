@@ -178,12 +178,13 @@ local function slot()
     return ok and tonumber(s) or 0
 end
 local function file(s, id) return string.format("../../Saved/SaveGames/odsave%d.pt-%s.txt", s, id) end
--- S2: a guest that said hello with a SteamID is keyed by it; the key before Steam was the login name (second result)
+-- S2: a guest that said hello with a SteamID is keyed by it, without Steam by its player_id.txt; the key before both was
+-- the login name (second result)
 local function idOf(pc)
     local info = package.loaded["session"] and package.loaded["session"].guestInfo(pc)
     local name = info and info.login or (valid(pc.PlayerState) and pc.PlayerState:GetPlayerName():ToString() or "Guest")
     local old = name:gsub("[^%w_%-]", "_")
-    return info and info.sid or old, old
+    return info and (info.sid or info.pid and "p" .. info.pid) or old, old
 end
 local function writeFile(s, id)
     local f = io.open(file(s, id), "w")

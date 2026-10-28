@@ -1,6 +1,6 @@
 # Playtester guide
 
-Developer/friend preview **0.0.8**, protocol **4**. Both players need the same download and Pacific Drive on Steam,
+Developer/friend preview **0.0.8**, protocol **5**. Both players need the same download and Pacific Drive on Steam,
 v1.15.0 (build 21896301). The host owns the world and saves. Mixed DLC ownership is not yet verified.
 
 ## Install and connect
@@ -16,12 +16,13 @@ the host loads a save and the guest waits at the main menu. Use a reachable LAN/
 host's router. Allow the game through Windows Firewall on the network used for the session. A saved join address takes
 precedence over Steam joining; reinstall in Host mode to clear it.
 
-Without the launcher: `install.cmd` for host/Steam, `install.cmd -Join <host IP>` for direct IP, then start through Steam.
+Without the launcher: `install.cmd` for host/Steam, `install.cmd -Join <host IP>` for direct IP, then start `PenDriverPro\Binaries\Win64\PenDriverPro-Win64-Shipping.exe` (or through Steam).
 A version/build mismatch refuses the join. See `README.txt` for features and known issues.
 
 ## Controls and playtest
 
-- Host drives; guest enters via the driver's door handle and rides in the passenger seat. **X** exits.
+- Host drives; the guest opens the **passenger** door with **E** and gets in, and rides in the passenger seat. **X** exits (on the passenger side).
+- New game: **E** skips the opening for both players.
 - **Middle mouse** pings; **End** or **F8** resets stuck guest controls.
 - Host **Esc** pauses both games; guest **Esc** opens their menu.
 - Check garage interactions, a junction transition, scavenging, gateway return, death/failure and leave/rejoin.

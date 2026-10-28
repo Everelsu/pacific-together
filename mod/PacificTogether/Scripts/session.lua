@@ -15,12 +15,12 @@ local HELLO_WAIT_MS = 90000
 local CONNECT_TIMEOUT = 120
 local CHAR_CLASS = "/Game/Characters/Player/PDP_MainCharacter.PDP_MainCharacter_C"
 
+local DIR = (debug.getinfo(1, "S").source:match("^@(.*[\\/])Scripts[\\/]") or "")
 -- direct IP (M2): env var PT_JOIN=<ip:port>, else the first line of join.txt next to the mod's Scripts folder
 local function joinAddress()
     local env = os.getenv("PT_JOIN")
     if env and env ~= "" then return env end
-    local dir = (debug.getinfo(1, "S").source:match("^@(.*[\\/])Scripts[\\/]") or "")
-    local f = io.open(dir .. "join.txt", "r")
+    local f = io.open(DIR .. "join.txt", "r")
     if not f then return nil end
     local line = (f:read("l") or ""):match("^%s*(%S+)")
     f:close()
@@ -62,6 +62,20 @@ local function gameVersion()
     return StaticFindObject("/Script/EngineSettings.Default__GeneralProjectSettings").ProjectVersion:ToString()
 end
 local function gameBuild() return PTNative_GameBuild and PTNative_GameBuild() or 0 end
+-- a guest without Steam keeps its backpack by this id (player_id.txt next to join.txt, made once; updates keep it).
+-- Off in test runs: their checks find the backpack by the login name.
+local function playerId()
+    if os.getenv("PT_SCENARIO") then return nil end
+    local f = io.open(DIR .. "player_id.txt", "r")
+    local id = f and (f:read("l") or ""):match("^%x+$")
+    if f then f:close() end
+    if id then return id end
+    id = string.format("%08x%08x", math.random(0, 0x7fffffff), os.time() & 0x7fffffff)
+    f = io.open(DIR .. "player_id.txt", "w")
+    if not f then return nil end
+    f:write(id, "\n"); f:close()
+    return id
+end
 -- S4 hello, guest -> host over the stock reliable ServerChangeName RPC; the host puts the login name back afterwards.
 -- Never rewrite the hooked RPC's string parameter: that corrupted the host's heap (docs/spikes/M2-session.md).
 local function hello()
@@ -71,6 +85,8 @@ local function hello()
     local sid, persona
     if steam then sid, persona = steam.identity() end
     if sid then s = s .. " sid=" .. sid .. " name=" .. persona:gsub("[^%w]", function(c) return string.format("%%%02X", c:byte()) end) end
+    local pid = playerId()
+    if pid then s = s .. " pid=" .. pid end
     return s
 end
 local function parseHello(s)
@@ -143,7 +159,7 @@ end
 -- host --------------------------------------------------------------------------------------------------------------
 
 local greeted = {} -- remote PC full name -> true once its hello was accepted
-local guests = {} -- remote PC full name -> { login = name it came with, sid = SteamID or nil }
+local guests = {} -- remote PC full name -> { login = name it came with, sid = SteamID or nil, pid = player_id.txt or nil }
 
 -- for backpack.lua: who a guest is as the host's hello learned it
 function M.guestInfo(pc) return guests[pc:GetFullName()] end
@@ -219,15 +235,16 @@ local function onHello(pc, s)
     local mine = { mod = common.MOD_VERSION, protocol = tostring(common.PROTOCOL_VERSION), game = gameVersion(), build = tostring(gameBuild()) }
     log("PT|session hello from %s mod=%s protocol=%s game=%s build=%s", key, tostring(h.mod), tostring(h.protocol), tostring(h.game), tostring(h.build))
     for _, k in ipairs({ "mod", "protocol", "game", "build" }) do
-        if h[k] ~= mine[k] then
+        -- build 0: that side's game runs without Steam, which is the only build id source; the game version still must match
+        if h[k] ~= mine[k] and not (k == "build" and (h[k] == "0" or mine[k] == "0")) then
             refuse(pc, string.format("%s mismatch: host has %s, you have %s. Both players need the same game build and mod version.", k, mine[k], tostring(h[k])))
             return
         end
     end
     greeted[key] = true
     -- S2: a guest with Steam is named by its persona and keyed by its SteamID; the login name stays as the backpack's old key
-    guests[key] = { login = name, sid = h.sid and h.sid:match("^%d+$") }
-    log("PT|session guest %s login=%s sid=%s", key, name, tostring(guests[key].sid))
+    guests[key] = { login = name, sid = h.sid and h.sid:match("^%d+$"), pid = h.pid and h.pid:match("^%x+$") }
+    log("PT|session guest %s login=%s sid=%s pid=%s", key, name, tostring(guests[key].sid), tostring(guests[key].pid))
     if guests[key].sid and h.name then
         name = h.name:gsub("%%(%x%x)", function(x) return string.char(tonumber(x, 16)) end)
     end

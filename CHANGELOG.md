@@ -5,6 +5,14 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+### Fixed
+
+- Direct IP no longer depends on Steam: a game without Steam running (build id 0) is not refused for a build mismatch
+  (the game version still has to match), and a guest without Steam keeps their backpack on the host across launches
+  through `player_id.txt` in the mod folder, like PDCoopNet. Steam invites work as before.
+- The launcher's Install & play starts the game's exe directly instead of through Steam; the installer adds
+  `steam_appid.txt` next to the exe (removed on uninstall) so it does not restart itself through Steam.
+
 ## [0.0.8] - 2026-10-25
 
 Network protocol **4**: both players need 0.0.8.

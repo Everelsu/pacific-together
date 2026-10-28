@@ -7,8 +7,8 @@ return function(T)
 
     if T.ROLE == "host" then
         local spawned = false
-        local function refused(id)
-            return { check = id, timeout = 60, cond = function()
+        local function refused(id, timeout)
+            return { check = id, timeout = timeout or 60, cond = function()
                 spawned = spawned or L.guestChar() ~= nil
                 assert(not spawned, "the refused guest got a character")
                 return T.pcs() == 1
@@ -22,7 +22,7 @@ return function(T)
             { check = "host_saw_bad_guest", timeout = 240, cond = function() return T.pcs() == 2 end },
             refused("host_refused_bad_hello"),
             { check = "host_saw_silent_guest", timeout = 240, cond = function() return T.pcs() == 2 end },
-            refused("host_refused_no_hello"),
+            refused("host_refused_no_hello", 130), -- the host waits 90 s (session.lua HELLO_WAIT_MS)
             { wait = 10 },
         }
     end
