@@ -234,9 +234,10 @@ local function onHello(pc, s)
     local name = valid(pc.PlayerState) and pc.PlayerState:GetPlayerName():ToString() or "Guest"
     local mine = { mod = common.MOD_VERSION, protocol = tostring(common.PROTOCOL_VERSION), game = gameVersion(), build = tostring(gameBuild()) }
     log("PT|session hello from %s mod=%s protocol=%s game=%s build=%s", key, tostring(h.mod), tostring(h.protocol), tostring(h.game), tostring(h.build))
-    for _, k in ipairs({ "mod", "protocol", "game", "build" }) do
-        -- build 0: that side's game runs without Steam, which is the only build id source; the game version still must match
-        if h[k] ~= mine[k] and not (k == "build" and (h[k] == "0" or mine[k] == "0")) then
+    -- the Steam build id only warns: the game version string still must match
+    if h.build ~= mine.build then log("PT|session guest build %s differs from ours %s, allowed (game %s)", tostring(h.build), mine.build, tostring(h.game)) end
+    for _, k in ipairs({ "mod", "protocol", "game" }) do
+        if h[k] ~= mine[k] then
             refuse(pc, string.format("%s mismatch: host has %s, you have %s. Both players need the same game build and mod version.", k, mine[k], tostring(h[k])))
             return
         end

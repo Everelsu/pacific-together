@@ -17,7 +17,7 @@ host's router. Allow the game through Windows Firewall on the network used for t
 precedence over Steam joining; reinstall in Host mode to clear it.
 
 Without the launcher: `install.cmd` for host/Steam, `install.cmd -Join <host IP>` for direct IP, then start `PenDriverPro\Binaries\Win64\PenDriverPro-Win64-Shipping.exe` (or through Steam).
-A version/build mismatch refuses the join. See `README.txt` for features and known issues.
+A game or mod version mismatch refuses the join; a different build number is only logged, and such a pair is untested. See `README.txt` for features and known issues.
 
 ## Controls and playtest
 
