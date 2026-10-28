@@ -79,6 +79,12 @@ local function setProps(it, p, s)
 end
 
 -- spec string -> list of item instances
+-- A big container is filled over several frames (the host's 4165-item Expansion storage held a guest's frame 2.3 s on joining,
+-- 2026-10-28): apply and applyLayout take an optional `steps` list; given one, the item operations go into it as functions that the
+-- caller runs a few ms a frame (loot.lua). A coroutine cannot do it: UE4SS refuses game calls from a coroutine's Lua state ("has no
+-- instance inside lua_instances").
+local function step(steps, fn) if steps then steps[#steps + 1] = fn else fn() end end
+
 function M.count(container)
     local items, have = {}, {}
     container:GetAllItems(items)
@@ -110,7 +116,7 @@ function M.decode(s)
 end
 
 -- make the container hold exactly `want` (spec -> count): an item that differs only in state is changed in place
-function M.apply(container, want)
+function M.apply(container, want, steps)
     local have = M.count(container)
     local extra, missing = {}, {}
     for k, list in pairs(have) do
@@ -132,14 +138,16 @@ function M.apply(container, want)
         end
     end
     -- remove before adding: a full container has no room for the new ones
-    for _, e in ipairs(extra) do container:RemoveItem(e.inst) end
+    for _, e in ipairs(extra) do step(steps, function() container:RemoveItem(e.inst) end) end
     for _, k in ipairs(create) do
-        local p = k:match("^[^:]+")
-        local a = archetype(p)
-        if a then
-            local inst = lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
-            if container:AddItem(inst, true) then setProps(inst, p, k) end
-        end
+        step(steps, function()
+            local p = k:match("^[^:]+")
+            local a = archetype(p)
+            if a then
+                local inst = lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+                if container:AddItem(inst, true) then setProps(inst, p, k) end
+            end
+        end)
     end
 end
 
@@ -181,40 +189,43 @@ end
 -- make the container hold the other side's stacks at the same cells. When anything differs it is laid out again: the items are taken
 -- out and put back with the layout's own EmplaceSlot (instances of the same archetype are used again, their state set; new ones are
 -- created). A stack that does not fit its cell goes anywhere, as before.
-function M.applyLayout(container, body)
-    if not tiles(container) then return M.apply(container, M.decode(body:sub(2))) end
+function M.applyLayout(container, body, steps)
+    if not tiles(container) then return M.apply(container, M.decode(body:sub(2)), steps) end
     if M.layout(container) == body then return end
     local pool = {} -- archetype path -> instances taken out
-    local all = {}
-    container:GetAllItems(all)
-    for _, it in ipairs(all) do
-        local inst = it:get()
-        local p = path(inst.Archetype)
-        pool[p] = pool[p] or {}
-        table.insert(pool[p], inst)
-    end
-    container:RemoveAllItems()
+    step(steps, function()
+        local all = {}
+        container:GetAllItems(all)
+        for _, it in ipairs(all) do
+            local inst = it:get()
+            local p = path(inst.Archetype)
+            pool[p] = pool[p] or {}
+            table.insert(pool[p], inst)
+        end
+        container:RemoveAllItems()
+    end)
     local L = container.Layout
     for x, y, r, entry in body:sub(2):gmatch("(%d+)%.(%d+)%.(%d)=([^,]+)") do
-        local slot
+        local stack = {} -- the slot this stack's first item made; the rest go on top
         for k, c in entry:gmatch("([^+*]+)%*(%d+)") do
             local p = k:match("^[^:]+")
             for _ = 1, tonumber(c) do
-                local inst = pool[p] and table.remove(pool[p])
-                if not inst then
-                    local a = archetype(p)
-                    inst = a and lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
-                end
-                if inst then
+                step(steps, function()
+                    local inst = pool[p] and table.remove(pool[p])
+                    if not inst then
+                        local a = archetype(p)
+                        inst = a and lib():CreateItemInstance(UEHelpers.GetWorld(), a, 0)
+                    end
+                    if not inst then return end
                     setProps(inst, p, k)
                     local placed = false
-                    if slot and slot:IsValid() then placed = slot:AddItem(inst) end
+                    if stack.slot and stack.slot:IsValid() then placed = stack.slot:AddItem(inst) end
                     if not placed then
-                        local ok, s = pcall(function() return L:EmplaceSlot(container, inst, { X = tonumber(x), Y = tonumber(y) }, r == "1", true) end)
-                        if ok and s and s:IsValid() then slot, placed = s, true end
+                        local ok, sl = pcall(function() return L:EmplaceSlot(container, inst, { X = tonumber(x), Y = tonumber(y) }, r == "1", true) end)
+                        if ok and sl and sl:IsValid() then stack.slot, placed = sl, true end
                     end
                     if not placed then container:AddItem(inst, true) end
-                end
+                end)
             end
         end
     end

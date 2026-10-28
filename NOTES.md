@@ -728,3 +728,34 @@ Unknowns
   other. Guess: the guest's own garage station installs (garage.lua, same seconds) touch its containers. Not reproduced since.
 - On the guest, applying the host's Expansion container (4165 items, a bag) took 2.3 s in one frame.
 - What exactly breaks double doors in play is not known yet (not looked at live).
+
+## 2026-10-28 evening: double doors, door swings, filling big containers over frames (not committed yet)
+
+Observations (headless, D:\PTLanes\a; live checks in game MCP sessions)
+- BP_Door_Double (< BP_Door_Single) has a second leaf: component OtherDoor (relative yaw = currentRotOtherDoor), its own
+  Highlight_OtherDoor and event BndEvt__Highlight_OtherDoor_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature,
+  closed angle AnimTargetClosedOther (180), timeline Timeline_0. Pressing it leaves CurrentState alone (90 -> 180 seen), so it never
+  synced and the guest's E on it never reached the host. In the fresh save the back room's double door is chained (state 3).
+- On the guest a press of that leaf turns it only sometimes (its timeline did not run in 2 of 3 tries) and sets AnimTargetOther to a
+  value that is not where it ends; the host's press from a distance (no player) went to "15 -> 15" (its locked shake).
+- The guest snapped every door with "Set Door from State". Pressing the guest's own main-leaf highlight plays the game's swing:
+  69 different angles from -90 to -180 (was one jump).
+
+Changes (visual.lua)
+- Door state carries the second leaf (ot=, placed doors "path=state/angle"). The guest opens or shuts a main leaf by pressing its own
+  highlight (a lock or anything else still snaps), turns a second leaf with its own 0.8 s tween, and leaves a door alone 2-3 s
+  after a press (here or its own) so the host's state does not pull it back mid-swing. The guest's E on a second leaf sends the
+  angle it ends at (its game's, or the toggle shut <-> 90 degrees done here); the host tweens its leaf there.
+- doubledoor (long save, BP_Door_Double_Backroom_Exterior) 23/23; nodoorswing fails guest_main_leaf_swung; nodoubledoor fails
+  host_second_leaf_follows_guest. worlddoors 23/23 (fresh).
+
+Filling big containers (loot.lua, ids.lua)
+- On the guest the host's Expansion storage (4165 items, a bag) held one frame 2.3 s. A coroutine cannot slice it: UE4SS refuses
+  game calls from a coroutine's Lua state ("The lua state ... has no instance inside lua_instances"; every loot line failed).
+  ids.apply/applyLayout now return their item operations as a list of steps when asked; loot.lua runs them in its 4 ms-a-frame
+  budget before the next line, the container marked busy so the change scan does not send it half filled. bigjoin: Expansion
+  filled in 4165 steps over 9.8 s, no single frame over 0.1 s for it; bigjoin 18/18, storagelayout 21/21, frames 20/20.
+
+Unknowns
+- Other join spikes on the long save's guest: first g.car.s 808 ms, progression.lua:238 372 ms, story.lua:323 359 ms.
+- Zone door copies (visual props) take the same applyDoor path; not run (no zone fixture here). Rendered play not checked.

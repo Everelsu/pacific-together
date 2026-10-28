@@ -176,6 +176,8 @@ local function state(o)
     local t = {}
     local ok, v = pcall(function() return o.CurrentState end)
     if ok and type(v) == "number" then t[#t + 1] = "st=" .. v end
+    ok, v = pcall(function() return o.currentRotOtherDoor end) -- a double door's second leaf (BP_Door_Double): not in CurrentState
+    if ok and type(v) == "number" then t[#t + 1] = string.format("ot=%.0f", v) end
     ok, v = pcall(function() return o.IsBroken end)
     if ok and v then t[#t + 1] = "br=1" end
     ok, v = pcall(function() return o.SuccessfullyGrabbed end) -- an ARC anchor structure someone pulled: the other side's copy goes
@@ -327,6 +329,68 @@ local function fields(line)
     return f
 end
 
+-- A door follows the host's state the way a player moves it: its own highlight is pressed here, so the game plays the swing and the
+-- sound; "Set Door from State" snapped it open or shut (owner: doors sync "in jerks", 2026-10-28). Locks and anything else still snap. A double door
+-- (BP_Door_Double) has a second leaf with its own highlight and angle (currentRotOtherDoor, not in CurrentState: it never synced, and
+-- the guest's E on it never reached the host). A door just pressed (here or by the guest) is left alone while it swings.
+local OTHER_INTERACT = "BndEvt__Highlight_OtherDoor_K2Node_ComponentBoundEvent_0_OnHighlightInteract__DelegateSignature"
+local SWING_S = 2
+local swingHold = {} -- door address -> os.clock() until which it is left alone
+local leafTweens = {} -- door address -> { d, from, to, t0 }: a double door's second leaf turning on the guest
+local LEAF_S = 0.8
+local fromHost = false -- our own press: the door hooks must not send it back
+local function press(h)
+    fromHost = true
+    pcall(function() h:InteractPressed(nil); h:InteractReleased(nil) end)
+    fromHost = false
+end
+local function applyDoor(d, hs, ho, placed)
+    local key = d:GetAddress()
+    if (swingHold[key] or 0) > os.clock() then return end
+    local snap = os.getenv("PT_MUTATE") == "nodoorswing"
+    local gs = d.CurrentState
+    if hs and gs ~= hs then
+        if placed and gs >= 3 and hs < 3 then
+            pcall(function() d:ForceUnlockDoor() end)
+            log("PT|visual host unlocked placed door %s", d:GetFName():ToString())
+        elseif not snap and gs < 3 and hs < 3 and (gs == 0) ~= (hs == 0) then
+            press(d.Highlight)
+            swingHold[key] = os.clock() + SWING_S
+        elseif not placed or (gs < 3 and hs < 3) then
+            pcall(function() d["Set Door from State"](d, hs) end)
+        end
+    end
+    if ho then
+        -- the leaf's real angle: a guest's own press sets currentRotOtherDoor to the new value without turning the leaf
+        local ok, go = pcall(function() return d.OtherDoor.RelativeRotation.Yaw end)
+        if ok and type(go) == "number" then go = ho + ((go - ho + 180) % 360) - 180 end -- the same turn, nearest to the host's
+        if ok and type(go) == "number" and math.abs(go - ho) > 5 then
+            -- the second leaf ignores a press on the guest (its own timeline never starts there, live 2026-10-28): it is turned here,
+            -- its component's relative yaw being currentRotOtherDoor
+            if snap then
+                pcall(function() d.OtherDoor:K2_SetRelativeRotation({ Pitch = 0, Yaw = ho, Roll = 0 }, false, {}, true) end)
+                d.currentRotOtherDoor = ho
+            else
+                leafTweens[key] = { d = d, from = go, to = ho, t0 = os.clock() }
+            end
+            swingHold[key] = os.clock() + SWING_S
+        end
+    end
+end
+RegisterLoadMapPreHook(function() swingHold, leafTweens = {}, {} end)
+LoopInGameThreadWithDelay(16, function()
+    if not next(leafTweens) then return end
+    for key, tw in pairs(leafTweens) do
+        local ok = pcall(function()
+            local u = math.min(1, (os.clock() - tw.t0) / LEAF_S)
+            u = u * u * (3 - 2 * u)
+            tw.d.OtherDoor:K2_SetRelativeRotation({ Pitch = 0, Yaw = tw.from + (tw.to - tw.from) * u, Roll = 0 }, false, {}, true)
+            if u >= 1 then tw.d.currentRotOtherDoor = tw.to; leafTweens[key] = nil end
+        end)
+        if not ok then leafTweens[key] = nil end
+    end
+end)
+
 local function applyState(a, st)
     if st:find("tk=1", 1, true) then pcall(function() a:K2_DestroyActor() end) return end
     if st:find("br=1", 1, true) then
@@ -335,10 +399,8 @@ local function applyState(a, st)
             if not a.IsBroken and not pcall(function() a:ComplexBreak(z, a.BaseMesh) end) then a:SimpleBreak(z) end
         end)
     end
-    local s = tonumber(st:match("st=(%d+)"))
-    if s then
-        pcall(function() if a.CurrentState ~= s then a["Set Door from State"](a, s) end end) -- 0 closed, 1 and 2 open (either way), 3 and up shut
-    end
+    local s, o = tonumber(st:match("st=(%d+)")), tonumber(st:match("ot=(%-?%d+)"))
+    if s or o then pcall(applyDoor, a, s, o, false) end -- 0 closed, 1 and 2 open (either way), 3 and up shut
 end
 
 -- the host's actor is gone: a destructible that broke there breaks here (debris, sound), then goes; everything else just goes
@@ -378,9 +440,33 @@ local function hookDoor(cls, event, msg)
             if doorHooks[at] then return end
             doorHooks[at] = true
             local ok, err = pcall(RegisterHook, at, function(self)
-                if not (M.enabled and safety.guest()) then return end
-                local name = doorName(self:get())
-                if name then
+                if not (M.enabled and safety.guest()) or fromHost then return end
+                local d = self:get()
+                -- our own swing: the host's state catches up meanwhile (a second leaf: the host turns its own after our message, and its
+                -- state comes back a list later, so a little longer)
+                swingHold[d:GetAddress()] = os.clock() + SWING_S + (msg == "g.vis.door2" and 1 or 0)
+                local name = doorName(d)
+                if name and msg == "g.vis.door2" then
+                    -- the second leaf goes by value (the host's press from a distance, with no player, took its locked shake: live
+                    -- 2026-10-28). Our own game turns it here only sometimes, and AnimTargetOther is not where it ends up: 1.2 s later
+                    -- the angle it has is sent, or, if it did not move, the toggle (shut <-> 90 degrees open) is done here and sent
+                    local before = d.OtherDoor.RelativeRotation.Yaw
+                    ExecuteInGameThreadWithDelay(1200, function()
+                        local ok, err = pcall(function()
+                            local now, shut = d.OtherDoor.RelativeRotation.Yaw, d.AnimTargetClosedOther
+                            local function same(a, b) return math.abs(((a - b + 180) % 360) - 180) < 5 end
+                            local to = now
+                            if same(now, before) then
+                                to = same(now, shut) and shut - 90 or shut
+                                leafTweens[d:GetAddress()] = { d = d, from = to + ((now - to + 180) % 360) - 180, to = to, t0 = os.clock() }
+                            end
+                            swingHold[d:GetAddress()] = os.clock() + SWING_S + 1
+                            net.toHost(msg, name .. "|" .. string.format("%.0f", to))
+                            log("PT|visual guest %s door %s from %.0f to %.0f", msg, name, before, to)
+                        end)
+                        if not ok then log("PT|error visual second leaf %s", tostring(err)) end
+                    end)
+                elseif name then
                     net.toHost(msg, name)
                     log("PT|visual guest %s door %s", msg, name)
                 end
@@ -397,6 +483,7 @@ local function hookPlacedDoors()
             if live(d) then
                 hookDoor(d:GetClass(), INTERACT, "g.vis.door")
                 hookDoor(d:GetClass(), UNLOCK, "g.vis.unlock")
+                if os.getenv("PT_MUTATE") ~= "nodoubledoor" then hookDoor(d:GetClass(), OTHER_INTERACT, "g.vis.door2") end -- double doors only
             end
         end
     end
@@ -416,6 +503,17 @@ net.on("g.vis.door", function(_, name)
         d.Highlight:InteractReleased(nil)
     end
     log("PT|visual guest used door %s: %s, state=%s", name, d and "pressed on the host" or "not on the host", d and tostring(d.CurrentState) or "?")
+end)
+net.on("g.vis.door2", function(_, data) -- the guest turned a double door's second leaf: "name|angle"
+    if not M.enabled then return end
+    local name, to = data:match("^(.*)|(%-?%d+)$")
+    local d = name and hostDoor(name)
+    if d then
+        local from = d.OtherDoor.RelativeRotation.Yaw
+        to = tonumber(to)
+        leafTweens[d:GetAddress()] = { d = d, from = to + ((from - to + 180) % 360) - 180, to = to, t0 = os.clock() }
+    end
+    log("PT|visual guest turned the second leaf of %s to %s: %s", tostring(name), tostring(to), d and "turning on the host" or "not on the host")
 end)
 net.on("g.vis.unlock", function(_, name)
     if not M.enabled then return end
@@ -477,31 +575,20 @@ local function placedDoors()
 end
 local function doorStates()
     local L = {}
-    for name, d in pairs(placedDoors()) do L[#L + 1] = name .. "=" .. tostring(d.CurrentState) end
+    for name, d in pairs(placedDoors()) do
+        local ok, o = pcall(function() return d.currentRotOtherDoor end) -- a double door's second leaf
+        L[#L + 1] = name .. "=" .. tostring(d.CurrentState) .. ((ok and type(o) == "number") and string.format("/%.0f", o) or "")
+    end
     table.sort(L)
     return table.concat(L, "\n")
 end
-local hostDoorState = {} -- guest: door path -> the host's last state
-RegisterLoadMapPreHook(function() hostDoorState = {} end)
+-- every list: each door that differs from the host's moves (a door left alone while it swings catches up with a later list)
 net.on("g.vis.pd", function(_, data)
     if not M.enabled then return end
-    local doors
-    for name, st in data:gmatch("([^\n=]+)=(%d+)") do
-        local hs = tonumber(st)
-        if hostDoorState[name] ~= hs then
-            hostDoorState[name] = hs
-            doors = doors or placedDoors()
-            local d = doors[name]
-            if d then
-                local gs = d.CurrentState
-                if gs >= 3 and hs < 3 then
-                    pcall(function() d:ForceUnlockDoor() end)
-                    log("PT|visual host unlocked placed door %s", name:match("[^.:]+$"))
-                elseif gs < 3 and hs < 3 and gs ~= hs then
-                    pcall(function() d["Set Door from State"](d, hs) end)
-                end
-            end
-        end
+    local doors = placedDoors()
+    for name, st, ot in data:gmatch("([^\n=]+)=(%d+)/?(%-?%d*)") do
+        local d = doors[name]
+        if d then pcall(applyDoor, d, tonumber(st), tonumber(ot), true) end
     end
 end)
 

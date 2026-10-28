@@ -166,6 +166,8 @@ local function applyBroken(a)
     log("PT|loot plasma generator broken here too")
 end
 
+local filling = {} -- containers being filled a few steps a frame: { e, steps, i, finish, before, t0 }
+RegisterLoadMapPreHook(function() filling = {} end) -- their containers go with the old world
 local function applyState(e, s)
     if e.kind == "R" then
         if s == "br" and alive(e.actor) then applyBroken(e.actor) end
@@ -185,9 +187,19 @@ local function applyState(e, s)
     if not alive(c) then e.pending = s; return end
     e.pending = nil
     local flags, body = s:match("^(.);(.*)$")
-    if body:sub(1, 1) == "@" then ids.applyLayout(c, body) else ids.apply(c, ids.decode(body)) end
-    if e.kind == "L" and flags ~= "-" then applyFlags(e.actor, tonumber(flags)) end
-    e.last, e.n, e.rolled = stateOf(e), c:GetNumItems(), flagsOf(e)
+    -- the item operations go into a list that the line loop below works off a few ms a frame (ids.lua: a 4165-item storage held a
+    -- guest's frame 2.3 s); the container is busy meanwhile, so the change scan does not send it half done
+    local steps = {}
+    if body:sub(1, 1) == "@" then ids.applyLayout(c, body, os.getenv("PT_MUTATE") ~= "noslice" and steps or nil)
+    else ids.apply(c, ids.decode(body), os.getenv("PT_MUTATE") ~= "noslice" and steps or nil) end
+    local function finish()
+        if not alive(c) then return end
+        if e.kind == "L" and flags ~= "-" then applyFlags(e.actor, tonumber(flags)) end
+        e.last, e.n, e.rolled = stateOf(e), c:GetNumItems(), flagsOf(e)
+    end
+    if #steps == 0 then finish() return end
+    e.busy = true
+    filling[#filling + 1] = { e = e, steps = steps, i = 1, finish = finish, before = e.n, t0 = os.clock() }
 end
 
 local function register(id, kind, actor, invName)
@@ -617,7 +629,7 @@ local function scanChanges()
                     say("S|" .. id .. "|" .. partState(e.actor))
                 end
             end
-        elseif alive(c) then
+        elseif alive(c) and not e.busy then
             local r = flagsOf(e)
             if c:GetNumItems() ~= e.n or r ~= e.rolled or dirty[c:GetAddress()] then
                 dirty[c:GetAddress()] = nil
@@ -719,17 +731,34 @@ net.on("g.loot.b", function(pc, data)
     end
 end)
 local BUDGET = 0.004
+-- A container being filled (applyState's steps) goes first, a few ms a frame; the lines after it wait their turn.
 LoopInGameThreadWithDelay(16, function()
-    if head > #inbox then return end
+    if head > #inbox and #filling == 0 then return end
     local guest, t = common.netMode() == "client", os.clock()
-    while head <= #inbox and os.clock() - t < BUDGET do
-        local l = inbox[head]
-        inbox[head], head = nil, head + 1
-        local t1 = os.clock()
-        local ok, err = pcall(handle, l, guest)
-        if not ok then log("PT|error loot line %s %s", l:sub(1, 40), tostring(err)) end
-        -- one line that alone holds the frame (playtest 2026-10-24: up to 863 ms in this loop on a big save)
-        if os.clock() - t1 > 0.05 then log("PT|slow loot line %.0f ms %d bytes %s", (os.clock() - t1) * 1000, #l, l:sub(1, 60)) end
+    while os.clock() - t < BUDGET do
+        local f = filling[1]
+        if f then
+            local ok, err = pcall(f.steps[f.i])
+            if not ok then log("PT|error loot fill %s %s", f.e.id, tostring(err)) end
+            f.i = f.i + 1
+            if f.i > #f.steps then
+                table.remove(filling, 1)
+                f.e.busy = nil
+                pcall(f.finish)
+                pcall(announce, f.e, f.before)
+                log("PT|loot filled %s: %d steps over %.1f s", f.e.id, #f.steps, os.clock() - f.t0)
+            end
+        elseif head <= #inbox then
+            local l = inbox[head]
+            inbox[head], head = nil, head + 1
+            local t1 = os.clock()
+            local ok, err = pcall(handle, l, guest)
+            if not ok then log("PT|error loot line %s %s", l:sub(1, 40), tostring(err)) end
+            -- one line that alone holds the frame (playtest 2026-10-24: up to 863 ms in this loop on a big save)
+            if os.clock() - t1 > 0.05 then log("PT|slow loot line %.0f ms %d bytes %s", (os.clock() - t1) * 1000, #l, l:sub(1, 60)) end
+        else
+            break
+        end
     end
     if head > #inbox then inbox, head = {}, 1 end
 end)
