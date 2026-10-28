@@ -684,3 +684,21 @@ Unknowns
 - playpath `p3_host_trunk_has_guest_item` fails on the fresh garage save before and after the merge; upstream's suite runs
   playpath on a zone save, which this checkout does not have. Not compared against an unchanged tree.
 - lootsync, progsync, zoneexit, transition and the other zone/gateway scenarios not run (no zone fixtures here).
+
+## 2026-10-28: crash damage for a seated guest, opening skip for both (from PDCoopNet refactor, MIT)
+
+Observations (headless, D:\PTLanes\a)
+- Crash damage: the car's damage controller (`BP_CarDispatchController`, a plain object, not an actor or component: no GetOwner)
+  works out the player's share in `LimitDamageToPlayerOverTime`; the hook's out parameter holds the share after the call. While a
+  guest sits in the car whose `DamageDispatchController` it is, the host sends that share as `g.anom.msg` (tag "crash"); the guest's
+  own receiver applies it. `carcrash` (fresh garage, guest seated by a real door press, the host calls the controller 10 times with
+  2.0): 21/21, guest 100 -> 98, host untouched; mutation `nocrash` 20/21. The garage deals no player damage, so the module skips it
+  unless PT_CRASH_GARAGE=1 (set by the runner for carcrash only). Not checked in a real crash in a zone.
+- Opening skip: the intro level's `InpActEvt_Interact_K2Node_InputActionEvent_0` with CanSkip set moves the opening to its end
+  (SEQ_OpeningCredits frame -3 -> 2039, stopped; CanSkip false). A host has a second, stale copy of that level script in
+  /Engine/Transient with CanSkip true for good; pressing it does nothing, so it is ignored. E (or console `ptskip`) skips on the
+  presser's side and goes to the other side as `g.cut.skip`; the host passes a guest's skip on. `cutscene` (new game in slot 6):
+  22/22; mutation `nocutscene` 20/22.
+
+Unknowns
+- E also interacts in the world; during the opening nothing else answers E (not checked in a rendered game).

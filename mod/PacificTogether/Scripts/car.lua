@@ -389,21 +389,121 @@ local function guestChar(pc)
     return valid(c) and c:IsA(StaticFindObject("/Script/PenDriverPro.BaseCharacter")) and c or nil
 end
 
+-- Getting in and out looks like a player doing it (after PDCoopNet's seatanim.lua, MIT, BroZYTnikkkk): the guest's body moves from
+-- where it stands past the front door's entry point onto the seat in ~1.9 s, and on the way out from the seat past the door to
+-- the exit spot in ~1.1 s, on both sides; before, it jumped onto the seat and back. The game's own entry and exit stay muted on
+-- the guest (a local exit crashed AC_CarAudio's tick, 2026-10-23). Points are car-local, so a moving car carries the path.
+--   in   the actor itself moves (movement and collision off; the host ignores the guest's moves meanwhile), then seat() attaches it
+--   out  on the host the actor stands at the spot at once and only its mesh moves there (moving the actor threw the car aside in
+--        PDCoopNet, exp257-260); the guest moves its own actor, then walks
+local GLIDE_IN, GLIDE_OUT = { 0.8, 1.9 }, { 0.4, 1.1 } -- s: at the door's entry point, at the end
+local glides = {} -- actor full name -> { a, car, pts, times, t0, mesh, rel0, yaw0, yaw1, after }
+local function noGlide() return os.getenv("PT_MUTATE") == "noglide" end
+local function gliding(a) return valid(a) and glides[a:GetFullName()] ~= nil end
+M.gliding = gliding -- desync.lua leaves a gliding body alone (its "repair" turned walking and collision back on mid-glide, carsync)
+local function stopGlide(a) if valid(a) then glides[a:GetFullName()] = nil end end
+LoopInGameThreadWithDelay(16, function()
+    if not next(glides) then return end
+    for key, g in pairs(glides) do
+        local ok = pcall(function()
+            if not (valid(g.a) and valid(g.car)) then glides[key] = nil; return end
+            local t = os.clock() - g.t0
+            local a, b, u
+            if t < g.times[1] then a, b, u = g.pts[1], g.pts[2], t / g.times[1]
+            elseif t < g.times[2] then a, b, u = g.pts[2], g.pts[3], (t - g.times[1]) / (g.times[2] - g.times[1])
+            else a, b, u = g.pts[3], g.pts[3], 1 end
+            u = u * u * (3 - 2 * u) -- ease in and out
+            local w = toWorld(g.car, vec(a.X + (b.X - a.X) * u, a.Y + (b.Y - a.Y) * u, a.Z + (b.Z - a.Z) * u))
+            if g.mesh then -- the mesh where the actor would be, keeping its own offset to the actor
+                g.mesh:K2_SetRelativeLocation(g.rel0, false, {}, true)
+                local m, l = g.mesh:K2_GetComponentLocation(), g.a:K2_GetActorLocation()
+                g.mesh:K2_SetWorldLocation(vec(m.X + w.X - l.X, m.Y + w.Y - l.Y, m.Z + w.Z - l.Z), false, {}, true)
+            else
+                g.a:K2_SetActorLocation(w, false, {}, true)
+                local k, d = math.min(1, t / g.times[2]), ((g.yaw1 - g.yaw0 + 180) % 360) - 180
+                g.a:K2_SetActorRotation({ Pitch = 0, Yaw = g.yaw0 + d * k, Roll = 0 }, true)
+            end
+            if t >= g.times[2] then
+                glides[key] = nil
+                if g.mesh then g.mesh:K2_SetRelativeLocation(g.rel0, false, {}, true) end
+                if g.after then g.after() end
+            end
+        end)
+        if not ok then glides[key] = nil end
+    end
+end)
+RegisterLoadMapPreHook(function() glides = {} end)
+local function glideFlags(char, on)
+    pcall(function() char.CharacterMovement.bIgnoreClientMovementErrorChecksAndCorrection = on end)
+    if on then
+        pcall(function() char.CharacterMovement:StopMovementImmediately(); char.CharacterMovement:DisableMovement() end)
+        pcall(function() char:SetActorEnableCollision(false) end)
+    end
+end
+-- the front doors' entry points (EntranceLogicPoint arrows on the door part), car-local: the one nearest to p
+local function doorPoint(car, p)
+    local best, bd
+    local arrow = StaticFindObject("/Script/Engine.ArrowComponent")
+    for slot, d in pairs(doorParts(car)) do
+        if slot:find("Front") then
+            for _, c in ipairs(d:K2_GetComponentsByClass(arrow) or {}) do
+                local o = c.get and c:get() or c
+                if valid(o) and o:GetFName():ToString():find("EntranceLogicPoint", 1, true) then
+                    local l = toLocal(car, o:K2_GetComponentLocation())
+                    local dd = (l.X - p.X) ^ 2 + (l.Y - p.Y) ^ 2
+                    if not bd or dd < bd then best, bd = l, dd end
+                end
+            end
+        end
+    end
+    return best
+end
+-- host: the body (actor) moves onto the seat; then(...) when it is there
+local function glideIn(char, car, seatLocal, after)
+    local from = toLocal(car, char:K2_GetActorLocation())
+    local mid = doorPoint(car, from) or from
+    glideFlags(char, true)
+    glides[char:GetFullName()] = { a = char, car = car, t0 = os.clock(), times = GLIDE_IN, yaw0 = char:K2_GetActorRotation().Yaw,
+        yaw1 = car:K2_GetActorRotation().Yaw, pts = { from, vec(mid.X, mid.Y, from.Z), seatLocal }, after = after }
+end
+-- the exit spot on the passenger side: the game's own safe exit point is the driver's, mirrored across the car's centre line
+-- when there is ground under the mirrored spot (ponytail: no wall check; the driver's spot is the fallback)
+local function passengerSide(car, out)
+    if os.getenv("PT_MUTATE") == "driverexit" then return out, "driver" end
+    local l = toLocal(car, out)
+    if l.Y >= 0 then return out, "driver" end -- already on the passenger side
+    local m = toWorld(car, vec(l.X, -l.Y, l.Z))
+    local hit = false
+    pcall(function()
+        local KSL = StaticFindObject("/Script/Engine.Default__KismetSystemLibrary")
+        local h = {}
+        hit = KSL:LineTraceSingle(car, vec(m.X, m.Y, m.Z + 50), vec(m.X, m.Y, m.Z - 300), 0, false, { car }, 0, h, true, {}, {}, 0)
+    end)
+    if hit then return m, "passenger" end
+    return out, "driver (no ground on the passenger side)"
+end
+
 net.on("g.car.enter", function(pc)
     if not safety.active() or common.netMode() ~= "listen" then return end
     local char, car = guestChar(pc), theCar(true)
     if not char or not car then return end
-    if same(char:GetAttachParentActor(), car) then return end
+    if same(char:GetAttachParentActor(), car) or gliding(char) then return end
     -- shortcut: no reach check (a client-side teleport did not move the guest on the host); add one when doors are real input
     log("PT|car enter from %.0f uu", dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()))
-    seat(char, car)
-    -- the guest's door stayed open and swung while driving (hand playtest 2026-10-23): no entry animation shuts it here
-    local door = entryDoor and now() - entryDoor.at < 5 and entryDoor.part
-    entryDoor = nil
-    if door then
-        ExecuteInGameThreadWithDelay(800, function() pcall(function() if valid(door) then door:AttemptShut() end end) end)
+    local function sit()
+        if not (valid(char) and valid(car)) then return end
+        glideFlags(char, false)
+        seat(char, car)
+        -- the guest's door stayed open and swung while driving (hand playtest 2026-10-23): no entry animation shuts it here
+        local door = entryDoor and now() - entryDoor.at < 8 and entryDoor.part
+        entryDoor = nil
+        if door then
+            ExecuteInGameThreadWithDelay(800, function() pcall(function() if valid(door) then door:AttemptShut() end end) end)
+        end
+        ov.post(ov.other() .. " entered the car")
     end
-    ov.post(ov.other() .. " entered the car")
+    -- far from the car (the host has the guest elsewhere: a client-side move, carsync's 87 m) there is no door to walk past
+    if noGlide() or dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()) > 600 then sit() else glideIn(char, car, PASSENGER, sit) end
 end)
 
 net.on("g.car.exit", function(pc)
@@ -432,8 +532,19 @@ net.on("g.car.exit", function(pc)
         local r = car:GetActorRightVector()
         out = vec(p.X - r.X * 250, p.Y - r.Y * 250, p.Z + 80)
     end
-    log("PT|car exit spot %.0f,%.0f,%.0f (%s)", out.X, out.Y, out.Z, from)
+    local side
+    out, side = passengerSide(car, out)
+    log("PT|car exit spot %.0f,%.0f,%.0f (%s, %s side)", out.X, out.Y, out.Z, from, side)
+    local seatAt = toLocal(car, char:K2_GetActorLocation())
     char:K2_SetActorLocation(out, false, {}, true)
+    -- the actor stands outside at once; its mesh walks there from the seat past the door
+    if not noGlide() and valid(char.Mesh) then
+        local spot = toLocal(car, out)
+        local mid = doorPoint(car, spot) or spot
+        local r = char.Mesh.RelativeLocation
+        glides[char:GetFullName()] = { a = char, car = car, t0 = os.clock(), times = GLIDE_OUT, mesh = char.Mesh, rel0 = vec(r.X, r.Y, r.Z),
+            pts = { seatAt, vec(mid.X, mid.Y, (seatAt.Z + spot.Z) / 2), spot } }
+    end
     -- the guest's own pawn is autonomous: the host's move is not replicated to it, so it places itself
     log("PT|car exit ground here %s", groundAt(char, out))
     net.toGuest(pc, "g.car.out", string.format("%.2f|%.2f|%.2f", out.X, out.Y, out.Z))
@@ -616,10 +727,26 @@ net.on("g.car.out", function(_, data)
     local me = localPC() and localPC().Pawn
     local x, y, z = data:match("^([^|]*)|([^|]*)|(.*)$")
     if not valid(me) or not x then return end
+    local spot, car = vec(tonumber(x), tonumber(y), tonumber(z)), theCar(false)
+    local seatAt = car and toLocal(car, me:K2_GetActorLocation())
     pcall(function() me:K2_DetachFromActor(1, 1, 1) end)
     stopRide(me)
-    me:K2_SetActorLocation(vec(tonumber(x), tonumber(y), tonumber(z)), false, {}, true)
-    log("PT|car exit ground on the guest %s", groundAt(me, vec(tonumber(x), tonumber(y), tonumber(z))))
+    local function placed()
+        if not valid(me) then return end
+        me:K2_SetActorLocation(spot, false, {}, true)
+        pcall(function() me:SetActorEnableCollision(true); me.CharacterMovement:SetMovementMode(1, 0) end)
+        log("PT|car exit ground on the guest %s", groundAt(me, spot))
+    end
+    if car and not noGlide() then
+        -- out past the door to the spot the host has us at (1.1 s), then walking (stopRide put movement back on: off again meanwhile)
+        local l = toLocal(car, spot)
+        local mid = doorPoint(car, l) or l
+        glideFlags(me, true)
+        glides[me:GetFullName()] = { a = me, car = car, t0 = os.clock(), times = GLIDE_OUT, yaw0 = me:K2_GetActorRotation().Yaw,
+            yaw1 = car:K2_GetActorRotation().Yaw + 90, pts = { seatAt, vec(mid.X, mid.Y, (seatAt.Z + l.Z) / 2), l }, after = placed }
+    else
+        placed()
+    end
     -- the camera and the controls stayed with the car: camera frozen, no walking (local playtest 2026-10-22)
     local pc = localPC()
     pcall(function() pc:ResetIgnoreInputFlags() end)
@@ -673,6 +800,7 @@ net.on("g.car.seat", function(_, data)
     local me, car = localPC() and localPC().Pawn, theCar(false)
     if not (x and valid(me) and car) or same(me:GetAttachParentActor(), car) then return end
     local off = vec(tonumber(x), tonumber(y), tonumber(z))
+    stopGlide(me) -- our own entry glide ends here at the latest
     local r = car:K2_GetActorRotation()
     me:K2_SetActorRotation({ Pitch = 0, Yaw = r.Yaw, Roll = 0 }, true) -- facing forward, as the host seats the body
     me:K2_AttachToActor(car, NONE, 1, 1, 1, false)
@@ -831,6 +959,24 @@ local function hookAll()
                 -- only our own physics swing needs protecting; a door the host opened is posed here, its shut animates from the host
                 if suffix == "" or part.MainMesh:IsSimulatingPhysics(FName("None")) then doorHold = now() + 1.5 end
                 log("PT|car door intent %s%s sent=%s", slot, suffix, tostring(net.toHost("g.car.door", slot .. suffix)))
+                -- E opening the passenger's door from outside gets the guest in, as the driver's door does for the driver (the game
+                -- itself only enters through the driver's door: the guest walked round to it and sat down on the other side)
+                local me = localPC() and localPC().Pawn
+                if suffix == "" and slot == "SLOT_FrontRightDoor" and not riding and valid(me) and not gliding(me)
+                    and not valid(me:GetAttachParentActor()) and os.getenv("PT_MUTATE") ~= "nopassdoor" then
+                    sendEnter()
+                    if not noGlide() then
+                        glideIn(me, car, PASSENGER, function()
+                            -- the host seats us at the same moment (g.car.seat); still standing here 4 s later: walk again
+                            ExecuteInGameThreadWithDelay(4000, function() pcall(function()
+                                if valid(me) and not valid(me:GetAttachParentActor()) and not gliding(me) then
+                                    me:SetActorEnableCollision(true); me.CharacterMovement:SetMovementMode(1, 0)
+                                    log("PT|car not seated after the entry: walking again")
+                                end
+                            end) end)
+                        end)
+                    end
+                end
             end)
         end)
         if not okd then log("PT|error car hook %s %s", fn, tostring(errd)) end

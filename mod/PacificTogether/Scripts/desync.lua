@@ -20,7 +20,13 @@ local function valid(o) return o ~= nil and o:IsValid() and not o:HasAnyInternal
 local function fmt(l) return string.format("%.0f,%.0f,%.0f", l.X, l.Y, l.Z) end
 local function parse(s) local x, y, z = s:match("^(-?[%d.]+),(-?[%d.]+),(-?[%d.]+)$"); return x and { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) } end
 local function dist(a, b) return math.sqrt((a.X - b.X) ^ 2 + (a.Y - b.Y) ^ 2 + (a.Z - b.Z) ^ 2) end
-local function seated(c) local ok, p = pcall(function() return c:GetAttachParentActor() end); return ok and valid(p) end
+-- seated, or moved into or out of the car by car.lua: its spot is the seat or the glide's, not the player's
+local function seated(c)
+    local ok, p = pcall(function() return c:GetAttachParentActor() end)
+    if ok and valid(p) then return true end
+    local car = package.loaded["car"]
+    return car ~= nil and car.gliding ~= nil and car.gliding(c)
+end
 
 -- the other player's character on this side (not our own), and our own
 local function chars()

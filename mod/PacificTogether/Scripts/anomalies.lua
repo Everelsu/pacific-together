@@ -117,11 +117,43 @@ for _, fn in ipairs(BINDS) do
     hook(RECEIVER .. fn, function(self, payload) try("forward", pre, self, payload) end)
 end
 
+-- Car crashes (from PDCoopNet's hazards.lua, MIT, BroZYTnikkkk): the car's damage controller works out the player's share of
+-- every hit on the car (LimitDamageToPlayerOverTime, limited over time; ~20 MSG_Damage_Physical_Impact of 0.04-0.5 per crash) and
+-- hands it to "the player", always the host, so a guest riding along took nothing. While a guest sits in that car, the host sends
+-- it the same share as g.anom.msg (its own resistances apply). Not in the garage, where the game deals no player damage. The
+-- guest's copy of the car cannot work it out itself (its controller stops at once on a replicated car, PDCoopNet exp215).
+local DISPATCH = "/Game/Systems/Messages/BP_CarDispatchController.BP_CarDispatchController_C:LimitDamageToPlayerOverTime"
+local function inGarage()
+    local ok, g = pcall(function() return FindFirstOf("DrivingGameInstance"):IsInGarage() end)
+    return ok and g == true
+end
+local function crash(self, msgp, _, updatedp)
+    if not M.enabled or os.getenv("PT_MUTATE") == "nocrash" or safety.guest() or not safety.active() then return end
+    if os.getenv("PT_CRASH_GARAGE") ~= "1" and inGarage() then return end -- the carcrash test runs in the garage
+    local dmg, p = updatedp:get(), msgp:get()
+    if type(dmg) ~= "number" or dmg <= 0 or not valid(p) then return end
+    local ctl = self:get() -- a plain object, not a component: its car is the one whose DamageDispatchController it is
+    for _, pc in ipairs(net.guests()) do
+        local pawn = pc.Pawn
+        local ok, mine = pcall(function()
+            local car = pawn:GetAttachParentActor()
+            return valid(car) and car.DamageDispatchController:GetAddress() == ctl:GetAddress()
+        end)
+        if valid(pawn) and ok and mine then
+            local cls = p:GetClass():GetFullName():gsub("^%S+ ", "")
+            net.toGuest(pc, "g.anom.msg", string.format("%s\t%.3f\t%d\t%d\t%.3f\t%d\tcrash", cls, dmg, p.Spillover and 1 or 0,
+                p.IsDamageOverTime and 1 or 0, p.FeedbackStrength, p.DistributeMode))
+            M.crashes = (M.crashes or 0) + 1
+        end
+    end
+end
+hook(DISPATCH, function(...) try("crash", crash, ...) end)
+
 net.on("g.anom.msg", function(_, data)
     if not (M.enabled and safety.active()) then return end
     local guest = safety.guest()
     try("apply", function()
-        local cls, dmg, sp, dot, fb, dm = data:match("^([^\t]+)\t([^\t]+)\t(%d)\t(%d)\t([^\t]+)\t(%d)$")
+        local cls, dmg, sp, dot, fb, dm, why = data:match("^([^\t]+)\t([^\t]+)\t(%d)\t(%d)\t([^\t]+)\t(%d)\t?(%a*)$")
         if not cls then return end
         local c = StaticFindObject(cls)
         if not valid(c) then pcall(LoadAsset, cls); c = StaticFindObject(cls) end
@@ -134,7 +166,8 @@ net.on("g.anom.msg", function(_, data)
         ms:DispatchMessage(m, target)
         M.applied = M.applied + 1
         log("PT|anom damage applied %s", data)
-        ov.post(guest and "Hit by an anomaly" or (ov.other() .. " hit you"), "warn", "anom")
+        if why == "crash" then ov.post("Hurt in the crash", "warn", "crash")
+        else ov.post(guest and "Hit by an anomaly" or (ov.other() .. " hit you"), "warn", "anom") end
     end)
 end)
 
