@@ -506,6 +506,23 @@ net.on("g.car.enter", function(pc)
     if noGlide() or dist(char:K2_GetActorLocation(), car:K2_GetActorLocation()) > 600 then sit() else glideIn(char, car, PASSENGER, sit) end
 end)
 
+-- the seated guest turned the key or moved the shifter (P <-> D; P holds the parking brake): the host's own setters, then
+-- the H line shows it on both sides. No key animation or failed-start chance (ManualSetIgnition_NoAnim: 0 off, 2 running).
+net.on("g.car.ctl", function(pc, what)
+    if common.netMode() ~= "listen" or os.getenv("PT_MUTATE") == "noguestctl" then return end
+    local char, car, cm = guestChar(pc), theCar(true), carManager()
+    if not (char and car and cm and same(char:GetAttachParentActor(), car)) then return end
+    if what == "ign" then
+        local to = cm.CarIgnitionState == 0 and 2 or 0
+        pcall(function() car:ManualSetIgnition_NoAnim(to) end)
+        log("PT|car ctl ign -> %d now %d", to, cm.CarIgnitionState)
+    elseif what == "gear" then
+        local to = cm.MyCarGearBox == 1 and 0 or 1
+        pcall(function() car:ManualActivate_Gearbox(to, true) end)
+        log("PT|car ctl gear -> %d now %d", to, cm.MyCarGearBox)
+    end
+end)
+
 net.on("g.car.exit", function(pc)
     if common.netMode() ~= "listen" then return end
     local char, car = guestChar(pc), theCar(true)
@@ -934,7 +951,7 @@ local function sendExit()
     log("PT|car exit intent sent=%s", tostring(net.toHost("g.car.exit")))
 end
 
-local hooked, exitWanted = false, false
+local hooked, exitWanted, ctlWanted, aimed = false, false, false, nil
 local function hookAll()
     if hooked then return end
     local ok, err = pcall(RegisterHook, "/Game/Gameplay/Inventory/Items/Car/Doors/BP_CarPart_Door_Base.BP_CarPart_Door_Base_C:EnterCar", function(self)
@@ -984,6 +1001,25 @@ local function hookAll()
     hooked = true
     -- leaving: key X while seated; the key only raises a flag (an ExecuteInGameThread per press crashed UE4SS when spammed, ping.lua)
     common.onKey("X", function() exitWanted = true end)
+    common.onKey("E", function() ctlWanted = true end)
+end
+
+-- the seated guest's ignition key and shifter: the game highlights them only for the driver ("Must be inside car!" in
+-- BP_HighlightManager's Should Allow Highlight; a post-hook cannot change its out param), so the guest aims with its camera
+-- and presses E; the host applies it (g.car.ctl)
+local AIM_DEG, AIM_REACH = 8, 200
+local function aimAt(pc, car)
+    local cam = pc.PlayerCameraManager
+    local from, fwd = cam:GetCameraLocation(), kml():GetForwardVector(cam:GetCameraRotation())
+    local best, bestCos = nil, math.cos(math.rad(AIM_DEG))
+    for what, comp in pairs({ ign = car.UICollision_Key, gear = car.Socket_GearBox }) do
+        local p = comp:K2_GetComponentLocation()
+        local d = { X = p.X - from.X, Y = p.Y - from.Y, Z = p.Z - from.Z }
+        local len = math.sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z)
+        local c = len > 1 and (d.X * fwd.X + d.Y * fwd.Y + d.Z * fwd.Z) / len or -1
+        if len < AIM_REACH and c > bestCos then best, bestCos = what, c end
+    end
+    return best
 end
 
 -- F8 on the guest: log what holds the controls, then give them back (camera and walking stayed locked after an exit,
@@ -1073,6 +1109,9 @@ local function guestTick()
             stopRide(me)
         end
     end
+    aimed = riding and valid(me) and aimAt(pc, car) or nil
+    if ctlWanted and aimed then log("PT|car ctl %s sent=%s", aimed, tostring(net.toHost("g.car.ctl", aimed))) end
+    ctlWanted = false
     if helloFor ~= car:GetFullName() then
         helloFor = car:GetFullName()
         net.toHost("g.car.hello")
@@ -1117,6 +1156,7 @@ LoopInGameThreadWithDelay(50, function()
 end)
 
 M.exit = sendExit
+M.aimed = function() return aimed end -- guestui.lua's seat hint: "ign", "gear" or nil
 M.unstick = function() unstickWanted = true end -- guestui.lua: second key and console command
 -- for guestact.lua (the guest's car work and ARC)
 M.theCar, M.carManager, M.equipped, M.itemOf, M.slotName = theCar, carManager, equipped, itemOf, slotName

@@ -759,3 +759,27 @@ Filling big containers (loot.lua, ids.lua)
 Unknowns
 - Other join spikes on the long save's guest: first g.car.s 808 ms, progression.lua:238 372 ms, story.lua:323 359 ms.
 - Zone door copies (visual props) take the same applyDoor path; not run (no zone fixture here). Rendered play not checked.
+
+## 2026-10-29: Steam-free direct IP and passenger car controls (owner request)
+
+Observations
+- Owner's Radmin session (real install log): the guest connected and sent its hello three times; the host refused each with
+  `build mismatch: host has 21896301, you have 911` (game=1.15.0, mod 0.0.8, protocol 5 equal). The build id now only logs.
+- On the seated guest `BP_HighlightManager:Should Allow Highlight(Highlight_Key)` = false, "Must be inside car!"
+  (`IsPlayerInCar` false, car manager `PlayerCarState` 0: the mod seats by attachment). The handbrake attachment passes.
+  A UE4SS post-hook `allow:set(true)` did not change the out param (the call still returned false).
+- Host setters: `ManualSetIgnition_NoAnim` takes 0 (off) and 2 (running); 1 does not stick. `ManualActivate_Gearbox` 1 = P with
+  the parking brake on, 0 = D with it off; 2 did not stick in park. `VehicleController:SetParkingBrakeActive(false)` in P is
+  put back. `ToggleIgnitionState(1)`, the Highlight_Key bound events and `HighlightPress` on the driving host changed nothing
+  headless.
+- Reading every property value of `AB_HandbrakeAbility_C` through the repl crashed the host twice (AV reading 0x10).
+
+Derived
+- The passenger aims with its camera (8 degrees, 200 uu: `UICollision_Key`, `Socket_GearBox`) and presses E; `g.car.ctl ign|gear`
+  toggles on the host. guestctl 34/34 (`20261029-005331-a-guestctl`); noguestctl 29/34
+  (`20261029-005813-a-guestctl-noguestctl`). sessionmismatch 21/21 after its host refusal wait was raised to 130 s.
+
+Unknowns
+- The E key and the aim test are not drivable headless (the scenario sends the intent E sends); rendered hint and real aim
+  in hand play are unchecked. The game's own key animation and failed-start chance do not run for the guest's turn.
+- `player_id.txt` backpack keying and a build-911 guest in a full session are not tested.

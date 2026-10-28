@@ -5,6 +5,12 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+### Added
+
+- The guest in the passenger seat can turn the ignition key and move the shifter between P and D (P holds the parking
+  brake): look at the key or the shifter and press **E** (the hint above the hotbar says which). The host applies it;
+  the key turns without its animation and never fails to start.
+
 ### Fixed
 
 - Direct IP no longer depends on Steam: a different Steam build id (or none) no longer refuses the join, only a

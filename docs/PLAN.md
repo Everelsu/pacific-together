@@ -31,6 +31,7 @@ Current player-facing behavior: [../README.md](../README.md). Results and remain
 | D21 | **Guest can use the garage stations** (Fabrication, Tinker, Detailing) in v1.0, spending the host's shared resources (G2). |
 | D22 | **ARC scope for the guest in v1.0: gateway summon and energy use only.** Route planning stays host-only until v1.1 (it runs through native `UBaseRouteState`; lane E research, 2026-10-20). Narrows D13 / W11. |
 | D23 | **Prove the crash-upload block (D16/Q9) before 1.0** with one deliberate test-copy crash while a Windows Firewall rule blocks the test copy's CrashReportClient outbound (owner approved; needs a UAC prompt). Until then test copies have no CrashReportClient.exe at all (`setup-test.ps1` removes it). |
+| D25 | **Passenger controls** (owner 2026-10-29): the seated guest can turn the ignition key and move the shifter between P and D (P holds the parking brake); the host applies both. Steering, throttle and route planning stay with the host (D11). |
 | D24 | Earlier scope deferrals no longer describe delivery: supported garage stations, ARC map markers and Tourist observation are implemented. Guest driving and route planning remain later scope. |
 
 ## 2. Fixed constraints

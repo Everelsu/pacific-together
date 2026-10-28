@@ -2,7 +2,7 @@
 --   pause menu   the guest's Esc did nothing: the game opens its pause menu only when UGameplayStatics::SetGamePaused succeeds,
 --                and a client's SetGamePaused is always false. After "Set Pause Menu Opened" the guest shows/hides the menu widget
 --                itself; the world is not paused (a guest cannot pause the host's world).
---   seat hint    "X  Exit car" above the hotbar while the guest is seated
+--   seat hint    "X  Exit car" above the hotbar while the guest is seated, plus "E  Ignition" / "E  Shifter P/D" when aimed (car.lua)
 --   loading      "Joining host...", "Loading...", "Waiting for host..." in the screen centre until the guest can move
 --   fade         a short fade to black and back when the guest is seated or leaves its seat
 --   unstick      the End key does what F8 does (laptop keyboards need Fn for F8); the console command "ptunstick" too
@@ -142,7 +142,10 @@ local function update()
     local me = pc.Pawn
     local isSeated = valid(me) and seated(me) or false
     show(ui.msg, "msg", message(pc, me, mapName, isSeated))
-    show(ui.hint, "hint", isSeated and "X  Exit car" or "")
+    local car = package.loaded["car"]
+    local aim = isSeated and car and car.aimed and car.aimed()
+    show(ui.hint, "hint", not isSeated and "" or aim == "ign" and "E  Ignition    X  Exit car"
+        or aim == "gear" and "E  Shifter P/D    X  Exit car" or "X  Exit car")
     if wasSeated ~= nil and wasSeated ~= isSeated and mapName ~= MENU then fade(pc) end
     wasSeated = isSeated
 end
