@@ -5,6 +5,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-30
+
 ### Added
 
 - You hear the same scares: whispers, the static ghost, drones, startled birds and the rest now happen for both players at
