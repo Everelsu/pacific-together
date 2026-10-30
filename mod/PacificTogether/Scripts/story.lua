@@ -269,7 +269,8 @@ local function reportTasks()
             for j = 1, ms.TaskStates:GetArrayNum() do
                 local t = ms.Tasks[j]
                 if ms.TaskStates[j].bCompleted and mask:sub(j, j) == "0" and live(t) and GUEST_TASKS[t:GetClass():GetFName():ToString()] then
-                    local ok, car = pcall(function() return t.CheckCar or t.CheckZETI end) -- those two read the shared trunk: not the guest's doing
+                    -- those two read the shared trunk: not the guest's doing. == true: a class without them returns a truthy TrivialObject
+                    local ok, car = pcall(function() return t.CheckCar == true or t.CheckZETI == true end)
                     local key = op .. "|" .. mp .. "|" .. j
                     if not (ok and car) and not lastReported[key] then
                         lastReported[key] = true

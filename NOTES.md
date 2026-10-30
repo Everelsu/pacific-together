@@ -783,6 +783,7 @@ Unknowns
 - The E key and the aim test are not drivable headless (the scenario sends the intent E sends); rendered hint and real aim
   in hand play are unchecked. The game's own key animation and failed-start chance do not run for the guest's turn.
 - `player_id.txt` backpack keying and a build-911 guest in a full session are not tested.
+
 ## 2026-10-25 owner hand play of 0.0.8 (logs local/playtests/20261025-pt7-008)
 
 Observations
