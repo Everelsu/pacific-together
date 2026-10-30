@@ -1,6 +1,6 @@
 # Playtester guide
 
-Developer/friend preview **0.8.3**, protocol **5**. Both players need the same download and Pacific Drive on Steam,
+Developer/friend preview **0.8.4**, protocol **5**. Both players need the same download and Pacific Drive on Steam,
 v1.15.0 (build 21896301). The host owns the world and saves. Mixed DLC ownership is not yet verified.
 
 ## Install and connect
@@ -24,6 +24,9 @@ A game or mod version mismatch refuses the join; a different build number is onl
 - Host drives; the guest opens the **passenger** door with **E** and gets in, and rides in the passenger seat. **X** exits (on the passenger side). From the seat, look at the ignition key or the shifter and press **E** to start/stop the engine or switch P/D.
 - New game: **E** skips the opening for both players.
 - **Middle mouse** pings; **End** or **F8** resets stuck guest controls.
+- **F9** opens the rescue menu when something breaks: **1** teleport to the other player, **2** resync with the host,
+  **3** reset controls, **4** story tasks (press a stuck task's number twice to complete it for both; when a quest is done but
+  the next one never starts, the list offers to start it). **0** goes back, **F9** closes.
 - Host **Esc** pauses both games; guest **Esc** opens their menu.
 - Check garage interactions, a junction transition, scavenging, gateway return, death/failure and leave/rejoin.
   Record what you actually saw; automated checks do not cover every interaction.

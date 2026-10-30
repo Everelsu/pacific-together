@@ -377,4 +377,8 @@ LoopInGameThreadWithDelay(200, function()
     try("say", dialogueTick)
 end)
 
+-- rescue.lua: send all of it again (host), report the guest's done tasks again (guest)
+function M.resend() lastQuest, sentDone, queue = "", {}, {} end
+function M.rereport() lastReported = {} end
+
 return M

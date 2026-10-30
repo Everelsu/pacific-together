@@ -3,7 +3,7 @@
 Two-player online co-op mod for [Pacific Drive](https://store.steampowered.com/app/1458140/Pacific_Drive/):
 one drives, one rides along, both scavenge, the run is shared. Join through Steam invites, the friends list or direct IP.
 
-**Status: development preview 0.8.3 (2026-10-30), network protocol 5.** Shared car, loot, progression and run systems
+**Status: development preview 0.8.4 (2026-10-30), network protocol 5.** Shared car, loot, progression and run systems
 are implemented, with ongoing playtesting and fixes. Both players need the same mod version. No public release before
 1.0; previews are for the developers and friends. See [CHANGELOG.md](CHANGELOG.md) for changes and known issues,
 and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
@@ -33,7 +33,9 @@ and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
   saves are protected while joined.
 - **Interface:** session status and activity feed, guest loading and seat prompts, shared pause when the host opens
   Esc, the game's own loading screen on both sides through map changes (each waits for the other), route/travel notices and
-  an ARC energy readout. The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
+  an ARC energy readout. **F9 opens the rescue menu** for when something breaks mid-session: teleport to the other player,
+  resync with the host, reset stuck controls, or force-complete a story task that will not tick (the host's open tasks are
+  listed; press a task's number twice). The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
 
 ## Limitations and testing
 

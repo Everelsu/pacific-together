@@ -5,7 +5,8 @@
 --                               to a rainy one and back (the guest's sim never heard of the change: its delegate was unbound)
 --   guest_precipitation_matches the guest's precipitation follows the host's rain (host > 0.5)
 --   guest_ambience_set_up       the guest's ambience manager has its falling-rain, splash and radiation effects (they were never made: the
---                               guest's character came after the manager's setup, so rain showed on the host only; 2026-10-30)
+--                               guest's character came after the manager's setup, so rain showed on the host only; 2026-10-30), its
+--                               tick runs and the rain occlusion camera exists (the rain stood at the map origin, rendered guest 2026-10-30)
 --   guest_coop_gloom            the host's co-op weather layer (PTCoopGloom: the game's values with a floor of fog, rain, wind and
 --                               darkness) reaches the guest and its fog sits at or above the floor (mutation nospooky fails it)
 -- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (guest_ambience_set_up needs a rendered run; headless it skips) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup; nospooky: no co-op weather.
@@ -74,7 +75,9 @@ return function(T)
         { check = "guest_ambience_set_up", timeout = 30, cond = function()
             if os.getenv("PT_HEADLESS") == "1" then T.log("PT|info guest_ambience_set_up skipped: headless"); return true end
             local am = T.first("BP_AmbienceManager_C")
+            -- and its tick runs (VFXInitialized, AmbsReadyToPlay) with the rain occlusion camera: without them the rain stood at the map origin
             return am ~= nil and am.EnvironmentComponent:IsValid() and am.RainSplashSystem:IsValid() and am.PlayerRadiationNiagaraSystem:IsValid()
+                and am.VFXInitialized == true and am.AmbsReadyToPlay == true and T.first("rainOcclusionCamera_Blueprint_C") ~= nil
         end },
         { check = "guest_coop_gloom", timeout = 30, cond = function()
             local tod = T.first("BP_ToDManager_C")

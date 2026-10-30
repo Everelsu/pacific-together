@@ -896,3 +896,29 @@ Observations
 - Footsteps: no ProcessEvent call matched Footstep/AnimNotify/Ak*/Surface while the host walked (headless, -nosound). Unknown
   whether they are native anim notifies or skipped without audio; partner sounds need a rendered look.
 Results: nametag 24/24 (loudtag 21/24), overlay 40/40 (loudfeed 37/40), sharedworld 25/25 (noambsync 23/25, nowaypoint 22/25).
+
+## 2026-10-30 evening: rescue menu (owner request: a way out of glitches and softlocks like Q01)
+
+Observations
+- A guest's own K2_SetActorLocation moved it only on its screen: the host's copy stayed at the old spot (idle client sends no
+  move). Teleport now goes through the host (moves its copy, sends the spot back). rescue run `20261030-145857` / `-150026` failed
+  host_guest_teleported, after the change 21/21 (`20261030-150503`).
+- ForceCompleteTask on the host's Q01 Mission_C GrabbedAnchor (task 3), asked from the guest by UniqueName, completes it on the host
+  and the guest's mirror. norescue mutation 18/21 (teleport, host task, guest mirror fail).
+- Rendered hand play (owner, test copies, logs local/playtests/20261030-rescue-live): a held F9 reads down/up on alternate 30 ms
+  polls, so one press toggled the menu several times per tick (debounced, 0.4 s since the last down edge). The panel stayed
+  empty: overlay.lua's render read `panelText` declared below it (a nil global). After both fixes all four actions worked by hand.
+- Q01 forced done in the garage (all Mission_C tasks): Mission_C and QD_Q01_Objective completed, no objective active, and
+  BP_QuestDirector's "Q01 complete" branch (AntennaSignalsReady line, delay, StartObjective QD_Q015_Objective, whiteboard tag
+  WB.quests.objectives.QD_Q01_Objective.MissionEVODelay.Complete) never ran. StartObjective(QD_Q015_Objective, false, true) by hand
+  started Q015 Mission_A; the menu now offers it (NEXT table, Q01 only).
+- Guest rain: BP_AmbienceManager on the guest had VFXInitialized=false and AmbsReadyToPlay=false (initialised before its character),
+  so K2_Tick never updated (PS_Ambience_Rain stood where first placed, Inside_* stayed 0). The guest also had no
+  rainOcclusionCamera_Blueprint_C and no BP_GlobalHeightCapture_C (host-side spawn). RetryInitialize + InitializeAmbientVFX +
+  SpawnRainOcclusionCamera + spawning the height capture: owner saw rain and splashes on the guest.
+- Held tools: the grip read off the first-person arms changed with their animation (Scrapper 52 -> 17 uu in 0.3 s), rebuilding the
+  mirror every report; world meshes (Scrapper's is SM_Tool_ItemHarvester_01_World, no "_Base") have other pivots than the
+  first-person parts, so the grip put them up the arm. Now: grip read once 1 s after equip, world meshes held level, front forward,
+  pivot in hand_r. Owner: Scrapper, Impact Hammer, blowtorch, Extractor, repair tool, prybar, Vacuum "all look nice".
+Unknown: number keys with the menu open also reach the game's bindings; which of the occlusion camera and height capture the rain
+needed (both are spawned); held-tool look while the other player walks or uses the tool.

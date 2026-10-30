@@ -290,18 +290,34 @@ net.on("g.world.state", function(_, data)
     try("storm", applyStorm, s)
 end)
 
--- falling rain, splashes and radiation haze follow the local character (BP_AmbienceManager); the guest's manager set them up
--- before its character existed, so the guest saw no rain while the host's rained (2026-10-30): set up what is missing
-local AMB = { { "EnvironmentComponent", "SetupEnvAmbientVFX" }, { "RainSplashSystem", "SetupSplashEffects" }, { "PlayerRadiationNiagaraSystem", "SetupRadiationVFX" } }
-local ambienceFor -- the character the setup last ran for: once each (a headless game makes no effects and would retry every second)
+-- falling rain, splashes and radiation haze follow the local character (BP_AmbienceManager). The guest's manager initialised before
+-- its character existed (rendered guest 2026-10-30): VFXInitialized stayed false, so its tick never ran (the rain stood at the map
+-- origin, inside/outside never changed), AmbsReadyToPlay stayed false, and the rain occlusion camera and the global height capture
+-- (spawned on the host's side only) were missing. The game's own initialisers, run here once the character is there, fix all of it.
+local HEIGHT = "/Game/Systems/GlobalHeightCapture/BP_GlobalHeightCapture.BP_GlobalHeightCapture_C"
+local ambienceFor, tries -- the character the setup runs for, attempts left (a headless game makes no effects and would retry forever)
 local function ambience()
     local am, cm = first("BP_AmbienceManager_C"), first("BP_MainCharacterManager_C")
     local char = cm and cm:GetCharacterActor()
-    if not (am and char and char:IsValid()) or ambienceFor == char:GetFullName() then return end
-    ambienceFor = char:GetFullName()
-    for _, a in ipairs(AMB) do
-        if not am[a[1]]:IsValid() then am[a[2]](am); log("PT|world guest ambience %s", a[2]) end
+    if not (am and char and char:IsValid()) then return end
+    if ambienceFor ~= char:GetFullName() then ambienceFor, tries = char:GetFullName(), 3 end
+    if tries <= 0 or (am.VFXInitialized and am.AmbsReadyToPlay) then return end
+    tries = tries - 1
+    if not am.AmbsReadyToPlay then am:RetryInitialize() end
+    if not am.VFXInitialized then
+        -- each call makes a new falling-rain component: the old one would stay where it stood
+        local old = am.RainSystem
+        if old:IsValid() then pcall(function() old:DestroyComponent(old) end) end
+        am:InitializeAmbientVFX()
     end
+    if not first("rainOcclusionCamera_Blueprint_C") then am:SpawnRainOcclusionCamera() end
+    if not first("BP_GlobalHeightCapture_C") then
+        if not StaticFindObject(HEIGHT):IsValid() then pcall(LoadAsset, HEIGHT) end
+        local cls, gs = StaticFindObject(HEIGHT), UEHelpers.GetGameplayStatics()
+        local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+        if cls:IsValid() then gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(char, cls, xf, 1, nil), xf) end
+    end
+    log("PT|world guest ambience vfx=%s ready=%s", tostring(am.VFXInitialized), tostring(am.AmbsReadyToPlay))
 end
 
 -- G3: the mission-manager pre-hooks that keep the guest from starting a story live in story.lua.

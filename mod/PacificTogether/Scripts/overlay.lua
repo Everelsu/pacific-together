@@ -15,6 +15,7 @@ if os.getenv("PT_MUTATE") == "nooverlay" then
     function M.settled() return false end
     function M.hostPaused() end
     function M.transition() end
+    function M.panel() end
     return M
 end
 
@@ -71,6 +72,7 @@ local function build()
     n.label = text(tree, "PTVersion", 18, "label"); add(n.label)
     n.status = text(tree, "PTStatus", 16, "status"); add(n.status)
     n.arc = text(tree, "PTArc", 16, "status"); n.arc:SetVisibility(1); add(n.arc) -- "ARC 3.0 / 7.0": the device sits behind the seats in co-op (D12)
+    n.panel = text(tree, "PTPanel", 16, "label"); n.panel:SetVisibility(1); add(n.panel) -- rescue.lua's menu
     for i = 1, LINES do
         n.lines[i] = text(tree, "PTFeed" .. i, 16, "info")
         n.lines[i]:SetVisibility(1)
@@ -97,8 +99,15 @@ local function label(l)
     return l.n > 1 and (t .. "  x" .. l.n) or t
 end
 
+-- rescue.lua's menu, a few lines above the feed; nil hides it
+local panelText
+function M.panel(t) panelText = t end
+
 local function render()
     local now = os.clock()
+    local pnv = panelText and 3 or 1
+    if ui.cache.pnv ~= pnv then ui.cache.pnv = pnv; ui.panel:SetVisibility(pnv) end
+    if panelText then set(ui.panel, "panel", panelText) end
     local pv = (pausedAt and now - pausedAt < 3 and not transitionOn) and 3 or 1
     if ui.cache.pv ~= pv then
         ui.cache.pv = pv

@@ -66,6 +66,7 @@ local function encodeParts(h, list)
 end
 
 -- "<archetype>|<size>|<on 0/1>|<light kind>|<parts>"; "" for an empty hand
+local held = {} -- the hand item now: { id, at = when it came, parts = its encoded parts once read }
 local function localState()
     local c = ownChar()
     if not c then return "" end
@@ -74,11 +75,19 @@ local function localState()
     local h = o["Hand Item"]
     if not valid(h) or not valid(h.Instance) then return "" end
     local arch = h.Instance.Archetype
+    -- the grip is read off the animating first-person arms: it changed every report (Scrapper 52 -> 17 uu in 0.3 s, rendered guest
+    -- 2026-10-30) and the mirror was rebuilt at a new spot each time. Read once, 1 s after the item is in the hand (equip anim done).
+    local id = h:GetFullName() .. (valid(arch) and arch:GetFName():ToString() or "")
+    if held.id ~= id then held = { id = id, at = os.clock() } end
+    if not held.parts then
+        if os.clock() - held.at < 1 then return "" end
+        held.parts = encodeParts(h, heldParts(h))
+    end
     local on, kind = 0, "none"
     local ok, v = pcall(function() return h.IsOn end)
     if ok and v == true then on = 1 end
     if h:K2_GetComponentsByClass(LIGHT)[1] then kind = h:GetClass():GetFName():ToString():find("Camping", 1, true) and "point" or "spot" end
-    return string.format("%s|%d|%d|%s|%s", valid(arch) and arch:GetFName():ToString() or "?", arch.Size or 0, on, kind, encodeParts(h, heldParts(h)))
+    return string.format("%s|%d|%d|%s|%s", valid(arch) and arch:GetFName():ToString() or "?", arch.Size or 0, on, kind, held.parts)
 end
 
 -- theirs ----------------------------------------------------------------------------------------------------------------
@@ -122,6 +131,9 @@ local function worldMesh(p)
     if noWorld[p] then return nil end
     local w = p:gsub("([^/%.]+)%.([^/%.]+)$", "%1_World.%2_World")
     if w ~= p and loadMesh(w) then return w end
+    -- the Scrapper's first-person base is SM_Tool_ItemHarvester_Base_01, its world mesh SM_Tool_ItemHarvester_01_World (2026-10-30)
+    local nb = w:gsub("_Base_", "_")
+    if nb ~= w and loadMesh(nb) then return nb end
     noWorld[p] = true
 end
 
@@ -140,6 +152,18 @@ end
 -- first-person Hand bone -> third-person hand_r: the Prybar's pose on the first-person arms (measured 2026-10-30), which shows right
 -- on hand_r untransformed; every other tool keeps its own grip and size relative to it. Mutation nograsp: the old identity pose.
 local GRIP = { Translation = { X = 31.4, Y = 24.4, Z = 47.0 }, Rotation = { X = 0.9924, Y = -0.0790, Z = 0.0868, W = 0.0368 }, Scale3D = { X = 1.2, Y = 1.2, Z = 1.2 } }
+
+-- A world mesh (the tool as it lies on the ground) is held level, its front (+X) where the player faces, its pivot in the right hand.
+-- The grip read off the first-person arms suits only the first-person part's pivot: on world meshes it put the Scrapper 59 cm up the
+-- arm pointing up, and the Impact Hammer and blowtorch were off the same way (rendered guest 2026-10-30).
+local function levelHold(char)
+    local kml = UEHelpers.GetKismetMathLibrary()
+    local hand = char.Mesh:GetSocketTransform(FName("hand_r"), 0)
+    local f = char:GetActorForwardVector()
+    local want = { Translation = hand.Translation, Rotation = kml:Conv_RotatorToTransform({ Pitch = 0, Yaw = math.deg(math.atan(f.Y, f.X)), Roll = 0 }).Rotation,
+        Scale3D = { X = 1, Y = 1, Z = 1 } }
+    return kml:MakeRelativeTransform(want, hand)
+end
 
 local function build(char, st)
     local arch, size, on, kind, parts = st:match("^([^|]*)|(%d+)|(%d)|(%a+)|(.*)$")
@@ -163,7 +187,7 @@ local function build(char, st)
                     if os.getenv("PT_MUTATE") ~= "nograsp" then
                         local kml = UEHelpers.GetKismetMathLibrary()
                         local rel = { Translation = { X = v[1], Y = v[2], Z = v[3] }, Rotation = { X = v[4], Y = v[5], Z = v[6], W = v[7] }, Scale3D = { X = v[8], Y = v[9], Z = v[10] } }
-                        m.base = kml:ComposeTransforms(rel, kml:InvertTransform(GRIP))
+                        m.base = world and levelHold(char) or kml:ComposeTransforms(rel, kml:InvertTransform(GRIP))
                         if world then m.base.Scale3D = { X = 1, Y = 1, Z = 1 } end -- a world mesh is at its true size at 1
                         a:K2_SetActorRelativeTransform(m.base, false, {}, true)
                     end

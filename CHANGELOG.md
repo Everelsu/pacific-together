@@ -5,6 +5,20 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-10-30
+
+### Added
+
+- Rescue menu (F9) for glitches and softlocks: teleport to the other player, resync with the host, reset stuck controls,
+  and complete a story task the game will not tick by itself (for example Q01's "Take the Anchor"), for both players.
+  When a quest is finished but the next one never starts (Q01 to Q015), the menu offers to start it.
+
+### Fixed
+
+- The guest sees the rain again: falling drops and splashes now follow the guest's character, as they do for the host.
+- Tools in the other player's hand (Scrapper, Impact Hammer, blowtorch and the rest) are held level at their real size,
+  instead of pointing up over the shoulder or jumping around while the other player moved.
+
 ## [0.8.3] - 2026-10-30
 
 ### Added
