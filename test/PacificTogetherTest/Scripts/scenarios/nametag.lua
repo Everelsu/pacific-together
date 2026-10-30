@@ -1,11 +1,12 @@
 -- P7: the shipping name tag (with health.lua a second line "<n>%" follows the name). The host gives the guest a character 300 uu in front of it; each side must show a tag with
 -- the other's PlayerState name on the other's character (never on its own), full strength near, faded in between
--- (NEAR 1500, FAR 5000) and hidden at 6000. -Mutate nosession: the guest never joins, so no tag may exist and the
+-- (NEAR 1500, FAR 5000) and hidden at 6000. Quiet tag (2026-10-30): in plain sight within 8 m there is no tag (fades in to 15 m),
+-- behind something it shows (host_tag_near_behind_wall: a block between them); mutation loudtag (the old always-on tag) fails. -Mutate nosession: the guest never joins, so no tag may exist and the
 -- tag checks FAIL. -Mutate shot: screenshots at each distance (run without -Headless).
 return function(T)
     local L = require("scenarios.safety_lib")
     local alone = T.MUTATE == "nosession"
-    local function tagCheck(id, wantAlpha)
+    local function tagCheck(id, wantAlpha, occ)
         return { check = id, timeout = 6, cond = function()
             local o = T.otherChar()
             local tags = o and L.tagsOn(T, o) or {}
@@ -14,7 +15,8 @@ return function(T)
             -- what the fade should be at the tag's real distance from our camera (NEAR 1500, FAR 5000 in nametag.lua)
             local cl, tl = T.localPC().PlayerCameraManager:GetCameraLocation(), tags[1] and tags[1]:K2_GetActorLocation()
             local cd = tl and math.sqrt((cl.X - tl.X) ^ 2 + (cl.Y - tl.Y) ^ 2 + (cl.Z - tl.Z) ^ 2) or -1
-            local want = math.floor(math.max(0, math.min(1, (5000 - cd) / 3500)) * 255 + 0.5)
+            local quiet = occ and 1 or math.max(0, math.min(1, (cd - 800) / 700))
+            local want = math.floor(math.max(0, math.min(1, (5000 - cd) / 3500)) * quiet * 255 + 0.5)
             local name = o and o.PlayerState:IsValid() and o.PlayerState:GetPlayerName():ToString() or "?"
             T.log("PT|info tag %s n=%d own=%d text='%s' name='%s' alpha=%s want=%d hidden=%s mat=%s camd=%.0f", id, #tags, #own, s and s.text or "-", name,
                 s and tostring(s.alpha) or "-", want, s and tostring(s.hidden) or "-", s and s.mat or "-", cd)
@@ -22,11 +24,12 @@ return function(T)
             return #tags == 1 and #own == 0 and (s.text == name or s.text:match("^(.-)\n") == name) and name ~= "" and math.abs(s.alpha - want) <= 13 and wantAlpha(s.alpha, s.hidden)
         end }
     end
-    local near = function(a, hidden) return a == 255 and not hidden end
+    local near = function(a, hidden) return hidden end -- in plain sight: no tag
+    local behind = function(a, hidden) return a == 255 and not hidden end
     local mid = function(a, hidden) return a > 0 and a < 255 and not hidden end
     local far = function(a, hidden) return hidden end
     if T.ROLE == "host" then
-        local guest
+        local guest, wall
         -- the host moves the guest's character (authority) to d uu in front of its camera
         local function place(d)
             return { run = function()
@@ -70,9 +73,26 @@ return function(T)
             end },
             { wait = 5 },
             place(300), { wait = 3 }, tagCheck("host_tag_near", near),
+            -- a block between us and the guest: the tag shows though it is near
+            { run = function()
+                local cl, gl = T.localPC().PlayerCameraManager:GetCameraLocation(), guest:K2_GetActorLocation()
+                local gs = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+                local yaw = math.deg(math.atan(gl.Y - cl.Y, gl.X - cl.X))
+                local xf = { Rotation = { X = 0, Y = 0, Z = math.sin(math.rad(yaw) / 2), W = math.cos(math.rad(yaw) / 2) },
+                    Translation = { X = (cl.X + gl.X) / 2, Y = (cl.Y + gl.Y) / 2, Z = gl.Z + 60 }, Scale3D = { X = 0.2, Y = 3, Z = 3 } }
+                wall = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(guest, StaticFindObject("/Script/Engine.StaticMeshActor"), xf, 1, nil), xf)
+                local c = wall.StaticMeshComponent
+                c:SetMobility(2)
+                local cube = StaticFindObject("/Engine/BasicShapes/Cube.Cube")
+                if not cube:IsValid() then LoadAsset("/Engine/BasicShapes/Cube.Cube"); cube = StaticFindObject("/Engine/BasicShapes/Cube.Cube") end
+                c:SetStaticMesh(cube)
+                c:SetCollisionProfileName(FName("BlockAll"), true)
+            end }, { wait = 3 }, tagCheck("host_tag_near_behind_wall", behind, true),
+            { run = function() if wall and wall:IsValid() then wall:K2_DestroyActor() end end },
             place(2800), { wait = 3 }, tagCheck("host_tag_mid", mid),
             place(6000), { wait = 3 }, tagCheck("host_tag_far", far),
             place(300), { wait = 3 }, tagCheck("host_tag_back", near),
+            place(2800), { wait = 3 },
             -- a Cyrillic name: TextRender cannot draw it (squares), so the tag text is empty and a UMG TextBlock shows the real name
             { run = function() guest.PlayerState.PlayerNamePrivate = utf8.char(0x411, 0x43e, 0x433, 0x434, 0x430, 0x43d) end },
             { wait = 2 },

@@ -6,13 +6,21 @@ local safety = require("safety")
 local health = require("health")
 local log = common.log
 
-local M = { NEAR = 1500, FAR = 5000 } -- uu: full strength up to NEAR, gone at FAR
+local M = { NEAR = 1500, FAR = 5000, QUIET = 800, QUIET_FADE = 700 } -- uu: full strength up to NEAR, gone at FAR
+-- Quiet tag (owner request 2026-10-30: a big name and "100%" over the partner's head broke the game's mood): a partner in plain
+-- sight within QUIET has no tag, it fades in over QUIET_FADE; behind something (a wall, the car, the dark of a building) it shows
+-- at any distance up to FAR. Health only when hurt. Mutation loudtag: the old always-on tag.
+local LOUD = os.getenv("PT_MUTATE") == "loudtag"
 local CHAR = "PDP_MainCharacter_C"
 local HEIGHT = 115 -- uu above the capsule centre, just over the head
 -- translucent, so the colour's alpha fades the text (the default text material is opaque)
 local MAT = "/Engine/EngineMaterials/AntiAliasedTextMaterialTranslucent.AntiAliasedTextMaterialTranslucent"
 
 function M.alpha(d) return math.max(0, math.min(1, (M.FAR - d) / (M.FAR - M.NEAR))) end
+function M.target(d, occluded)
+    if LOUD then return M.alpha(d) end
+    return M.alpha(d) * (occluded and 1 or math.max(0, math.min(1, (d - M.QUIET) / M.QUIET_FADE)))
+end
 
 local tags, others, pc, nextScan = {}, {}, nil, 0
 
@@ -109,6 +117,18 @@ local function scan()
     end
 end
 
+-- something between our camera and their head (their character, ours and the cars we sit in do not count)
+local function occluded(cam, p, c)
+    local me = pc.Pawn
+    local ignore = { c }
+    for _, a in ipairs({ me, c:GetAttachParentActor(), me and me:IsValid() and me:GetAttachParentActor() or nil }) do
+        if a and a:IsValid() then ignore[#ignore + 1] = a end
+    end
+    local hit = {}
+    return UEHelpers.GetKismetSystemLibrary():LineTraceSingle(c, cam, { X = p.X, Y = p.Y, Z = p.Z - 30 }, 0, false, ignore, 0, hit, true,
+        { R = 0, G = 0, B = 0, A = 0 }, { R = 0, G = 0, B = 0, A = 0 }, 0)
+end
+
 local allHidden = false
 local function update()
     local active = safety.active()
@@ -126,13 +146,20 @@ local function update()
             -- P4: the other player's health under the name (health.lua), once they have reported it
             local n = playerName(c)
             local hp = health.label()
+            if hp and not LOUD and (tonumber(hp:match("^(%d+)")) or 0) >= 100 then hp = nil end -- health only when hurt
             local label = hp and (n .. "\n" .. hp) or n
             local viaUi = needsUi(label)
             if label ~= tag.name or viaUi ~= tag.viaUi then tag.name, tag.viaUi = label, viaUi; tag.text:SetText(viaUi and "" or label) end
             local p = tag.text:K2_GetComponentLocation()
             local dx, dy, dz = cam.X - p.X, cam.Y - p.Y, cam.Z - p.Z
             local d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            local a = M.alpha(d)
+            local want = M.target(d, d < M.FAR and occluded(cam, p, c))
+            -- eased in and out (3 per second), not switched
+            local now = os.clock()
+            local step = (now - (tag.at or now)) * 3
+            tag.at = now
+            tag.a = tag.a and (tag.a + math.max(-step, math.min(step, want - tag.a))) or want
+            local a = tag.a
             fitSize(tag, d)
             tag.actor:K2_SetActorRotation({ Pitch = 0, Yaw = math.deg(math.atan(dy, dx)), Roll = 0 }, false)
             tag.text:SetTextRenderColor({ R = 255, G = 255, B = 255, A = math.floor(a * 255 + 0.5) })
