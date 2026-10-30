@@ -4,7 +4,9 @@
 --   guest_runs_host_preset      the guest's simulation (the sun, sky and fog) runs the preset the host's manager targets; the host switches it twice,
 --                               to a rainy one and back (the guest's sim never heard of the change: its delegate was unbound)
 --   guest_precipitation_matches the guest's precipitation follows the host's rain (host > 0.5)
--- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage -Headless [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off.
+--   guest_ambience_set_up       the guest's ambience manager has its falling-rain, splash and radiation effects (they were never made: the
+--                               guest's character came after the manager's setup, so rain showed on the host only; 2026-10-30)
+-- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (rendered: a headless game makes no particle effects, guest_ambience_set_up fails) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local slow = (T.MUTATE == "nosimlink") and 0.2 or 1
@@ -67,6 +69,10 @@ return function(T)
         T.onMap("RB_MainMenu", 90),
         { check = "client_in", timeout = 400, cond = function() return T.netMode() == "client" and T.cls(T.myPawn()) == T.CHAR end },
         { check = "guest_got_host_readings", timeout = 120, cond = function() onRead(); return host ~= nil end },
+        { check = "guest_ambience_set_up", timeout = 30, cond = function()
+            local am = T.first("BP_AmbienceManager_C")
+            return am ~= nil and am.EnvironmentComponent:IsValid() and am.RainSplashSystem:IsValid() and am.PlayerRadiationNiagaraSystem:IsValid()
+        end },
         { check = "guest_sim_linked", timeout = to(30), cond = function() local r = read(); return r.linked end },
         { check = "guest_time_matches", timeout = to(60), cond = cmp(function(h, g)
             local d = math.abs(h.tod - g.tod); return math.min(d, 1 - d) < 0.02 and h.tod > 0.8, string.format("tod host=%.3f guest=%.3f", h.tod, g.tod)

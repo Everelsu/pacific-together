@@ -229,11 +229,28 @@ net.on("g.world.state", function(_, data)
     try("storm", applyStorm, s)
 end)
 
+-- falling rain, splashes and radiation haze follow the local character (BP_AmbienceManager); the guest's manager set them up
+-- before its character existed, so the guest saw no rain while the host's rained (2026-10-30): set up what is missing
+local AMB = { { "EnvironmentComponent", "SetupEnvAmbientVFX" }, { "RainSplashSystem", "SetupSplashEffects" }, { "PlayerRadiationNiagaraSystem", "SetupRadiationVFX" } }
+local ambienceFor -- the character the setup last ran for: once each (a headless game makes no effects and would retry every second)
+local function ambience()
+    local am, cm = first("BP_AmbienceManager_C"), first("BP_MainCharacterManager_C")
+    local char = cm and cm:GetCharacterActor()
+    if not (am and char and char:IsValid()) or ambienceFor == char:GetFullName() then return end
+    ambienceFor = char:GetFullName()
+    for _, a in ipairs(AMB) do
+        if not am[a[1]]:IsValid() then am[a[2]](am); log("PT|world guest ambience %s", a[2]) end
+    end
+end
+
 -- G3: the mission-manager pre-hooks that keep the guest from starting a story live in story.lua.
 
 LoopInGameThreadWithDelay(1000, function()
     if not M.enabled or not safety.active() then M.since = nil return end
-    if safety.guest() then try("clean", cleanGuest) else try("host", hostTick) end
+    if safety.guest() then
+        try("clean", cleanGuest)
+        if M.mutate ~= "noambience" then try("ambience", ambience) end
+    else try("host", hostTick) end
 end)
 
 -- Level-placed hazards (grabbers) keep simulating on the guest and ignore replicated movement: the host sends the positions
