@@ -2,6 +2,7 @@
 -- guest's game saw no radiation anywhere. The host puts the guest inside one of its radiating volumes; the guest's own game (hazard manager
 -- "is radiation greater at point") must see it there and its health must fall.
 -- Run: tools/run-test.ps1 -Scenario radiation -Fixture zone -Headless
+-- Then the host's volume goes (Hot Dust gone, pt8 2026-10-25): the guest's copy must stop radiating too.
 -- Mutation norad: radiation.lua is off (the bug): the guest sees no radiation, its health stays.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -45,6 +46,13 @@ return function(T)
             L.guestChar():K2_HandleSetCharacterLocation({ Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = pt.x, Y = pt.y, Z = pt.z + 150 }, Scale3D = { X = 1, Y = 1, Z = 1 } }, false, false)
         end })
         add({ check = "guest_health_falls", timeout = 90, cond = function() drain(); return got["t.hurt"] == "1" end })
+        add({ run = function()
+            for _, o in ipairs(FindAllOf("BP_VolCascade_Radiation_C") or {}) do
+                local l = o:IsValid() and o:K2_GetActorLocation()
+                if l and math.abs(l.X - pt.x) < 1 and math.abs(l.Y - pt.y) < 1 then o:K2_DestroyActor() end
+            end
+        end })
+        add({ check = "guest_radiation_gone_with_host", timeout = 30, cond = function() drain(); return got["t.radoff"] == "1" end })
         add({ wait = 3 })
         return steps
     end
@@ -72,6 +80,11 @@ return function(T)
         T.log("PT|info guest health %.2f (was %.2f)", h, hp0)
         local ok = h < hp0 - 1.5
         if ok then PTNative_MsgToHost(T.localPC():GetAddress(), "t.hurt", "1") end
+        return ok
+    end })
+    add({ check = "guest_radiation_off", timeout = 60, cond = function()
+        local ok = not radiating(pt[1], pt[2], pt[3])
+        if ok then PTNative_MsgToHost(T.localPC():GetAddress(), "t.radoff", "1") end
         return ok
     end })
     add({ wait = 5 })

@@ -45,19 +45,27 @@ net.on("g.rad.vols", function(_, data)
     if not (M.enabled and safety.guest()) then return end
     local cls, hm = StaticFindObject(CLS), FindFirstOf("BP_HazardManager_C")
     if not (cls and cls:IsValid() and valid(hm)) then return end
-    local have = volumes()
+    local have, matched = volumes(), {}
     for entry in data:gmatch("[^;]+") do
         local n = {}
         for v in entry:gmatch("%S+") do n[#n + 1] = tonumber(v) end
         local known = false
-        for _, o in ipairs(have) do
+        for i, o in ipairs(have) do
             local l = o:K2_GetActorLocation()
-            if math.abs(l.X - n[1]) < 100 and math.abs(l.Y - n[2]) < 100 and math.abs(l.Z - n[3]) < 100 then known = true break end
+            if math.abs(l.X - n[1]) < 100 and math.abs(l.Y - n[2]) < 100 and math.abs(l.Z - n[3]) < 100 then known = true; matched[i] = true break end
         end
         if not known then
             local ok, made = pcall(spawn, cls, hm:GetWorld(), n)
             if ok and made then log("PT|radiation guest volume at %.0f %.0f %.0f r=%.0f max=%.2f", n[1], n[2], n[3], n[5], n[7])
             else log("PT|error radiation spawn %s", tostring(made)) end
+        end
+    end
+    -- what the host no longer has (Hot Dust gone or moved, the guest's own local spots) stops radiating here too
+    for i, o in ipairs(have) do
+        if not matched[i] then
+            local l = o:K2_GetActorLocation()
+            pcall(function() o["Max Local Radiation"] = 0; o:UpdateInfluenceZone(o.Influence_LocalRadiation) end)
+            log("PT|radiation guest volume off at %.0f %.0f %.0f (not on the host)", l.X, l.Y, l.Z)
         end
     end
 end)
@@ -66,8 +74,7 @@ end)
 LoopInGameThreadWithDelay(4000, function()
     if not (M.enabled and safety.active() and not safety.guest()) then return end
     local ok, err = pcall(function()
-        local s = describe()
-        if s ~= "" then net.toGuests("g.rad.vols", s) end
+        net.toGuests("g.rad.vols", describe()) -- also when empty: the guest switches off what the host's last volume left behind
     end)
     if not ok then log("PT|error radiation %s", tostring(err)) end
 end)

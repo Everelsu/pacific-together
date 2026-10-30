@@ -1,6 +1,8 @@
 -- ARC anchor structures are pulled once (owner hand play 2026-10-24: an anchor the guest pulled stayed on the host, deposited twice).
 --   guest_sees_both_anchors       the host's two anchor structures exist on the guest as copies
 --   host_anchor_taken_by_guest    the guest pulls its copy of A (the game's own Long Grab Complete): the host's A is taken within 20 s, B is not
+--   host_pull_hazards_for_guest   the guest's pull runs the host's anchor-pull hazards once (AnchorTaken broadcasts CauseHazardDisturbance;
+--                                 the guest's game has no BP_HazardAnchorPull) and removes the anchor's Hot Dust (RadActor) on the host
 --   guest_anchor_gone_when_host_pulls   the host pulls B (its own Long Grab Complete): the guest's copy of B goes
 -- Run: tools/run-test.ps1 -Scenario anchordup -Fixture zone -Headless [-Root .. -Port ..]   Mutation noanchorsync: the guest's pull is not sent.
 return function(T)
@@ -42,7 +44,13 @@ return function(T)
         add({ check = "host_listen_zone", timeout = 60, cond = function() return T.netMode() == "listen" and T.listening() end })
         add({ check = "host_guest_in_zone", timeout = 240, cond = function() return L.guestChar() ~= nil end })
         add({ check = "guest_ready", timeout = 400, cond = function() poll(); return got["t.ready"] ~= nil end })
+        local disturbed = 0
         add({ run = function()
+            RegisterHook("/Game/Gameplay/Hazards/HazardPullEvents/BP_HazardAnchorPull.BP_HazardAnchorPull_C:HazardDisturbance", function(_, _, _, nonAnchor)
+                local na = nonAnchor:get()
+                T.log("PT|info host HazardDisturbance nonAnchor=%s", tostring(na))
+                if na == false then disturbed = disturbed + 1 end
+            end)
             local l = T.myPawn():K2_GetActorLocation()
             A = spawn({ X = l.X, Y = l.Y + 700, Z = l.Z + 20 })
             B = spawn({ X = l.X + 600, Y = l.Y + 700, Z = l.Z + 20 })
@@ -56,6 +64,7 @@ return function(T)
             T.log("PT|info host A taken=%s B taken=%s", tostring(A.SuccessfullyGrabbed), tostring(B.SuccessfullyGrabbed))
             return A.SuccessfullyGrabbed == true and B.SuccessfullyGrabbed ~= true
         end })
+        add({ check = "host_pull_hazards_for_guest", timeout = 10, cond = function() return disturbed == 1 end })
         add({ run = function() B["Long Grab Complete"](B); T.log("PT|info host pulled B: %s", tostring(B.SuccessfullyGrabbed)); toGuest("t.hostpulled", "1") end })
         add({ check = "guest_anchor_gone_when_host_pulls", timeout = to(60), cond = function() poll(); return got["t.bgone"] ~= nil end })
         add({ wait = 2 })
