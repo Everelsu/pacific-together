@@ -100,8 +100,69 @@ local function snapshot()
     return table.concat(L, "\n")
 end
 
+-- Co-op weather (owner request 2026-10-30): a run with a friend is darker than single player. The host leans the game's own
+-- systems, the guest follows through the state above:
+--   gloom   an override on top of the game's (priority 9) that keeps each of its values but never below a floor: storms still
+--           come through, clear spells are overcast and drizzly
+--   nights  time runs at 0.6x at night and 1.8x by day (0 = midnight, 0.3 dawn, 0.68 sunset), and a map that loads in daylight
+--           starts late in the afternoon
+--   storms  one of the game's weather events every 5-9 min (they replace each other)
+-- Mutation nospooky: off.
+local SPOOKY = M.mutate ~= "nospooky"
+local GLOOM_ID, FLOOR = "PTCoopGloom", { [2] = 0.3, [3] = 0.45, [4] = 0.45, [5] = 0.3 } -- OV index: rain, fog, wind, darkness
+local EVENTS = { "Storm", "Storm", "Rain Heavy", "Rain Heavy", "Dark Heavy", "Fog Medium" }
+local spooky = { on = false }
+RegisterLoadMapPostHook(function() spooky.dusk = os.clock() + 5 end) -- after the game's own time set on load
+local function spookyTick()
+    local tod = first("BP_ToDManager_C")
+    if not tod then return end
+    spooky.on = true
+    local a, mx, speed = tod.TargetWeatherOverrideArray, {}, 1
+    for j = 2, 7 do mx[j] = FLOOR[j] or 0 end
+    for i = 1, a:GetArrayNum() do
+        local e = a[i]
+        if e[OV[ID]]:ToString() ~= GLOOM_ID then
+            for j = 2, 7 do mx[j] = math.max(mx[j], e[OV[j]]) end
+            speed = math.max(speed, e[OV[9]])
+        end
+    end
+    local st, key = {}, {}
+    for j, k in ipairs(OV) do
+        st[k] = j == 1 and 9 or j == ID and FName(GLOOM_ID) or j == 9 and speed or mx[j]
+        if j ~= ID then key[#key + 1] = f(st[k]) end
+    end
+    key = table.concat(key, "|")
+    if key ~= spooky.key then tod:AddTODWeatherOverride(st); spooky.key = key end -- the same identifier replaces ours
+    local r = {}
+    tod["Get Current Time Of Day"](tod, r)
+    local t = r["Returned Time Of Day"] or 0.5
+    if spooky.dusk and os.clock() > spooky.dusk then
+        spooky.dusk = nil
+        if t > 0.3 and t < 0.65 then tod["Set Current Time Of Day"](tod, 0.65); t = 0.65; log("PT|world co-op weather: daylight load, late afternoon") end
+    end
+    local want = (t >= 0.75 or t <= 0.25) and 0.6 or 1.8
+    if spooky.speed ~= want then tod["Set Time Of Day Speed Multiplier"](tod, want); spooky.speed = want end
+    spooky.next = spooky.next or os.clock() + 120
+    if os.clock() > spooky.next then
+        local e = EVENTS[math.random(#EVENTS)]
+        pcall(tod["DbgActEvt_Force Event: " .. e .. "_Execute"], tod)
+        spooky.next = os.clock() + math.random(300, 540)
+        log("PT|world co-op weather event %s", e)
+    end
+end
+local function spookyOff()
+    if not spooky.on then return end
+    local tod = first("BP_ToDManager_C")
+    if tod then
+        pcall(tod.RemoveTODWeatherOverride, tod, FName(GLOOM_ID))
+        pcall(tod["Set Time Of Day Speed Multiplier"], tod, 1)
+    end
+    spooky = { on = false }
+end
+
 local function hostTick()
     replicate()
+    if SPOOKY then try("coopweather", spookyTick) end
     local data = snapshot()
     net.toGuests("g.world.state", data)
 end
@@ -246,7 +307,7 @@ end
 -- G3: the mission-manager pre-hooks that keep the guest from starting a story live in story.lua.
 
 LoopInGameThreadWithDelay(1000, function()
-    if not M.enabled or not safety.active() then M.since = nil return end
+    if not M.enabled or not safety.active() then M.since = nil; if not safety.guest() then try("coopweather", spookyOff) end return end
     if safety.guest() then
         try("clean", cleanGuest)
         if M.mutate ~= "noambience" then try("ambience", ambience) end

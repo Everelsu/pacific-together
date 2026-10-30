@@ -6,7 +6,9 @@
 --   guest_precipitation_matches the guest's precipitation follows the host's rain (host > 0.5)
 --   guest_ambience_set_up       the guest's ambience manager has its falling-rain, splash and radiation effects (they were never made: the
 --                               guest's character came after the manager's setup, so rain showed on the host only; 2026-10-30)
--- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (guest_ambience_set_up needs a rendered run; headless it skips) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup.
+--   guest_coop_gloom            the host's co-op weather layer (PTCoopGloom: the game's values with a floor of fog, rain, wind and
+--                               darkness) reaches the guest and its fog sits at or above the floor (mutation nospooky fails it)
+-- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (guest_ambience_set_up needs a rendered run; headless it skips) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup; nospooky: no co-op weather.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local slow = (T.MUTATE == "nosimlink") and 0.2 or 1
@@ -73,6 +75,13 @@ return function(T)
             if os.getenv("PT_HEADLESS") == "1" then T.log("PT|info guest_ambience_set_up skipped: headless"); return true end
             local am = T.first("BP_AmbienceManager_C")
             return am ~= nil and am.EnvironmentComponent:IsValid() and am.RainSplashSystem:IsValid() and am.PlayerRadiationNiagaraSystem:IsValid()
+        end },
+        { check = "guest_coop_gloom", timeout = 30, cond = function()
+            local tod = T.first("BP_ToDManager_C")
+            local a, has = tod.TargetWeatherOverrideArray, false
+            for i = 1, a:GetArrayNum() do if a[i].Identifier_26_37794E45404F7D45933471B6A50F260C:ToString() == "PTCoopGloom" then has = true end end
+            T.log("PT|info guest co-op gloom=%s fog=%.2f", tostring(has), tod.TOD_Override_Fog_Current)
+            return has and tod.TOD_Override_Fog_Current >= 0.4
         end },
         { check = "guest_sim_linked", timeout = to(30), cond = function() local r = read(); return r.linked end },
         { check = "guest_time_matches", timeout = to(60), cond = cmp(function(h, g)
