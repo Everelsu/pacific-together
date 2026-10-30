@@ -102,8 +102,66 @@ end
 local RECAPTURE = { 30 }
 local captureSeen, captureDone = nil, 0
 
+-- The ARC waypoint (owner request 2026-10-30): each side's ARC screen places its own BP_WaypointActor (map icon + in-world
+-- marker, gone by itself within 10 m of the local camera), so a guest marking a turn for the driving host marked it only for
+-- itself. Both sides send their waypoint ("x y z" or "none") when it changes there; the other side moves, spawns or removes its
+-- own to match, the last change wins. Mutation nowaypoint: off.
+local net = require("net")
+local WP = "/Game/UI/CarEquipment/Internal/Gobbler/BP_WaypointActor.BP_WaypointActor_C"
+local wp = { sent = nil, got = nil }
+local function waypoint()
+    for _, a in ipairs(FindAllOf("BP_WaypointActor_C") or {}) do
+        if valid(a) and a:GetWorld():IsValid() and a:GetWorld():GetFullName() == UEHelpers.GetWorld():GetFullName() then return a end
+    end
+end
+local function wpState(a)
+    if not a then return "none" end
+    local l = a:K2_GetActorLocation()
+    return string.format("%.0f %.0f %.0f", l.X, l.Y, l.Z)
+end
+local function sendWp(s)
+    if safety.guest() then net.toHost("g.map.wp", s) else net.toGuests("g.map.wp", s) end
+end
+net.on("g.map.wp", function(_, s)
+    if not safety.active() then return end
+    local a = waypoint()
+    wp.got, wp.sent = s, s
+    if s == "none" then
+        if a then a:K2_DestroyActor() end
+        log("PT|mapmark waypoint cleared by the other player")
+        return
+    end
+    local x, y, z = s:match("^(%S+) (%S+) (%S+)$")
+    local xf = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = tonumber(x), Y = tonumber(y), Z = tonumber(z) }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+    if a then
+        a:K2_SetActorTransform(xf, false, {}, true)
+    else
+        local cls = class(WP)
+        local gs = UEHelpers.GetGameplayStatics()
+        a = gs:FinishSpawningActor(gs:BeginDeferredActorSpawnFromClass(UEHelpers.GetWorldContextObject(), cls, xf, 1, nil), xf)
+        -- the ARC screen moves or clears the waypoint it knows: ours from now on
+        for _, scr in ipairs(FindAllOf("UMG_GobblerScreen_C") or {}) do if valid(scr) then pcall(function() scr.Waypoint = a end) end end
+    end
+    log("PT|mapmark waypoint set by the other player at %s", s)
+end)
+local function waypointTick()
+    if not safety.active() then wp.sent, wp.got = nil, nil; return end
+    local s = wpState(waypoint())
+    if s ~= wp.sent then
+        wp.sent = s
+        if s ~= wp.got then sendWp(s); log("PT|mapmark waypoint sent %s", s) end
+        wp.got = nil
+    end
+end
+if os.getenv("PT_MUTATE") ~= "nowaypoint" then
+    LoopInGameThreadWithDelay(500, function()
+        local ok, err = pcall(waypointTick)
+        if not ok then log("PT|error mapmark waypoint %s", tostring(err)) end
+    end)
+end
+
 -- a map change frees every object we hold: forget them before it happens
-RegisterLoadMapPreHook(function() marks, captureSeen, captureDone = {}, nil, 0 end)
+RegisterLoadMapPreHook(function() marks, captureSeen, captureDone = {}, nil, 0; wp.sent, wp.got = nil, nil end)
 
 LoopInGameThreadWithDelay(250, function()
     local ok, err = pcall(update)
