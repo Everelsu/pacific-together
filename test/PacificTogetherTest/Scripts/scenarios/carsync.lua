@@ -5,6 +5,9 @@
 --          removed door and wheel are gone on its car (and come back), and it leaves the car again.
 -- Run: tools/run-test.ps1 -Scenario carsync -Fixture garage -Headless
 -- Mutation nocarsync: car.lua of the shipping mod does nothing (the guest keeps its duplicate car and never gets seated).
+--   guest_view_on_car_frame  the view is rendered from where the camera is after the car moved this frame (the car was placed after
+--                            the camera: the interior shook against the view, 2026-10-30). Mutation nocartick fails it.
+--   guest_head_sways         the seated guest's head moves with the car's acceleration (passenger inertia). Mutation nosway fails it.
 -- Messages "t.*" between the two scenario halves use the native channel (see channel.lua).
 return function(T)
     local L = require("scenarios.carlib")(T)
@@ -187,7 +190,7 @@ return function(T)
     local steps = { T.onMap("RB_MainMenu", 90) }
     local function add(s) steps[#steps + 1] = s end
     local KML = StaticFindObject("/Script/Engine.Default__KismetMathLibrary")
-    local met = { frames = 0, stalls = 0, maxJump = 0, dist = 0, camMax = 0 }
+    local met = { frames = 0, stalls = 0, maxJump = 0, dist = 0, camMax = 0, lags = {}, swayMax = 0 }
     local function toHost(kind, data) PTNative_MsgToHost(T.localPC():GetAddress(), kind, data or "") end
     local function measure()
         local car, me = L.car(), T.myPawn()
@@ -198,6 +201,16 @@ return function(T)
         local speed = math.sqrt(rm.X ^ 2 + rm.Y ^ 2)
         local cam = T.localPC().PlayerCameraManager:GetCameraLocation()
         local cl = L.toLocal(car, cam)
+        if not met.fp then
+            for _, c in ipairs(FindAllOf("CameraComponent") or {}) do
+                if c:GetFName():ToString() == "FP_Camera" and c:GetOwner():IsValid() and c:GetOwner():GetFullName() == me:GetFullName() then met.fp = c end
+            end
+        end
+        if met.fp and speed > 150 then
+            local fl, r = met.fp:K2_GetComponentLocation(), met.fp.RelativeLocation
+            met.lags[#met.lags + 1] = L.d(fl, cam)
+            met.swayMax = math.max(met.swayMax, math.sqrt(r.X ^ 2 + r.Y ^ 2 + r.Z ^ 2))
+        end
         if not met.cam0 then met.cam0 = cl end
         -- the camera manager's location is the last frame's view: compare it with the car where it was then, too
         local xf = car:GetTransform()
@@ -253,7 +266,7 @@ return function(T)
     end })
     -- the host drives
     add({ check = "guest_drive_started", timeout = 120, cond = function() return got("t.drive") ~= nil end })
-    add({ run = function() met = { frames = 0, stalls = 0, maxJump = 0, dist = 0, camMax = 0 }; L.measuring = true
+    add({ run = function() met = { frames = 0, stalls = 0, maxJump = 0, dist = 0, camMax = 0, lags = {}, swayMax = 0 }; L.measuring = true
         LoopInGameThreadWithDelay(1, function() if L.measuring then pcall(measure) end end) end })
     add({ check = "guest_drive_stopped", timeout = DRIVE_S + 60, cond = function() return got("t.stop") ~= nil end })
     add({ run = function() L.measuring = false end })
@@ -264,6 +277,17 @@ return function(T)
     add({ check = "guest_camera_rides", timeout = 1, cond = function()
         log("PT|info camera deviation in the car %.1f uu (against the previous frame's car %.1f uu)", met.camMax, met.camPrevMax or -1)
         return met.frames > 100 and math.min(met.camMax, met.camPrevMax or math.huge) < 40
+    end })
+    add({ check = "guest_view_on_car_frame", timeout = 1, cond = function()
+        table.sort(met.lags)
+        local n = #met.lags
+        local p95 = n > 0 and met.lags[math.ceil(n * 0.95)] or -1
+        log("PT|info view against the camera after the car moved: p95 %.2f uu over %d moving frames", p95, n)
+        return n > 100 and p95 < 1
+    end })
+    add({ check = "guest_head_sways", timeout = 1, cond = function()
+        log("PT|info passenger head sway max %.2f uu", met.swayMax)
+        return met.swayMax > 1.5
     end })
     add({ check = "guest_car_settled", timeout = 20, cond = function()
         local m = got("t.settled")

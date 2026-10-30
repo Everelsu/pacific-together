@@ -661,7 +661,68 @@ local function motionTime(prev, t, p, v)
     return tm + 0.1 * (t - tm)
 end
 
+-- The guest's camera is set after the actors tick; a car placed from the UE4SS loop came after it, so the view lagged the car one
+-- frame and the interior shook against it at speed (POV in car space p5-p95 ~8 uu, 2026-10-30). The car's own ReceiveTick runs in
+-- the actor ticks, before the camera: the step runs there, the loop only stands in when the tick stops (mutation nocartick: loop only).
+local TICK = os.getenv("PT_MUTATE") ~= "nocartick"
 local followed, followLoop = nil, nil
+local tickStep, tickAt, tickHooked = nil, 0, false
+local function hookTick(car)
+    if tickHooked or not TICK then return end
+    tickHooked = pcall(RegisterHook, car:GetClass():GetFullName():gsub("^%S+ ", "") .. ":ReceiveTick", function(self)
+        if tickStep and self:get():GetFullName() == followed then tickAt = os.clock(); tickStep() end
+    end)
+    log("PT|car follow on the car's tick: %s", tostring(tickHooked))
+end
+
+-- Passenger head sway: the seated guest's camera moves against the car's acceleration on a damped spring (back on
+-- throttle, forward on braking, out in turns, down over bumps). The host feels the car through its controls and physics;
+-- a kinematic copy gives the guest none of that. Mutation nosway: off.
+local SWAY = os.getenv("PT_MUTATE") ~= "nosway"
+local GAIN, MAXOFF, K, C = 0.012, 10, 247, 22 -- 0.5 g -> ~6 uu; spring 2.5 Hz, damping 0.7
+local sw = {}
+local function swayCam(me)
+    if sw.camOf ~= me:GetFullName() then
+        sw.cam, sw.camOf = nil, me:GetFullName()
+        for _, c in ipairs(FindAllOf("CameraComponent") or {}) do
+            if c:GetFName():ToString() == "FP_Camera" and same(c:GetOwner(), me) then sw.cam = c end
+        end
+    end
+    return sw.cam
+end
+local function swayReset()
+    if valid(sw.cam) and sw.off then pcall(function() sw.cam:K2_SetRelativeLocation(vec(0, 0, 0), false, {}, false) end) end
+    sw.off, sw.ov, sw.p, sw.vs, sw.as, sw.t = nil, nil, nil, nil, nil, nil
+end
+local function sway(car, t)
+    if not SWAY then return end
+    local pc = localPC()
+    local me = pc and pc.Pawn
+    if not (valid(me) and same(me:GetAttachParentActor(), car)) then if sw.off then swayReset() end return end
+    local cam = swayCam(me)
+    if not valid(cam) then return end
+    local p, dt = car:K2_GetActorLocation(), sw.t and (t - sw.t) or 0
+    sw.t = t
+    if not sw.p or dt <= 0 or dt > 0.1 then sw.p, sw.vs, sw.as = p, vec(0, 0, 0), vec(0, 0, 0); sw.off, sw.ov = sw.off or vec(0, 0, 0), sw.ov or vec(0, 0, 0); return end
+    local v = vec((p.X - sw.p.X) / dt, (p.Y - sw.p.Y) / dt, (p.Z - sw.p.Z) / dt)
+    sw.p = p
+    -- velocity and acceleration low-passed (80 ms): finite differences of frame times are noisy
+    local f = math.min(1, dt / 0.08)
+    local vs = vec(sw.vs.X + (v.X - sw.vs.X) * f, sw.vs.Y + (v.Y - sw.vs.Y) * f, sw.vs.Z + (v.Z - sw.vs.Z) * f)
+    local a = vec((vs.X - sw.vs.X) / dt, (vs.Y - sw.vs.Y) / dt, (vs.Z - sw.vs.Z) / dt)
+    sw.vs = vs
+    sw.as = vec(sw.as.X + (a.X - sw.as.X) * f, sw.as.Y + (a.Y - sw.as.Y) * f, sw.as.Z + (a.Z - sw.as.Z) * f)
+    local aL = kml():InverseTransformDirection(car:GetTransform(), sw.as)
+    local off, ov = sw.off, sw.ov
+    for _, k in ipairs({ "X", "Y", "Z" }) do
+        local target = math.max(-MAXOFF, math.min(MAXOFF, -aL[k] * GAIN))
+        ov[k] = ov[k] + (K * (target - off[k]) - C * ov[k]) * dt
+        off[k] = math.max(-MAXOFF, math.min(MAXOFF, off[k] + ov[k] * dt))
+    end
+    local w = kml():TransformDirection(car:GetTransform(), off)
+    cam:K2_SetRelativeLocation(kml():InverseTransformDirection(cam:GetAttachParent():K2_GetComponentToWorld(), w), false, {}, false)
+end
+
 local function follow(car)
     if followLoop then CancelDelayedAction(followLoop) end
     pcall(function() car.Chassis:SetSimulatePhysics(false) end)
@@ -673,8 +734,7 @@ local function follow(car)
     local name = car:GetFullName()
     log("PT|car follow %s", name)
     followed = name
-    followLoop = LoopInGameThreadWithDelay(1, function()
-        if not valid(car) then CancelDelayedAction(followLoop); followLoop, followed = nil, nil; return end
+    local function step()
         local ok, err = pcall(function()
             local t, rm = os.clock(), car.ReplicatedMovement -- os.clock: wall time on Windows, no engine call each frame
             local p = rm.Location
@@ -705,6 +765,14 @@ local function follow(car)
             if last and t - delay > last.tm + 0.3 then settled = true end
         end)
         if not ok then log("PT|error car follow %s", tostring(err)) end
+        local oks, errs = pcall(sway, car, os.clock())
+        if not oks and not sw.err then sw.err = true; log("PT|error car sway %s", tostring(errs)) end
+    end
+    tickStep = step
+    hookTick(car)
+    followLoop = LoopInGameThreadWithDelay(1, function()
+        if not valid(car) then CancelDelayedAction(followLoop); followLoop, followed, tickStep = nil, nil, nil; pcall(swayReset); return end
+        if os.clock() - tickAt > 0.2 then step() end
     end)
 end
 
