@@ -5,6 +5,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-30
+
 ### Added
 
 - Co-op weather is spookier: while you play together the host's game keeps the sky overcast (fog, wind, light rain and
