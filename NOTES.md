@@ -783,3 +783,50 @@ Unknowns
 - The E key and the aim test are not drivable headless (the scenario sends the intent E sends); rendered hint and real aim
   in hand play are unchecked. The game's own key animation and failed-start chance do not run for the guest's turn.
 - `player_id.txt` backpack keying and a build-911 guest in a full session are not tested.
+## 2026-10-25 owner hand play of 0.0.8 (logs local/playtests/20261025-pt7-008)
+
+Observations
+- Rendered pair, coop-garage, garage -> Highway_Forest_04 -> Wilderness_Forest_20: transitions worked; owner: "seems working".
+- Owner: the ARC energy shows only the collected amount; required is 0.
+- Headless coop-zone (Wilderness_Forest_06, 20261025-152241-repl): host GetAnchorCharge Max=0 and route whiteboard
+  WB.ActiveRun.AnchorsRequired=0, guest Max=0 too (the mirror copies the host faithfully). Host current leg (rs.CurrentLeg):
+  AnchorRequirement=1, CanReveal Reason=1 (ELegRevealFailure.Disabled), no WB.ActiveMap.IsEnd. Each map loaded once on the host.
+
+Derived (atlas BP_LegStateBase K2_OnVisited 1426): required = AnchorRequirement only when CanReveal is Ok/AlreadyRevealed or IsEnd,
+else 0; so 0 follows from the leg being Disabled (SetRevealable false: BP_RouteStateBase reveal pass, CPE_ScanSettings
+CheckIfShouldBeScannable keys on WB.ActiveRun.GatewayRequirementAmount.* / CP_GatewayRequirements IsExitPoint).
+
+Unknown: whether the same save in single player also gives 0 (vanilla for this progression) or co-op makes the leg Disabled.
+No mod-free launch exists to compare.
+
+## 2026-10-25 afternoon: owner + friend Steam play of 0.0.8, ~1 h (logs local/playtests/20261025-pt8-live)
+
+Setup: real installs, friend = host (`host/UE4SS (2).log` from 15:32, his odsave1.sav + 4 backups 16:15..16:32, no engine log),
+owner = guest (`guest/UE4SS.log` from 16:09, engine logs, crash dir). Guest clock reads ~4 s ahead of the host's.
+Owner report: an hour without major problems; radiation out of sync; Q01 (antenna / ScannerParts) stuck after two runs.
+
+Observations
+- Q01 stuck. Run 1: host log 16:06:47 `act grab BP_Resource_Narrative_Q01_RadioBitsGrabbable_3 grabbed=true` (guest grab relayed,
+  guestact.lua grab path); bits end in the trunk (`loot got S I:Inventory_Trunk ...Q01_RadioBi`, host 16:12:43). On garage
+  return guest gets `WB.Missions.QD_Q01_Mission_C.SuccessfulRun.Completed nil -> 0.00` (16:12:00), objective restarts on
+  QD_Q01_Mission_A then -> Mission_C within 4 s; host installs ZoneScanner (`WB.GarageUpgrades.ZoneScanner -> 1`, 16:14:53).
+  Run 2 (16:20): `RP_CP_Q01_ScannerParts.LastAttempted -> 2`, dialogue `DS_Q01_Retry01_StillNeedThose`, host carries the bits
+  (guest hands mirror 16:26:11), return at 16:30:45 again Mission_A -> Mission_C. All five saves name only QD_Q01_Mission_C.
+- Guest crashed at 16:08 mid-run 1 (before its current log): `EXCEPTION_ACCESS_VIOLATION reading 0x280` while opening
+  Pause > Settings and switching category (Graphics page construct; stack through UE4SS.dll). Rejoined in-zone at 16:09.
+  Guest's run-1 UE4SS log was overwritten by the restart; its engine log survives (`guest/prev-run-crashed-1608-PenDriverPro.log`).
+- Radiation: host log has only 2 guest-originated radiation hits (0.005 each, 16:27, right after the guest pulled a stable anchor)
+  and 7 physical-impact hits (16:20). Host's own radiation damage is not logged by the mod. Guest rebuilds volumes from
+  `g.rad.vols` (`radiation guest volume ... r= max=` lines at 16:09 and 16:20/16:21). No log line names Hot Dust on either side.
+- Anchors: guest pulled S (16:27:45) and L (16:29:13) stable anchors, `taken on the host`, deposited via `act anchor`.
+
+Derived / guesses (not checked)
+- Q01 completion likely depends on something the host's game records at grab/extract time that the relayed
+  ShortGrabComplete or the loot-synced trunk copy does not give (e.g. the bits must be in the host's own inventory/car through
+  extraction, or a SuccessfulRun flag set by the vanilla grab path). The guest crash/rejoin mid-run 1 may also matter.
+- "Save corrupted" is probably quest state, not a broken file: saves parse-look normal (SAVC header) and keep Mission_C.
+- Hot Dust seen only by the guest while the host carried an anchor: the guest's local game may run anchor-carry hazard spawns
+  on the host's mirrored carry, or the mirrored volumes differ from the host's. Host damage "for no reason" may be the reverse.
+
+Unknown: what Q01 Mission_A/B/C each require; whether the friend's save completes Q01 in single player (fixture candidate:
+`host/odsave1.sav`, test copy only). No offline SAVC decoder exists; strings show only partial names (compressed chunks).
