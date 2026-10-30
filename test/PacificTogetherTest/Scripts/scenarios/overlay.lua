@@ -2,11 +2,11 @@
 -- feed of what the other player does. Read from the outside, through the UMG widget the mod builds (PTOverlayBox):
 --   menu: label present, in the viewport, anchored bottom right, never hit-testable; host: no status alone; guest: "Joining ...";
 --   garage: host "Host . 1 guest . N ms" and "<name> joined"; guest "Guest . <host> . N ms" and "Connected to <host>";
---   the host puts an item into the trunk and takes it out again -> the guest's feed: "1 item put into trunk", "1 item taken from trunk"
---   (one line each: bursts merge); the guest enters the car -> the host's feed "<name> entered the car"; lines expire (6 s);
+--   quiet feed (2026-10-30): what the world already shows is not narrated: the host puts an item into the trunk and takes it out
+--   again, the guest enters the car -> no feed line for any of it (mutation loudfeed: the old feed, these checks FAIL); lines expire (6 s);
 --   after the host's run start (map change on both sides) the label and the status are back.
 -- Run: tools/run-test.ps1 -Scenario overlay -Fixture garage -Headless
--- Mutation nooverlay: overlay.lua does nothing (no widget): every check FAILS.
+-- Mutation nooverlay: overlay.lua does nothing (no widget): every check FAILS. Mutation loudfeed: the quiet checks FAIL.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local STEEL = "/Game/Gameplay/Inventory/Items/Resources/Basic/RawSteel/IA_Resource_Raw_Scrap_Steel.IA_Resource_Raw_Scrap_Steel"
@@ -45,6 +45,16 @@ return function(T)
             local s = snap()
             for _, l in ipairs(s and s.lines or {}) do if l:find(pattern) then T.log("PT|info overlay line '%s'", l); return true end end
             return false
+        end }
+    end
+    -- no line matching pattern for 6 s
+    local function quiet(id, pattern)
+        local since, seen
+        return { check = id, timeout = 12, cond = function()
+            since = since or os.clock()
+            local s = snap()
+            for _, l in ipairs(s and s.lines or {}) do if l:find(pattern) then T.log("PT|info overlay unwanted line '%s'", l); seen = true end end
+            return not seen and os.clock() - since > 6
         end }
     end
     local function status(id, pattern, timeout)
@@ -94,7 +104,7 @@ return function(T)
             end
         end })
         add({ check = "host_guest_saw_take", timeout = 30, cond = function() return has("t.takeok") end })
-        add(line("host_feed_guest_entered_car", " entered the car$", 40))
+        add(quiet("host_no_entered_car_line", " entered the car$"))
         add(expired("host_feed_expires"))
         add({ run = function()
             StaticFindObject("/Game/Systems/ScriptingLibraries/BFL_ProgressionHelpers.Default__BFL_ProgressionHelpers_C"):TravelToNextLeg(T.world())
@@ -116,14 +126,10 @@ return function(T)
     add(labelOk("client_label_after_map"))
     add(status("client_status_session", "^Guest.* %d+ ms$"))
     add(line("client_feed_connected", "^Connected to ", 15))
-    add({ check = "client_trunk_put_line", timeout = 90, cond = function()
-        if not has("t.put") then return false end
-        local s = snap()
-        for _, l in ipairs(s and s.lines or {}) do if l:find("^%d+ items? put into .*trunk") then T.log("PT|info overlay line '%s'", l); return true end end
-        return false
-    end })
+    add({ check = "client_told_put", timeout = 90, cond = function() return has("t.put") end })
+    add(quiet("client_no_trunk_put_line", "^%d+ items? put into .*trunk"))
     add({ run = function() PTNative_MsgToHost(T.localPC():GetAddress(), "t.putok", "") end })
-    add(line("client_trunk_take_line", "^%d+ items? taken from .*trunk", 30))
+    add(quiet("client_no_trunk_take_line", "^%d+ items? taken from .*trunk"))
     add({ run = function()
         PTNative_MsgToHost(T.localPC():GetAddress(), "t.takeok", "")
         -- the car intent the door hook sends (car.lua)

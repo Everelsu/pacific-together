@@ -139,8 +139,19 @@ local function push(fmt, kind, key, n)
 end
 
 -- messages only during a session: post("Rex took %d item{s} from the trunk", "info", "loot.trunk", 2)
+-- Quiet feed (owner request 2026-10-30): the game never narrates, so the feed keeps only what a player cannot see and needs
+-- (the partner's loading, their own backpack and items, a resync); the rest (entered the car, picked up, repaired, anomaly hits,
+-- objectives the game's own HUD shows) goes to the log. Session lines (joined, left, connection) are pushed directly and stay.
+-- Mutation loudfeed: everything shows.
+local KEEP = { "to load", "did not load", "death crate", "Backpack", "were lost", "resynced", "Controls reset", "Host is " }
+local LOUD = os.getenv("PT_MUTATE") == "loudfeed"
 function M.post(fmt, kind, key, n)
     if not safety.active() then return end
+    if not LOUD then
+        local keep = false
+        for _, k in ipairs(KEEP) do if fmt:find(k, 1, true) then keep = true break end end
+        if not keep then log("PT|feed (quiet) %s", fmt); return end
+    end
     push(fmt, kind, key, n)
 end
 
