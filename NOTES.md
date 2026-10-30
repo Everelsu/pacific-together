@@ -884,3 +884,15 @@ Unknowns
 - Feel of the sway constants (gain 0.012, 2.5 Hz, clamp 10 uu) and the grip of tools other than the three looked at: owner hand play.
 - The guest's own car "prediction": the follow delay (100-250 ms) is unchanged; the guest is not driving, so it is not felt as input lag.
 - Whether forced weather events change gameplay (lightning on the car) beyond looks.
+
+## 2026-10-30 evening: co-op mood (quiet tag, quiet feed, shared scares, shared waypoint)
+
+Observations
+- BP_AmbienceManager: every ambient event (PickAndStartNextEvent -> async load -> "Spawn Ambient Event Actor"(Event Class, Position))
+  is local; AmbientEventsEnabled gates the random pick (ShouldAmbientEventPlay), the debug Force* events bypass it. The guest calling
+  Spawn Ambient Event Actor with the host's class and spot works (ok=true; the host's own Birds_Circling also went through).
+- ARC waypoint: UMG_GobblerScreen PlaceWaypoint spawns/moves one local BP_WaypointActor (self.Waypoint); the actor destroys itself
+  every 1 s check when the local camera is within 1000 uu (2D). ClearWaypoints/RemoveWaypoint destroy it.
+- Footsteps: no ProcessEvent call matched Footstep/AnimNotify/Ak*/Surface while the host walked (headless, -nosound). Unknown
+  whether they are native anim notifies or skipped without audio; partner sounds need a rendered look.
+Results: nametag 24/24 (loudtag 21/24), overlay 40/40 (loudfeed 37/40), sharedworld 25/25 (noambsync 23/25, nowaypoint 22/25).

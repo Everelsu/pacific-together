@@ -5,6 +5,20 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+### Added
+
+- You hear the same scares: whispers, the static ghost, drones, startled birds and the rest now happen for both players at
+  the same spot (the host's game picks them).
+- One ARC waypoint for both: a waypoint either player places, moves or clears on the ARC map shows for the other too, on
+  the map and in the world (the passenger can mark the next turn for the driver).
+
+### Changed
+
+- The other player's name tag stays out of the way: no tag when they stand in plain sight nearby, it shows when they are
+  far off or behind something, and their health shows only when they are hurt.
+- The overlay no longer narrates what you can see (entered the car, picked up an item, repaired, anomaly hits); it keeps
+  what matters to you (the other player loading, your backpack, lost items, connection).
+
 ## [0.8.2] - 2026-10-30
 
 ### Added
