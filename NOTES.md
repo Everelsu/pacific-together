@@ -861,3 +861,26 @@ Derived / guesses
 - Settings crash may depend on the owner's real graphics settings (test copies run on Low) or zone state; no fix made.
 
 Unknown: FoundAnchor/ExitSelected tags when only the guest is at the site; whether zeroed guest volumes pile up for moving clouds.
+
+## 2026-10-30 afternoon: guest rain, co-op weather, guest ride feel, held tools (owner requests)
+
+Observations
+- Rain: host and guest weather values matched (rain 1.0 both), but the guest had no NS_Ambient_Environment_*, NS_RainSplashes_01 or
+  NS_PlayerRadiation: BP_AmbienceManager's EnvironmentComponent/RainSplashSystem/PlayerRadiationNiagaraSystem were invalid (its setup
+  ran before the guest's character existed). SetupEnvAmbientVFX/SetupSplashEffects/SetupRadiationVFX by hand made them. Headless games
+  make no Niagara systems (the setup returns nothing). weathersync rendered 23/23, noambience 22/23; headless the check skips.
+- Weather: overrides by priority, entry 0 drives the sky (FogMedium/FogLight p1 in the zone fixture); debug events work in shipping
+  (Set ToD Midnight 0.000, Dawn 0.300, Noon 0.500, Sunset 0.680; Force Event: Storm/Rain Heavy/Dark Heavy replace each other async);
+  AddTODWeatherOverride with an existing identifier replaces it; Set Time Of Day Speed Multiplier(New Speed) sets LocalTODSpeedMultiplier.
+  Co-op weather (world.lua): weathersync 24/24, nospooky 23/24.
+- Guest car: POV vs FP_Camera after the car's placement 5.95 uu p95 with the UE4SS loop (camera computed first), 0.00 from the car's
+  ReceiveTick (fires every frame on the guest copy). Head sway max ~10 uu. carsync 38/38, nocartick and nosway each fail their check.
+- Held tools: the mirror's base part was picked by unscaled bounds (Scrapper: canister fill r=137 at 0.1 scale) and placed at scale 1
+  with no grip; first-person meshes carry runtime MIDs. Every tool tried has a world twin (`<FP mesh>_World`, same folder, true size).
+  First-person arms skeleton: Root BaseArm Wrist Hand ... (no hand_r). Grip correction = Prybar's pose on the FP Hand bone.
+  hands 64/64, noworldmesh 62/64 (hammer checks). Rendered: hammer, scrapper, prybar recognizable (screenshots in client2 Saved\Screenshots).
+
+Unknowns
+- Feel of the sway constants (gain 0.012, 2.5 Hz, clamp 10 uu) and the grip of tools other than the three looked at: owner hand play.
+- The guest's own car "prediction": the follow delay (100-250 ms) is unchanged; the guest is not driving, so it is not felt as input lag.
+- Whether forced weather events change gameplay (lightning on the car) beyond looks.

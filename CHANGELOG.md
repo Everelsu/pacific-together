@@ -5,6 +5,22 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+### Added
+
+- Co-op weather is spookier: while you play together the host's game keeps the sky overcast (fog, wind, light rain and
+  darkness never drop below a floor, the game's own storms still come through), nights last longer and days pass faster,
+  a map that loads in daylight starts late in the afternoon, and a storm, heavy rain, darkness or fog rolls in every 5-9
+  minutes. Back to normal when the guest leaves.
+- Riding as the guest feels like a car: the guest's head sways with the car (back on throttle, forward on braking, out in
+  turns, down over bumps).
+
+### Fixed
+
+- The guest sees the rain: falling rain, splashes and the radiation haze were never set up for the guest.
+- The car interior no longer shakes against the guest's view at speed (the car was placed a frame after the camera).
+- Tools in the other player's hand look like the tools (Impact Hammer, Scrapper and the rest): their real model, size
+  and textures instead of a jumble of first-person parts.
+
 ## [0.8.1] - 2026-10-30
 
 ### Added
