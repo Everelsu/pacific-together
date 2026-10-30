@@ -6,7 +6,7 @@
 --   guest_precipitation_matches the guest's precipitation follows the host's rain (host > 0.5)
 --   guest_ambience_set_up       the guest's ambience manager has its falling-rain, splash and radiation effects (they were never made: the
 --                               guest's character came after the manager's setup, so rain showed on the host only; 2026-10-30)
--- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (rendered: a headless game makes no particle effects, guest_ambience_set_up fails) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup.
+-- Run: tools/run-test.ps1 -Scenario weathersync -Fixture zone|garage (guest_ambience_set_up needs a rendered run; headless it skips) [-Root .. -Port ..]   Mutation nosimlink: the guest relink is off; noambience: no ambience setup.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
     local slow = (T.MUTATE == "nosimlink") and 0.2 or 1
@@ -70,6 +70,7 @@ return function(T)
         { check = "client_in", timeout = 400, cond = function() return T.netMode() == "client" and T.cls(T.myPawn()) == T.CHAR end },
         { check = "guest_got_host_readings", timeout = 120, cond = function() onRead(); return host ~= nil end },
         { check = "guest_ambience_set_up", timeout = 30, cond = function()
+            if os.getenv("PT_HEADLESS") == "1" then T.log("PT|info guest_ambience_set_up skipped: headless"); return true end
             local am = T.first("BP_AmbienceManager_C")
             return am ~= nil and am.EnvironmentComponent:IsValid() and am.RainSplashSystem:IsValid() and am.PlayerRadiationNiagaraSystem:IsValid()
         end },

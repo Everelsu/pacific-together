@@ -144,6 +144,7 @@ function Start-Side($s, $life) {
     $env:PT_SCENARIO = $Scenario; $env:PT_STATUS = "2000"; $env:PT_HOST = "127.0.0.1:$Port"; $env:PT_MUTATE = $Mutate; $env:PT_FIXTURE = $Fixture
     if ($Tunnel) { $env:PT_TUNNEL = $Tunnel }
     $env:PT_LIFE = "$life"
+    $env:PT_HEADLESS = if ($Headless) { "1" } else { $null }  # -nullrhi makes no particle effects: checks on them skip
     if ($SteamMod -contains $Scenario) { $env:PT_STEAM = "1"; $env:PT_STEAM_INBOX = Join-Path $Root "steam-inbox.txt" }
     # one account cannot message itself across processes (X6): the two-client test carries the tunnel over loopback UDP, the real two-account scenarios over Steam
     if ($Scenario -eq "steamsession") { $env:PT_STEAM_UDP = "$($Port + 1000)" }
