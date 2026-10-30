@@ -7,6 +7,8 @@
 --   5 use      A presses the patch kit's use input: B sees the use swing (the mannequin has no tool montage, the mirror swings)
 --   6 empty    A puts the stack back in the pack: the mirror is gone
 --   7 carry    A holds a two-handed item (a car door): the mirror sits in front of the chest, not on the hand
+--   8 hammer   A holds the Impact Hammer: B's mirror is the tool's world mesh (one piece, "_World"), no part over 100 uu
+--              (first-person parts showed as a jumble of textures, 2026-10-30; mutation noworldmesh fails it)
 -- Run: tools/run-test.ps1 -Scenario hands -Fixture garage -Headless      Mutation nohands: hands.lua inert, B's checks FAIL.
 return function(T)
     local L = require("scenarios.sessionlib")(T)
@@ -96,6 +98,8 @@ return function(T)
             if alive(a) and a:GetAttachParentActor():IsValid() and a:GetAttachParentActor():GetFullName() == o:GetFullName() then return a end
         end
     end
+    -- the mirror shows a tool's world mesh when it has one ("X" -> "X_World")
+    local function sameTool(m, hand) return m == hand or m == hand:gsub("([^/%.]+)%.([^/%.]+)$", "%1_World.%2_World") end
     local function mirrorMesh()
         local a = mirror()
         local m = a and a.StaticMeshComponent.StaticMesh
@@ -131,7 +135,13 @@ return function(T)
             pcall(function()
                 -- FindAllOf is slow: look for the mirror twice a second, read its rotation every tick
                 if not alive(cache) or os.clock() - at > 0.15 then cache, at = mirror(), os.clock() end
-                if alive(cache) and math.abs(cache.RootComponent.RelativeRotation.Pitch) > 5 then swing.last = os.clock() end
+                -- the mirror rests in its grip pose: a swing is a turn away from that pose
+                if alive(cache) then
+                    local r = cache.RootComponent.RelativeRotation
+                    if swing.of ~= cache:GetFullName() then swing.of, swing.rest = cache:GetFullName(), { r.Pitch, r.Yaw, r.Roll } end
+                    local d = math.max(math.abs(r.Pitch - swing.rest[1]), math.abs((r.Yaw - swing.rest[2] + 180) % 360 - 180), math.abs((r.Roll - swing.rest[3] + 180) % 360 - 180))
+                    if d > 5 then swing.last = os.clock() end
+                end
             end)
         end)
     end
@@ -195,7 +205,7 @@ return function(T)
         phase(1, "item", function() hold(FLASH) end, function(mesh)
             local m = mirrorMesh()
             log("PT|info %s item mirror=%s hand=%s", d.b, m, mesh)
-            return m ~= "none" and mesh ~= "none" and m == mesh
+            return m ~= "none" and mesh ~= "none" and sameTool(m, mesh)
         end)
         phase(2, "light", function() press() end, function()
             log("PT|info %s light=%s swing=%s", d.b, tostring(lightAtHead()), tostring(swing.last))
@@ -205,7 +215,7 @@ return function(T)
         phase(4, "switch", function() hold(PATCH) end, function(mesh)
             local m = mirrorMesh()
             log("PT|info %s switch mirror=%s hand=%s", d.b, m, mesh)
-            return m ~= "none" and m == mesh and not m:find("lashlight", 1, true) and not lightAtHead()
+            return m ~= "none" and sameTool(m, mesh) and not m:find("lashlight", 1, true) and not lightAtHead()
         end)
         phase(5, "use", function() press() end, function()
             log("PT|info %s swing=%s", d.b, tostring(swing.last))
@@ -216,11 +226,15 @@ return function(T)
             local h = handItem()
             h.Instance:GetOuterSlot():RemoveAllItems({})
         end, function() return mirror() == nil end)
-        phase(8, "hammer", function() hold(BREAKER) end, function() return mirror() ~= nil and not mirrorsBad() end)
+        phase(8, "hammer", function() hold(BREAKER) end, function()
+            local m = mirrorMesh()
+            log("PT|info %s hammer mirror=%s", d.b, m)
+            return mirror() ~= nil and not mirrorsBad() and m:find("_World", 1, true) ~= nil
+        end)
         phase(7, "carry", function() hold(DOOR) end, function(mesh)
             local s, m = mirrorSocket(), mirrorMesh()
             log("PT|info %s carry socket=%s mirror=%s hand=%s", d.b, s, m, mesh)
-            return s == "chest(x=45)" and m == mesh
+            return s == "chest(x=45)" and sameTool(m, mesh)
         end)
     end
     add({ wait = 3 })

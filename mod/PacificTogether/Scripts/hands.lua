@@ -31,7 +31,8 @@ end
 local SMC, LIGHT = StaticFindObject("/Script/Engine.StaticMeshComponent"), StaticFindObject("/Script/Engine.LightComponent")
 
 -- What the item shows in the hand: its visible static meshes (an item's CurrentItemMesh; a tool has a few: can body, handle, ...),
--- the biggest first. SM_bboxTube is a VFX volume some tools carry; so is the Impact Hammer's /Engine/BasicShapes/Cylinder (100 uu
+-- the biggest as drawn first (the Scrapper's canister fill is r=137 at scale 0.1: unscaled it was taken for the base and shown 10x as a
+-- blob of textures, 2026-10-30). SM_bboxTube is a VFX volume some tools carry; so is the Impact Hammer's /Engine/BasicShapes/Cylinder (100 uu
 -- tall, untextured: a giant green body on the guest, 2026-10-23), so engine meshes are skipped.
 local function heldParts(h)
     local list = {}
@@ -39,18 +40,24 @@ local function heldParts(h)
         c = c:get()
         local sm = valid(c) and c:IsVisible() and c.StaticMesh
         if valid(sm) and not sm:GetFullName():find("bboxTube", 1, true)
-            and not (sm:GetFullName():find("/Engine/", 1, true) and os.getenv("PT_MUTATE") ~= "engmesh") then list[#list + 1] = { c = c, sm = sm, r = sm:GetBounds().SphereRadius } end
+            and not (sm:GetFullName():find("/Engine/", 1, true) and os.getenv("PT_MUTATE") ~= "engmesh") then list[#list + 1] = { c = c, sm = sm, r = sm:GetBounds().SphereRadius * c:K2_GetComponentScale().X } end
     end
     table.sort(list, function(a, b) return a.r > b.r end)
     return list
 end
 
--- "<mesh>@<tx,ty,tz,qx,qy,qz,qw,sx,sy,sz>" per part; the others' transforms are relative to the first
-local function encodeParts(list)
+local IDENT = { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+local SKC = StaticFindObject("/Script/Engine.SkeletalMeshComponent")
+-- "<mesh>@<tx,ty,tz,qx,qy,qz,qw,sx,sy,sz>" per part: the first relative to the first-person arms' Hand bone (grip and size), the
+-- others relative to the first
+local function encodeParts(h, list)
     local out, kml = {}, UEHelpers.GetKismetMathLibrary()
     local base = list[1] and list[1].c:K2_GetComponentToWorld()
+    local arms = h:K2_GetComponentsByClass(SKC)[1]
+    arms = arms and arms:get()
+    local hand = valid(arms) and arms:DoesSocketExist(FName("Hand")) and arms:GetSocketTransform(FName("Hand"), 0) or nil
     for i, p in ipairs(list) do
-        local t = i == 1 and { Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Translation = { X = 0, Y = 0, Z = 0 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+        local t = i == 1 and (hand and kml:MakeRelativeTransform(base, hand) or IDENT)
             or kml:MakeRelativeTransform(p.c:K2_GetComponentToWorld(), base)
         out[#out + 1] = string.format("%s@%.2f,%.2f,%.2f,%.5f,%.5f,%.5f,%.5f,%.3f,%.3f,%.3f", path(p.sm), t.Translation.X, t.Translation.Y, t.Translation.Z,
             t.Rotation.X, t.Rotation.Y, t.Rotation.Z, t.Rotation.W, t.Scale3D.X, t.Scale3D.Y, t.Scale3D.Z)
@@ -71,7 +78,7 @@ local function localState()
     local ok, v = pcall(function() return h.IsOn end)
     if ok and v == true then on = 1 end
     if h:K2_GetComponentsByClass(LIGHT)[1] then kind = h:GetClass():GetFName():ToString():find("Camping", 1, true) and "point" or "spot" end
-    return string.format("%s|%d|%d|%s|%s", valid(arch) and arch:GetFName():ToString() or "?", arch.Size or 0, on, kind, encodeParts(heldParts(h)))
+    return string.format("%s|%d|%d|%s|%s", valid(arch) and arch:GetFName():ToString() or "?", arch.Size or 0, on, kind, encodeParts(h, heldParts(h)))
 end
 
 -- theirs ----------------------------------------------------------------------------------------------------------------
@@ -110,6 +117,14 @@ local function loadMesh(p)
     return valid(m) and m or nil
 end
 
+local noWorld = {} -- first-person mesh paths without a "_World" twin
+local function worldMesh(p)
+    if noWorld[p] then return nil end
+    local w = p:gsub("([^/%.]+)%.([^/%.]+)$", "%1_World.%2_World")
+    if w ~= p and loadMesh(w) then return w end
+    noWorld[p] = true
+end
+
 local function meshActor(char, p)
     local sm = loadMesh(p)
     if not sm then return nil end
@@ -122,11 +137,19 @@ local function meshActor(char, p)
     return a
 end
 
+-- first-person Hand bone -> third-person hand_r: the Prybar's pose on the first-person arms (measured 2026-10-30), which shows right
+-- on hand_r untransformed; every other tool keeps its own grip and size relative to it. Mutation nograsp: the old identity pose.
+local GRIP = { Translation = { X = 31.4, Y = 24.4, Z = 47.0 }, Rotation = { X = 0.9924, Y = -0.0790, Z = 0.0868, W = 0.0368 }, Scale3D = { X = 1.2, Y = 1.2, Z = 1.2 } }
+
 local function build(char, st)
     local arch, size, on, kind, parts = st:match("^([^|]*)|(%d+)|(%d)|(%a+)|(.*)$")
     local m = { state = st, arch = arch, size = tonumber(size), on = on == "1", kind = kind, parts = {}, swingAt = nil }
     for p, t in parts:gmatch("([^;@]+)@([^;]+)") do
-        local a = meshActor(char, p)
+        -- a tool's world mesh (what lies on the ground: one piece, world materials, true size) beside its first-person one
+        -- ("SM_Tool_Breaker_01" -> "SM_Tool_Breaker_01_World"): first-person parts carry first-person materials and sizes and
+        -- showed as a jumble on the other player (2026-10-30). Mutation noworldmesh: first-person parts only.
+        local world = #m.parts == 0 and os.getenv("PT_MUTATE") ~= "noworldmesh" and worldMesh(p)
+        local a = meshActor(char, world or p)
         if a then
             local v = {}
             for n in t:gmatch("[^,]+") do v[#v + 1] = tonumber(n) end
@@ -137,6 +160,13 @@ local function build(char, st)
                     a:K2_SetActorRelativeLocation({ X = 45, Y = 0, Z = 0 }, false, {}, true)
                 else
                     a:K2_AttachToComponent(char.Mesh, FName("hand_r"), 2, 2, 2, false)
+                    if os.getenv("PT_MUTATE") ~= "nograsp" then
+                        local kml = UEHelpers.GetKismetMathLibrary()
+                        local rel = { Translation = { X = v[1], Y = v[2], Z = v[3] }, Rotation = { X = v[4], Y = v[5], Z = v[6], W = v[7] }, Scale3D = { X = v[8], Y = v[9], Z = v[10] } }
+                        m.base = kml:ComposeTransforms(rel, kml:InvertTransform(GRIP))
+                        if world then m.base.Scale3D = { X = 1, Y = 1, Z = 1 } end -- a world mesh is at its true size at 1
+                        a:K2_SetActorRelativeTransform(m.base, false, {}, true)
+                    end
                 end
             else
                 a:K2_AttachToActor(m.parts[1], FName("None"), 2, 2, 2, false)
@@ -144,6 +174,7 @@ local function build(char, st)
                     Scale3D = { X = v[8], Y = v[9], Z = v[10] } }, false, {}, true)
             end
             m.parts[#m.parts + 1] = a
+            if world then break end -- the world mesh is the whole tool
         end
     end
     m.actor = m.parts[1]
@@ -168,12 +199,14 @@ end
 local function swing(m)
     if not (m.swingAt and valid(m.actor)) then return end
     local t = (os.clock() - m.swingAt) / SWING_S
+    local kml = UEHelpers.GetKismetMathLibrary()
+    local base = m.base and kml:TransformRotation(m.base, { Pitch = 0, Yaw = 0, Roll = 0 }) or { Pitch = 0, Yaw = 0, Roll = 0 }
     if t >= 1 then
         m.swingAt = nil
-        m.actor:K2_SetActorRelativeRotation({ Pitch = 0, Yaw = 0, Roll = 0 }, false, {}, true)
+        m.actor:K2_SetActorRelativeRotation(base, false, {}, true)
         return
     end
-    m.actor:K2_SetActorRelativeRotation({ Pitch = -70 * math.sin(t * math.pi), Yaw = 0, Roll = 0 }, false, {}, true)
+    m.actor:K2_SetActorRelativeRotation(kml:ComposeRotators(base, { Pitch = -70 * math.sin(t * math.pi), Yaw = 0, Roll = 0 }), false, {}, true)
 end
 
 local function follow(char, m)
