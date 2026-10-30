@@ -5,6 +5,8 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-30
+
 ### Added
 
 - The guest in the passenger seat can turn the ignition key and move the shifter between P and D (P holds the parking
