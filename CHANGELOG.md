@@ -13,6 +13,10 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ### Fixed
 
+- The antenna quest (Q01) no longer restarts after every run when the guest takes the anchor: what the guest does
+  for a quest step (holding the anchor, carrying an item) now counts for the host's story.
+- Radiation around an anchor (Hot Dust) no longer stays on the guest after the anchor is pulled: the guest's radiation
+  now follows the host's, including clouds that disappear.
 - Direct IP no longer depends on Steam: a different Steam build id (or none) no longer refuses the join, only a
   different game version, mod version or protocol does; the host logs the difference. A guest without Steam keeps their backpack on the host across launches
   through `player_id.txt` in the mod folder, like PDCoopNet. Steam invites work as before.

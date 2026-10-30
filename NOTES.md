@@ -831,3 +831,33 @@ Derived / guesses (not checked)
 
 Unknown: what Q01 Mission_A/B/C each require; whether the friend's save completes Q01 in single player (fixture candidate:
 `host/odsave1.sav`, test copy only). No offline SAVC decoder exists; strings show only partial names (compressed chunks).
+
+## 2026-10-30: pt8 fixes (Q01 stuck, radiation around anchors), Settings crash not reproduced
+
+Merged first: Everelsu fork main (0a1fa70, fast-forward; protocol 5) and coop-anything upstream b494a3f; native DLL rebuilt
+(fork's msg.cpp). Fixture `pt8-q01` = the friend's host save after run 2 (slot 1, RB_Garage, Q01 on Mission_C), test copies only.
+
+Observations
+- Q01 Mission_C tasks (host, pt8-q01): CR_Q01_AntennaMats ingredients (done), FoundAnchor (WB tag), GrabbedAnchor =
+  BPMT_HasItem_HandSlot IA_Resource_Anchor_Stable_L, DepositedAnchor (ARC +0.25), ChargeGobbler (done), ExitSelected (WB tag),
+  SuccessfulRun = BPMT_ReturnToGarage. In pt8 the guest pulled both anchors; no `story guest reports task` line in either log.
+- A guest holding Stable L completes its own task 3 (mask 1010100) but the host stays 1000100: reportTasks skipped it because
+  `t.CheckCar or t.CheckZETI` on a class without those properties returns a truthy TrivialObject (UE4SS), read as "trunk check".
+  Fixed (`== true`); q01anchor 21/21 (`20261030-124749`), unfixed 20/21 host_task_done_by_guest (`20261030-124940`).
+- BP_Spawn_Anchor_Base_01 AnchorTaken (atlas, ubergraph 5114): destroys the anchor's RadActor and broadcasts
+  CauseHazardDisturbance. visual.lua already calls it on the host for a guest's pull: one HazardDisturbance(nonAnchor=false)
+  per guest pull (anchordup `20261030-130054`). The guest's game has no BP_HazardAnchorPull_C (zone fixture).
+- radiation.lua only added volumes on the guest and sent nothing when the host had none: a removed host volume kept radiating on
+  the guest. Fixed (unmatched guest volumes set to 0, empty list sent); radiation 22/22 (`20261030-125356`), unfixed 20/22
+  (`20261030-125616`).
+- Settings crash: stack starts at the pause menu's Settings press (default category selected while the menu builds), crash in
+  native code after PageGraphics constructed. Not reproduced: headless and rendered guest on the zone fixture, same GPU/RHI/DLSS
+  plugin, Accessibility -> Video and 6 open/close/tab cycles (`20261030-123952`, `20261030-124158`).
+
+Derived / guesses
+- Q01 stuck = GrabbedAnchor never done on the host when the guest takes the L anchor, so the run is not successful and the
+  objective restarts. Not run end to end (zone run with the friend's save) yet.
+- "Hot Dust around carried anchors" = the guest's copy of the anchor's RadActor volume outliving the host's.
+- Settings crash may depend on the owner's real graphics settings (test copies run on Low) or zone state; no fix made.
+
+Unknown: FoundAnchor/ExitSelected tags when only the guest is at the site; whether zeroed guest volumes pile up for moving clouds.
