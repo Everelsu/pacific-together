@@ -1,8 +1,9 @@
--- pt4-model survivor: the other player's body is Djecka's survivor (survivor.lua), on both sides. Fixture-less garage, the guest joins by itself.
---   other_has_parts      the other character has a survivor part attached to each of the 20 bones with geometry, visible
+-- pt4-model survivor: the other player's body is the Rogue (survivor.lua), on both sides. Fixture-less garage, the guest joins by itself.
+--   other_has_parts      the other character has a survivor part attached to each of the 17 bones with geometry (torso merged into pelvis and spine_03), visible
 --   other_mannequin_invisible  its own mesh keeps the game's invisible material (the parts are what is drawn)
+--   other_variant        the host sees the guest's variant (green cloth), the guest the host's (no green)
 --   own_has_no_parts     our own body has none
---   part_on_bone         the parts sit on their bones (hand_r, foot_l, head, spine_02): within 3 uu
+--   part_on_bone         the parts sit on their bones (hand_r, foot_l, head, spine_03): within 3 uu
 --   part_follows_walk    both sides move 300 uu; the other's hand part moved more than 100 uu and is on its bone again within 4 uu
 -- Run: tools/run-test.ps1 -Scenario survivor -Headless      Mutation nosurvivor: survivor.lua off, the parts checks FAIL.
 return function(T)
@@ -20,7 +21,7 @@ return function(T)
         end
         return w
     end
-    local ON = { "hand_r", "foot_l", "head", "spine_02" }
+    local ON = { "hand_r", "foot_l", "head", "spine_03" }
     local function handPos() local v = L.survivorParts(other()).hand_r:K2_GetComponentLocation(); return { X = v.X, Y = v.Y, Z = v.Z } end
     local steps = {}
     local function add(s) steps[#steps + 1] = s end
@@ -64,7 +65,19 @@ return function(T)
         local parts, n = L.survivorParts(o), 0
         for _, p in pairs(parts) do if p:IsVisible() and not p.bHiddenInGame then n = n + 1 end end
         T.log("PT|info survivor parts=%d mat=%s", n, L.material(o))
-        return n >= 20
+        return n >= 17
+    end })
+    -- the host draws the guest's variant (green Cloth), the guest the host's (red-brown Cloth): a thigh section greener than red
+    add({ check = r .. "_other_variant", timeout = 10, cond = function()
+        local p, green = L.survivorParts(other()).thigh_l, false
+        if not p then return false end
+        for i = 0, p:GetNumSections() - 1 do
+            local m = p:GetMaterial(i)
+            local c = m:IsValid() and m:K2_GetVectorParameterValue(FName("Color"))
+            if c and c.G > c.R then green = true end
+        end
+        T.log("PT|info survivor other thigh green=%s", tostring(green))
+        return green == (T.ROLE == "host")
     end })
     add({ check = r .. "_other_mannequin_invisible", timeout = 5, cond = function() return L.invisible(other()) end })
     add({ check = r .. "_own_has_no_parts", timeout = 5, cond = function() return next(L.survivorParts(L.own())) == nil end })

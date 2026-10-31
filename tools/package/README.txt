@@ -1,50 +1,59 @@
-Pacific Together - development preview 0.0.7
-==========================================
+Pacific Together 0.8.5 - co-op for Pacific Drive
+================================================
 
-Two-player co-op for Pacific Drive. Developer/friend preview; no public release before 1.0.
-Both players need this mod version (protocol 3) and Steam v1.15.0, build 21896301.
+Play Pacific Drive with a friend: one drives, one rides shotgun, both scavenge.
+Early access: fully playable, still being polished. If something breaks mid-run, press F9 for the rescue menu.
 
-What works in this build
-- Join through Steam invites/friends or direct IP. Steam traffic between two accounts was verified October 23.
-- The host drives; the guest uses the driver's door handle to enter the passenger seat and X to leave.
-  Parts, damage, fuel, battery, storage, repairs and part swaps are shared. The ARC sits behind the seats.
-- Shared containers, pickups, wreck scrap, garage storage, weather, storms, gateways and many anomalies.
-- Both players have visible animated bodies, held items, name tags, health, map/HUD markers and middle-mouse pings.
-- Guest damage, radiation and death: respawn at the car with items dropped in a recoverable crate.
-  The host keeps the guest backpack per save slot (SteamID for Steam joins; player_id.txt for direct IP).
-- Shared run travel and failure; host missions, radio dialogue, research and upgrades reach the guest.
-  The guest can fabricate, research, buy garage upgrades, shred parts and cure diagnosed car quirks.
-- Zone props, car paint, flat tyres, radio, lights and supported car-upgrade effects are mirrored.
-- Host Esc pauses both players; guest Esc opens their menu. Loading/seat prompts and End/F8 control reset are available.
-- The guest's own saves are protected while joined. The launcher backs up saves and collects logs.
+Both players need this same mod version (0.8.5, protocol 5) and Pacific Drive on Steam, v1.15.0 (build 21896301), on Windows.
 
-Not done yet (expect oddities)
-- A guest-picked anchor can remain on the host and be deposited twice.
-- Guest-only tutorial steps do not advance the host. Guest re-entry once showed the driver's pose in hand play.
-- Driving, route planning, Detailing and quirk hints remain host-only. Chrono Dilator is disabled in co-op.
-- Mixed DLC ownership, Expeditions, remaining anomalies and a full long-session regression need further validation.
-- Direct IP works without Steam networking; keep the guest's ue4ss\Mods\PacificTogether\player_id.txt to keep
-  their backpack on the host.
-- Some older edge cases still need retesting: item tints/upgrades and death-crate layout, gas pump handles and
-  lockboxes, guest prop/tool cure effects, and visual/audio polish. Automated passes are not proof of every hand-play path.
+Features
+- One car, two players: the host drives, the guest rides in the passenger seat and can start the engine or shift gears.
+  Fuel, battery, damage, parts and storage are shared; both can repair, refuel and swap parts.
+- Scavenge together: containers, pickups, abandoned cars and garage storage are shared; items keep their condition.
+- The same Zone for both: storms, instability, gateways and most anomalies.
+- One run, start to finish: junctions and the way back to the garage together. Missions, radio, research, upgrades and
+  the journal are shared; the guest can use garage stations.
+- See each other: a hooded body with a glowing face (different for host and guest), held tools, a name tag with health,
+  and middle-mouse pings.
+- Your own health and backpack: the guest takes their own damage and radiation; on death their items wait in a crate
+  and they respawn at the car. The host keeps the guest's backpack for next time.
+- Join through Steam invites or by IP address. The host owns the world and save; the guest's own saves are protected.
 
-Install and start
-1. Close the game and unpack the preview anywhere. Open PacificTogether.exe and check the game folder.
-2. Steam joining: BOTH players select Host (no IP) and Install & play. The actual host loads a save; the guest uses
-   Join game in Steam's friends list or accepts an invite while the game is running.
-3. Direct IP: the host selects Host; the guest selects Join and enters the host's reachable address.
-   Load a save on the host; the guest connects from the main menu. Direct IP uses UDP 7777.
+Install
+1. Close the game. Unpack this zip anywhere and open PacificTogether.exe. Check the game folder it found.
+2. Choose Host and click Install & play. (Both players choose Host when joining through Steam: it just means "no IP".)
+   Windows may warn about an unknown publisher: More info, Run anyway.
 
-Command line: install.cmd (host/Steam), install.cmd -Join <host IP>, or install.cmd -Uninstall.
-The launcher is not code-signed. Install & play starts PenDriverPro\Binaries\Win64\PenDriverPro-Win64-Shipping.exe directly (Steam only needs to be running); starting it through Steam works too and uses the same saved join setting.
-See GUIDE.md for connection troubleshooting, backups and bug reports; CHANGELOG.md for version history.
+Play with a friend
+- Steam: the host starts the game and loads a save. The guest starts the game too, then accepts the host's Steam invite
+  or picks Join game on the host in the Steam friends list.
+- IP address: in the launcher the host picks Host, the guest picks Join and types the host's IP. The host loads a save,
+  the guest connects from the main menu. The host may need to forward UDP port 7777 (or use a LAN or VPN).
+Command line instead of the launcher: install.cmd (Host/Steam), install.cmd -Join <host IP>, install.cmd -Uninstall.
 
-Uninstall and restore
-Uninstall removes the entire ue4ss folder, including any other UE4SS mods, but does not delete saves.
-The first install of each build backs up saves to Documents\PacificDrive-saves-backup-<date>.zip.
-To restore, close the game and extract that backup over %LOCALAPPDATA%\PenDriverPro\.
+Controls
+- E on the passenger door: get in (guest). X: get out.
+- E on the key or the shifter from the passenger seat: engine on/off, P/D.
+- Middle mouse (or G): ping a spot for your friend.
+- F9: rescue menu (teleport to your friend, resync, unstick controls, complete a stuck story task).
+- End or F8: unstick the guest's controls. Host Esc pauses both games.
+
+Known issues
+- Only the host drives and plans the route. Detailing and quirk hints are host-only; the Chrono Dilator is off in co-op.
+- An anchor picked up by the guest can sometimes be deposited twice.
+- A few anomalies are not visible to the guest; weather or time of day can differ between the players.
+- Tutorial steps done by the guest alone do not count for the host. Mixed DLC between players is untested.
 
 When something breaks
-Use Collect logs in the launcher and include both players' zips, their roles, the time and reproduction steps.
-Logs: PenDriverPro\Binaries\Win64\ue4ss\UE4SS.log. Copy them before restarting; the log is overwritten.
-Report modded-game crashes to this project. The mod blocks the game's crash uploader and writes its own crash marker.
+Click Collect logs in the launcher on BOTH PCs before restarting the game (the log is overwritten) and send the zips
+with what you were doing: https://github.com/ikeepcalm/pacific-together/issues
+Log: PenDriverPro\Binaries\Win64\ue4ss\UE4SS.log. The mod blocks the game's crash uploader: report crashes here, not
+to the game's developer. More help: GUIDE.md. Changes: CHANGELOG.md.
+
+Uninstall
+Uninstall in the launcher. Saves are not touched, but it removes the whole ue4ss folder, including other UE4SS mods.
+Every first install of a build backs up your saves to Documents\PacificDrive-saves-backup-<date>.zip; to restore, close
+the game and extract it over %LOCALAPPDATA%\PenDriverPro\.
+
+Support the mod: https://www.patreon.com/cw/ikeepcalm
+Built on UE4SS. A fan project, not affiliated with Ironwood Studios. Contains no game files.

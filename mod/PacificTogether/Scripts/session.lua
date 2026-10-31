@@ -149,7 +149,7 @@ local function refreshBodies()
         if inWorld(c, w) then
             local remote = not same(c, pc.Pawn) and not same(c, own)
             isolate(c, remote)
-            -- Djecka's survivor parts (survivor.lua) replace the visible mannequin when they are on
+            -- the survivor parts (survivor.lua, the Rogue) replace the visible mannequin when they are on
             local sv = survivor and survivor.set(c, remote)
             setBody(c, remote and not sv)
         end

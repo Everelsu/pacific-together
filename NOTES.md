@@ -922,3 +922,28 @@ Observations
   pivot in hand_r. Owner: Scrapper, Impact Hammer, blowtorch, Extractor, repair tool, prybar, Vacuum "all look nice".
 Unknown: number keys with the menu open also reach the game's bindings; which of the occlusion camera and height capture the rain
 needed (both are spawned); held-tool look while the other player walks or uses the tool.
+
+## 2026-10-31: the Rogue as the partner's body (owner request: a real character model instead of the crude survivor)
+
+Observations
+- Candidates in the owner's files (moved to `local/player_model/`): Survival_Character (UE 5.1 content, 1.3 GB, 4K-8K textures)
+  needs the UE editor to cook; Rogue_FREE (`rogue_free.ma`, Maya 2025 ASCII, 14 skinned meshes, 11.6k verts, 5 flat lambert
+  colours, no textures) can be read as text. Both use the UE5 mannequin skeleton (spine_01..05, neck_02, corrective bones).
+- `tools/model/maya_ascii.py` reads the .ma: Orig-shape meshes, skin weights, bindPreMatrix, joint hierarchy (self-check: the
+  hierarchy rebuilds every stored bind matrix to 1e-3), per-face materials through groupParts/groupId.
+- The car interior has no trace collision (Visibility and Camera traces from the passenger footwell hit only the garage floor,
+  69 uu, car origin 147); the seated pelvis is at 139. Seat pose tuned by eye with the owner (thighs 95 deg up, shins 60 deg
+  forward); host and guest both confirmed no legs under the car.
+- The guest's game never ran a seated pose for the driving host (car.lua seats only the guest); survivor.lua now folds the legs
+  of any body attached to the car on its 2 s refresh.
+- Hand play (owner, rendered pair) rejected in turn: inside-out faces (converter reversed the winding), hollow belly and
+  shoulders, a broken crotch, faceted shading, straps and the cloak torn between bones, and copies of triangles on a second bone
+  sticking out. Root causes: the game's UE4 spine_03 is the chest (140 cm), the model's UE5 spine_03 the waist (113 cm); the
+  game's shoulder joint sits 7 cm higher on the chest; each part turns onto the game's A-pose by its own angle.
+- Accepted look: pads, shoulder pad and cloak dropped; belts and straps rigid; torso three blocks (hips, chest anchored at the
+  model's spine_05, head with neck); one bone per triangle; every part placed where its parent puts the model's joint; no
+  stretching; smooth normals; colours x2.5; black mask with a glowing face from the game's neon material
+  (`MI_GasStation_Light_01`, Glow Color / Glow Intensity): host amber grin, guest green round eyes and zigzag mouth.
+
+Results: survivor 31/31 (new other_variant check), carsit 26/26 (new host_sees_guest_legs_folded, knee-hip dz -3), carexit 29/29,
+session 40/40. Not run: the full suite, lag/loss, mutations for the new checks.

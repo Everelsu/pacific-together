@@ -19,7 +19,7 @@ return function(T)
         return r
     end
     function L.invisible(c) return c.Mesh:IsValid() and T.name(c.Mesh:GetMaterial(0)):find("Invist", 1, true) ~= nil end
-    -- the other player's body is Djecka's survivor (survivor.lua): procedural mesh parts attached to the character's mesh bones
+    -- the other player's body is the Rogue (survivor.lua): procedural mesh parts attached to the character's mesh bones
     function L.survivorParts(c)
         local r = {}
         for _, p in ipairs(FindAllOf("ProceduralMeshComponent") or {}) do

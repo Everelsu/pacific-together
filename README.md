@@ -1,79 +1,113 @@
+<div align="center">
+
 # Pacific Together
 
-Two-player online co-op mod for [Pacific Drive](https://store.steampowered.com/app/1458140/Pacific_Drive/):
-one drives, one rides along, both scavenge, the run is shared. Join through Steam invites, the friends list or direct IP.
+**Play Pacific Drive with a friend.** One drives, one rides shotgun, both scavenge — the same car, the same run, the same
+Olympic Exclusion Zone.
 
-**Status: development preview 0.8.4 (2026-10-30), network protocol 5.** Shared car, loot, progression and run systems
-are implemented, with ongoing playtesting and fixes. Both players need the same mod version. No public release before
-1.0; previews are for the developers and friends. See [CHANGELOG.md](CHANGELOG.md) for changes and known issues,
-and [docs/PLAN.md](docs/PLAN.md) for the planned scope.
+[![Latest release](https://img.shields.io/github/v/release/ikeepcalm/pacific-together?include_prereleases&label=download&color=e8a33d)](https://github.com/ikeepcalm/pacific-together/releases)
+[![Players](https://img.shields.io/badge/players-2-4c9a52)](#features)
+[![Game version](https://img.shields.io/badge/Pacific%20Drive-v1.15.0%20(Steam)-2b6cb0)](https://store.steampowered.com/app/1458140/Pacific_Drive/)
+[![Platform](https://img.shields.io/badge/platform-Windows-555)](#install)
+[![License](https://img.shields.io/badge/license-MIT-777)](LICENSE)
+[![Patreon](https://img.shields.io/badge/support-Patreon-f96854?logo=patreon&logoColor=white)](https://www.patreon.com/cw/ikeepcalm)
 
-- Game build: Steam v1.15.0 (buildid 21896301). Other builds are not supported.
-- Built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS). Not affiliated with Ironwood Studios.
-- Research notes: [docs/research](docs/research). Release rules: [docs/RELEASING.md](docs/RELEASING.md).
-- `reference/pdcoopnet` holds the lab notes and README of [PDCoopNet](https://github.com/BroZYTnikkkk/pacific-drive-coop) v0.2
-  (MIT, by BroZYTnikkkk), kept as research material; none of its code is in this repo.
+![The host and the guest, each seen from the other's game](docs/images/two-players.jpg)
 
-## Current features
+</div>
 
-- **Sessions:** host plus one guest, Steam friends-only lobbies and invites, or direct-IP joining. Steam joining was
-  verified between two real accounts in the October 23 playtest. Guests can rejoin and follow the host through map changes.
-- **Players:** animated survivor bodies, held tools and items, name tags with health, HUD and ARC-map markers, and
-  middle-mouse pings. The guest has their own health, radiation damage and backpack; death drops a recoverable crate
-  and respawns them at the car. The host stores the guest's backpack for later joins.
-- **Car:** the host drives and the guest rides in the passenger seat. Parts, damage, fuel, battery and storage are
-  shared; the guest can repair, scrap, refuel, remove and install parts. Engine audio, instruments, lights and supported
-  car-upgrade effects follow the host.
-- **Loot and world:** shared containers, pickups, abandoned cars and garage storage, with item condition preserved
-  on handover. Zone props, instability, storms, gateways and many anomaly interactions are synchronized; weather and
-  time of day are sent but were seen to differ in hand play.
-- **Run and progression:** travel through junctions and return to the garage together, including shared run failure.
-  The guest sees the host's research, garage and player upgrades, missions, journal and radio dialogue, and can use
-  supported garage stations and summon a gateway through the ARC. The host owns the world and save; the guest's own
-  saves are protected while joined.
-- **Interface:** session status and activity feed, guest loading and seat prompts, shared pause when the host opens
-  Esc, the game's own loading screen on both sides through map changes (each waits for the other), route/travel notices and
-  an ARC energy readout. **F9 opens the rescue menu** for when something breaks mid-session: teleport to the other player,
-  resync with the host, reset stuck controls, or force-complete a story task that will not tick (the host's open tasks are
-  listed; press a task's number twice). The preview launcher installs and uninstalls the mod, backs up saves and collects logs.
+> **Early access.** The mod is fully playable, but it is still being polished — expect the odd glitch, and see
+> [Known issues](#known-issues). If something breaks mid-run, press **F9** for the rescue menu.
 
-## Limitations and testing
+## Features
 
-This is still a preview, with known gameplay gaps:
+- 🚗 **One car, two players.** The host drives, the guest rides in the passenger seat and can start the engine or shift
+  gears from there. Fuel, battery, damage, parts and storage are shared — both of you can repair, refuel and swap parts.
+- 🎒 **Scavenge together.** Containers, pickups, abandoned cars and the garage storage are shared, and items keep their
+  condition when you pass them around.
+- 🌩️ **The same Zone for both.** Storms, instability, gateways and most anomalies happen for both players.
+- 🧭 **One run, start to finish.** Travel through junctions and back to the garage together. Missions, radio calls,
+  research, upgrades and the journal are shared; the guest can use garage stations too.
+- 🧍 **See each other.** Each player has a hooded body with a glowing face (a different one for host and guest), holds
+  their tools, and has a name tag with health. **Middle mouse** drops a ping your friend can see.
+- ❤️ **Your own health and backpack.** The guest takes their own damage and radiation. If they die, their items wait in
+  a crate and they respawn at the car. The host keeps the guest's backpack for next time.
+- 🔗 **Easy joining.** Invite a friend through Steam, or join by IP address. No port forwarding needed over Steam.
+- 💾 **Safe saves.** The host owns the world and save. The guest's own saves are protected while they play in someone
+  else's game, and the installer backs up your saves before it changes anything.
 
-- Anchors picked up by the guest can remain on the host and be deposited twice.
-- Some anomalies are not visible to the guest (seen: the noisy car-repairing one and the "tictac"), and weather and time
-  of day were different for host and guest in the October 24 hand play.
-- Tutorial steps completed by the guest alone are not shared with the host.
-- Re-entering through the driver's door showed the driver's pose once in hand play; automated tests have not reproduced it.
-- Driving and route planning remain host-only. Detailing and buying quirk hints are also host-only, and the Chrono
-  Dilator is disabled in co-op.
+## Install
 
-A full expedition (garage, a junction, two zones and back) was played by hand with a guest on October 24 with no mod
-errors or crashes. Version 0.0.7 addresses join-buffer overflows, guest seating and collision after junction travel,
-key-handling crashes and synchronization stalls. Automated two-instance scenarios cover these systems, but passing those checks does not
-replace further human playtesting. Recorded results are in [NOTES.md](NOTES.md); the runner and test-copy workflow are
-documented in [docs/TESTING.md](docs/TESTING.md).
+**You need:** Pacific Drive on Steam, updated to the latest version (v1.15.0), on Windows. **Both players** install the mod,
+and both need the **same mod version**.
 
-## Building from source
+1. **Download** the latest zip from [Releases](https://github.com/ikeepcalm/pacific-together/releases) and unpack it
+   anywhere (for example, your Desktop).
+2. **Close the game.** Open **`PacificTogether.exe`**. It finds your game folder; check that it is right.
+3. Choose **Host** and click **Install & play**. *(Both players pick Host when joining through Steam — "Host" just
+   means "no IP address needed".)*
 
-Windows only. Native builds need Visual Studio C++ Build Tools, Rust and an Epic-linked GitHub account for UE4SS's
-Unreal headers. Follow [docs/DEVELOPING.md](docs/DEVELOPING.md) for prerequisites, the pinned UE4SS build and test copies.
-Its Lua-only setup uses a matching prebuilt native DLL.
+Windows may warn that the launcher is from an unknown publisher: click **More info → Run anyway**.
 
-```powershell
-git clone https://github.com/ikeepcalm/pacific-together.git
-cd pacific-together
-git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
-tools\build-native.cmd
-```
+## Play with a friend
 
-Use a short checkout path and Git long-path support. The HTTPS rewrite avoids the submodules' SSH-key requirement.
+**Through Steam (easiest)**
 
-## Contributing
+1. The host starts the game and **loads a save**.
+2. The guest starts the game too, then either accepts the host's **Steam invite**, or right-clicks the host in the
+   Steam friends list and picks **Join game**.
 
-[docs/TASKS.md](docs/TASKS.md) tracks remaining work and the disposition of earlier task IDs. Check the code and open
-PRs before claiming a task with a draft PR named after its id. Setup and validation: [docs/DEVELOPING.md](docs/DEVELOPING.md)
-and [docs/TESTING.md](docs/TESTING.md).
+**By IP address**
 
-MIT license. This repository contains no game files.
+1. In the launcher, the host picks **Host**; the guest picks **Join** and types the host's IP address.
+2. The host loads a save; the guest connects from the main menu.
+3. The host may need to forward **UDP port 7777** on their router (or you can both use a LAN or a VPN such as Radmin or
+   ZeroTier).
+
+## Controls
+
+| Key | What it does |
+|---|---|
+| **E** on the passenger door | Get in the car (guest) |
+| **X** | Get out of the car (guest) |
+| **E** on the key or the shifter | Start/stop the engine or switch P/D from the passenger seat |
+| **Middle mouse** | Ping a spot for your friend (**G** if the mouse button does not work) |
+| **F9** | Rescue menu: teleport to your friend, resync, unstick controls, or complete a stuck story task |
+| **End** or **F8** | Unstick the guest's controls |
+| **Esc** (host) | Pauses the game for both players |
+
+## Known issues
+
+- Only the host can drive and plan the route. Detailing and buying quirk hints are host-only, and the Chrono Dilator is
+  turned off in co-op.
+- An anchor picked up by the guest can sometimes be deposited twice.
+- A few anomalies are not visible to the guest yet, and weather or time of day can differ between the two players.
+- Tutorial steps done by the guest alone do not count for the host.
+- Playing with different DLC between host and guest has not been tested.
+
+Found something else? Please [open an issue](https://github.com/ikeepcalm/pacific-together/issues). Click **Collect logs**
+in the launcher on **both** PCs and attach the zips, plus what you were doing when it happened. Do this before restarting
+the game, because the log is overwritten.
+
+## Uninstall
+
+Open `PacificTogether.exe` and click **Uninstall**. Your saves are not touched. Uninstalling also removes other UE4SS
+mods, because it deletes the whole `ue4ss` folder. Every install backs up your saves to
+`Documents\PacificDrive-saves-backup-<date>.zip` first.
+
+## Support the mod
+
+Pacific Together is free and always will be. If you enjoy it and want to see it grow, you can support development on
+**[Patreon](https://www.patreon.com/cw/ikeepcalm)** ❤️
+
+## Credits
+
+- Built on [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS).
+- Pacific Drive is made by Ironwood Studios. This is a fan project and is not
+  affiliated with or endorsed by them. The mod contains no game files.
+
+## For developers
+
+Source code is MIT licensed. Version history: [CHANGELOG.md](CHANGELOG.md). Setup, building and the test workflow:
+[docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/TESTING.md](docs/TESTING.md). Planned scope and open work:
+[docs/PLAN.md](docs/PLAN.md) and [docs/TASKS.md](docs/TASKS.md). Release steps: [docs/RELEASING.md](docs/RELEASING.md).

@@ -5,6 +5,20 @@ What changed in Pacific Together, in plain words. Newest first. The format follo
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-10-31
+
+### Added
+
+- A new look for the other player: a hooded rogue instead of the crude survivor, with a glowing face on a black mask.
+  The host and the guest look different (an amber grin for the host, green round eyes and a zigzag mouth for the guest,
+  and different jacket colours), so you always know who is who.
+- The other player sits properly in the car: their legs fold into a seated pose when they get in and stretch out again
+  when they get out, in both seats. Before, the driver stood in the seat with the legs through the floor.
+
+### Changed
+
+- New README for players: what the mod does, how to install and join, controls, known issues.
+
 ## [0.8.4] - 2026-10-30
 
 ### Added

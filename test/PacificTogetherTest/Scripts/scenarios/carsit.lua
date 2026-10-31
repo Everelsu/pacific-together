@@ -1,5 +1,5 @@
 -- Steam playtest #12: the seated guest's body shows its legs under the car. Checks the sitting state (thigh bones hidden)
--- on the host's body copy and on the guest's own pawn.
+-- on the host's body copy and on the guest's own pawn, and (host) that the survivor legs folded into the seated pose.
 -- Run: tools/run-test.ps1 -Scenario carsit -Fixture garage -Headless      Mutation: nosit (fix off)
 -- (was: Playtest-1 bug B: the guest pressed X in the car; on the host they stood outside, on their own screen they stayed in the car.
 -- The guest enters through the door press (real input), exits by the exit intent (the key X is a UE4SS key bind, not drivable
@@ -44,6 +44,24 @@ return function(T)
         log("PT|info sit state %s", s)
         return s == "true|true"
     end
+    -- survivor.lua's seated legs: a thigh part hinged on the pelvis part, a shin part hinged on it; seated, the knee is level with
+    -- the hip (thigh forward) and the standing leg parts are hidden
+    local function seatLegs(c)
+        local PMC = "ProceduralMeshComponent"
+        for _, p in ipairs(FindAllOf(PMC) or {}) do
+            local hip = p:IsValid() and p:GetOuter():GetAddress() == c:GetAddress() and p.AttachParent
+            if hip and hip:IsValid() and T.cls(hip) == PMC and T.cls(hip.AttachParent) == PMC then
+                return string.format("%.0f|%s|%s", p:K2_GetComponentLocation().Z - hip:K2_GetComponentLocation().Z, tostring(hip:IsVisible()),
+                    tostring(L.survivorParts(c).thigh_l:IsVisible()))
+            end
+        end
+        return "none"
+    end
+    local function legsOk(s)
+        log("PT|info seat legs knee-hip dz|rig shown|standing thigh shown %s", s)
+        local dz, shown, standing = s:match("^(-?%d+)|(%a+)|(%a+)$")
+        return dz ~= nil and math.abs(tonumber(dz)) < 20 and shown == "true" and standing == "false"
+    end
     if T.ROLE == "host" then
         local steps = {}
         local function add(s) steps[#steps + 1] = s end
@@ -60,6 +78,7 @@ return function(T)
         add({ check = "guest_seated_by_door_press", timeout = 120, cond = function() local g = L.guestChar(); return g ~= nil and attached(g) end })
         add({ wait = 4 })
         add({ check = "host_sees_guest_body_sitting", timeout = 15, cond = function() return sitOk(sitInfo(L.guestChar())) end })
+        add({ check = "host_sees_guest_legs_folded", timeout = 10, cond = function() return legsOk(seatLegs(L.guestChar())) end })
         add({ run = function() sendGuest("t.report") end })
         add({ check = "guest_own_pawn_sitting", timeout = 20, cond = function() return has("t.r") and sitOk(got["t.r"]) end })
         add({ wait = 2 })
