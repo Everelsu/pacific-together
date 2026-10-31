@@ -13,6 +13,7 @@ Olympic Exclusion Zone.
 [![Patreon](https://img.shields.io/badge/support-Patreon-f96854?logo=patreon&logoColor=white)](https://www.patreon.com/cw/ikeepcalm)
 
 ![The guest (green) and the host (amber), each seen from the other's game](docs/images/two-players.png)
+![Driving into the gateway as a guest](docs/images/driving.mp4)
 
 </div>
 
@@ -108,6 +109,7 @@ Pacific Together is free and always will be. If you enjoy it and want to see it 
 
 ## For developers
 
-Source code is MIT licensed. Version history: [CHANGELOG.md](CHANGELOG.md). Setup, building and the test workflow:
-[docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/TESTING.md](docs/TESTING.md). Planned scope and open work:
-[docs/PLAN.md](docs/PLAN.md) and [docs/TASKS.md](docs/TASKS.md). Release steps: [docs/RELEASING.md](docs/RELEASING.md).
+Source code is MIT licensed. 
+Version history: [CHANGELOG.md](CHANGELOG.md). 
+Setup, building and the test workflow: [docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/TESTING.md](docs/TESTING.md). 
+Planned scope and open work: [docs/PLAN.md](docs/PLAN.md) and [docs/TASKS.md](docs/TASKS.md). Release steps: [docs/RELEASING.md](docs/RELEASING.md).
