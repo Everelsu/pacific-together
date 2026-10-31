@@ -12,7 +12,7 @@ Olympic Exclusion Zone.
 [![License](https://img.shields.io/badge/license-MIT-777)](LICENSE)
 [![Patreon](https://img.shields.io/badge/support-Patreon-f96854?logo=patreon&logoColor=white)](https://www.patreon.com/cw/ikeepcalm)
 
-![The host and the guest, each seen from the other's game](docs/images/two-players.jpg)
+![The guest (green) and the host (amber), each seen from the other's game](docs/images/two-players.png)
 
 </div>
 
