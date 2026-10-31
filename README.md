@@ -2,7 +2,7 @@
 
 # Pacific Together
 
-**Play Pacific Drive with a friend.** One drives, one rides shotgun, both scavenge — the same car, the same run, the same
+**Play Pacific Drive with a friend.** One drives, one rides shotgun, both scavenge - the same car, the same run, the same
 Olympic Exclusion Zone.
 
 [![Latest release](https://img.shields.io/github/v/release/ikeepcalm/pacific-together?include_prereleases&label=download&color=e8a33d)](https://github.com/ikeepcalm/pacific-together/releases)
@@ -16,13 +16,13 @@ Olympic Exclusion Zone.
 
 </div>
 
-> **Early access.** The mod is fully playable, but it is still being polished — expect the odd glitch, and see
+> **Early access.** The mod is fully playable, but it is still being polished - expect the odd glitch, and see
 > [Known issues](#known-issues). If something breaks mid-run, press **F9** for the rescue menu.
 
 ## Features
 
 - 🚗 **One car, two players.** The host drives, the guest rides in the passenger seat and can start the engine or shift
-  gears from there. Fuel, battery, damage, parts and storage are shared — both of you can repair, refuel and swap parts.
+  gears from there. Fuel, battery, damage, parts and storage are shared - both of you can repair, refuel and swap parts.
 - 🎒 **Scavenge together.** Containers, pickups, abandoned cars and the garage storage are shared, and items keep their
   condition when you pass them around.
 - 🌩️ **The same Zone for both.** Storms, instability, gateways and most anomalies happen for both players.
@@ -44,7 +44,7 @@ and both need the **same mod version**.
 1. **Download** the latest zip from [Releases](https://github.com/ikeepcalm/pacific-together/releases) and unpack it
    anywhere (for example, your Desktop).
 2. **Close the game.** Open **`PacificTogether.exe`**. It finds your game folder; check that it is right.
-3. Choose **Host** and click **Install & play**. *(Both players pick Host when joining through Steam — "Host" just
+3. Choose **Host** and click **Install & play**. *(Both players pick Host when joining through Steam - "Host" just
    means "no IP address needed".)*
 
 Windows may warn that the launcher is from an unknown publisher: click **More info → Run anyway**.
@@ -108,7 +108,7 @@ Pacific Together is free and always will be. If you enjoy it and want to see it 
 
 ## For developers
 
-Source code is MIT licensed. 
-Version history: [CHANGELOG.md](CHANGELOG.md). 
-Setup, building and the test workflow: [docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/TESTING.md](docs/TESTING.md). 
-Planned scope and open work: [docs/PLAN.md](docs/PLAN.md) and [docs/TASKS.md](docs/TASKS.md). Release steps: [docs/RELEASING.md](docs/RELEASING.md).
+- Source code is MIT licensed. 
+- Version history: [CHANGELOG.md](CHANGELOG.md). 
+- Setup, building and the test workflow: [docs/DEVELOPING.md](docs/DEVELOPING.md) and [docs/TESTING.md](docs/TESTING.md). 
+- Planned scope and open work: [docs/PLAN.md](docs/PLAN.md) and [docs/TASKS.md](docs/TASKS.md). Release steps: [docs/RELEASING.md](docs/RELEASING.md).
