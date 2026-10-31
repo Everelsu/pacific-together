@@ -13,7 +13,6 @@ Olympic Exclusion Zone.
 [![Patreon](https://img.shields.io/badge/support-Patreon-f96854?logo=patreon&logoColor=white)](https://www.patreon.com/cw/ikeepcalm)
 
 ![The guest (green) and the host (amber), each seen from the other's game](docs/images/two-players.png)
-![Driving into the gateway as a guest](docs/images/driving.mp4)
 
 </div>
 
